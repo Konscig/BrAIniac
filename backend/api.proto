@@ -2,10 +2,17 @@ syntax = "proto3";
 
 package api;
 
-option go_package = "github.com/yourusername/BrAIniac/backend/gen/api;api";
+option go_package = "github.com/Konscig/BrAIniac/backend/gen/;api";
+
+import "google/api/annotations.proto";
 
 service Greeter {
-  rpc SayHello (HelloRequest) returns (HelloReply) {}
+  rpc SayHello (HelloRequest) returns (HelloReply) {
+    option (google.api.http) = {
+      post: "/v1/hello"
+      body: "*"
+    };
+  }
 }
 
 message HelloRequest {
