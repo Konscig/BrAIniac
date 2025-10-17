@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
@@ -16,4 +17,22 @@ type Edge struct {
 	CreatedAt time.Time `gorm:"default:now()"`
 	UpdatedAt time.Time `gorm:"default:now()"`
 	DeletedAt time.Time `gorm:"default:now()"`
+}
+
+func (e *Edge) BeforeCreate(tx *gorm.DB) error {
+	if e.ID == uuid.Nil {
+		id, err := uuid.NewV7()
+		if err != nil {
+			return err
+		}
+		e.ID = id
+	}
+	return nil
+}
+
+func (e *Edge) Save(ctx context.Context, db *gorm.DB) error {
+	if e.ID == uuid.Nil {
+		return db.WithContext(ctx).Create(e).Error
+	}
+	return db.WithContext(ctx).Save(e).Error
 }
