@@ -4,9 +4,11 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
+	"gorm.io/gorm"
 )
 
 type Tool struct {
+	gorm.Model
 	ID         uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	Kind       string    `gorm:"type:text;not null"`
 	Name       string    `gorm:"type:text;not null"`

@@ -4,9 +4,11 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
+	"gorm.io/gorm"
 )
 
 type RunTask struct {
+	gorm.Model
 	ID         uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	RunID      Run       `gorm:"foreignKey:RunID;constraint:OnDelete:CASCADE"`
 	NodeID     Node      `gorm:"foreignKey:NodeID;constraint:OnDelete:CASCADE"`
