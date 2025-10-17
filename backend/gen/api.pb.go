@@ -7,13 +7,12 @@
 package api
 
 import (
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
-
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
 )
 
 const (
@@ -122,7 +121,7 @@ const file_api_proto_rawDesc = "" +
 	"HelloReply\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage2O\n" +
 	"\aGreeter\x12D\n" +
-	"\bSayHello\x12\x11.api.HelloRequest\x1a\x0f.api.HelloReply\"\x14\x82\xd3\xe4\x93\x02\x0e:\x01*\"\t/v1/helloB1Z/github.com/Konscig/BrAIniac/backend/gen/api;apib\x06proto3"
+	"\bSayHello\x12\x11.api.HelloRequest\x1a\x0f.api.HelloReply\"\x14\x82\xd3\xe4\x93\x02\x0e:\x01*\"\t/v1/helloB\x16Z\x14brainiac/gen/api;apib\x06proto3"
 
 var (
 	file_api_proto_rawDescOnce sync.Once

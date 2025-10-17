@@ -6,7 +6,7 @@ import (
 	"net"
 	"net/http"
 
-	api "github.com/Konscig/BrAIniac/backend/gen"
+	api "brainiac/gen"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"

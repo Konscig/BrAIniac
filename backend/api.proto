@@ -2,8 +2,7 @@ syntax = "proto3";
 
 package api;
 
-option go_package = "github.com/Konscig/BrAIniac/backend/gen/;api";
-
+option go_package = "brainiac/gen/api;api";
 import "google/api/annotations.proto";
 
 service Greeter {
