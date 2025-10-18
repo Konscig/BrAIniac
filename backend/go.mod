@@ -9,6 +9,7 @@ require (
 	github.com/gofrs/uuid/v5 v5.3.2
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.17.0
+	github.com/rs/cors v1.11.1
 	github.com/joho/godotenv v1.5.1
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.1
