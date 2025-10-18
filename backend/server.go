@@ -1,3 +1,4 @@
+// // filepath: e:\diplik\BrAIniac\backend\server.go
 package main
 
 import (
@@ -9,6 +10,7 @@ import (
 	api "brainiac/gen"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/rs/cors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -43,8 +45,16 @@ func main() {
 	if err := api.RegisterGreeterHandlerFromEndpoint(ctx, mux, "localhost:50051", opts); err != nil {
 		log.Fatalf("failed to start gateway: %v", err)
 	}
+
+	corsHandler := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:3000"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"*"},
+		AllowCredentials: true,
+	}).Handler(mux)
+
 	log.Println("Serving gRPC-Gateway on :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	if err := http.ListenAndServe(":8080", corsHandler); err != nil {
 		log.Fatalf("failed to serve gateway: %v", err)
 	}
 }

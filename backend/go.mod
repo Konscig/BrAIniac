@@ -7,6 +7,7 @@ go 1.24
 require (
 	github.com/gofrs/uuid/v5 v5.3.2
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.17.0
+	github.com/rs/cors v1.11.1
 	golang.org/x/crypto v0.31.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20240318140521-94a12d6c2237
 	google.golang.org/grpc v1.64.0
