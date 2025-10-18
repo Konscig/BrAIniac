@@ -1,74 +1,93 @@
-import React, { useState } from "react";
+import React from "react";
+import { Route, Routes } from "react-router-dom";
+
 import "./App.css";
 
-const API_BASE =
-  (process.env.REACT_APP_API_BASE_URL as string) || "http://localhost:8080";
+import { AgentChatDock } from "./components/agent-chat-dock";
+import { CanvasBoard } from "./components/canvas-board";
+import {
+  EnvironmentModeSwitch,
+  type EnvironmentMode
+} from "./components/environment-mode-switch";
+import { ModeToggle } from "./components/mode-toggle";
+import { NodeLibrary } from "./components/node-library";
+import { SidebarProjects } from "./components/sidebar-projects";
+import { Button } from "./components/ui/button";
+import { mockProjects } from "./data/mock-data";
+import { AuthPage } from "./pages/auth-page";
 
-function App(): React.ReactElement {
-  const [name, setName] = useState<string>("");
-  const [message, setMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function sayHello() {
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      const resp = await fetch(`${API_BASE}/v1/hello`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => "");
-        throw new Error(`Server returned ${resp.status}: ${text}`);
-      }
-
-      const data = (await resp.json()) as { message?: string };
-      setMessage(data.message ?? "No message in response");
-    } catch (err: any) {
-      setError(err?.message ?? String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
+function MainPage(): React.ReactElement {
+  const [activeProjectId, setActiveProjectId] = React.useState<string>(
+    mockProjects[0]?.id ?? ""
+  );
+  const [environmentMode, setEnvironmentMode] = React.useState<EnvironmentMode>(
+    "test"
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
 
   return (
-    <div className="App" style={{ padding: 24 }}>
-      <h2>Say Hello</h2>
+    <div className="App flex min-h-screen flex-col bg-background text-foreground">
+      <header className="flex items-center justify-between border-b border-border/60 px-6 py-4 backdrop-blur">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+            BrAIniac
+          </p>
+          <h1 className="text-2xl font-semibold">AI Agent Lab</h1>
+          <p className="text-sm text-muted-foreground">
+            Настройте пайплайн агента, перетаскивая ноды и соединяя их.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" className="rounded-full">
+            Сохранить черновик
+          </Button>
+          <Button className="rounded-full">Запустить пайплайн</Button>
+          <ModeToggle />
+        </div>
+      </header>
 
-      <div style={{ marginBottom: 12 }}>
-        <input
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter name"
-          style={{ padding: 8, width: 240 }}
+      <main className="flex flex-1 overflow-hidden">
+        <SidebarProjects
+          activeProjectId={activeProjectId}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+          onSelectProject={setActiveProjectId}
         />
-        <button
-          onClick={sayHello}
-          disabled={loading}
-          style={{ marginLeft: 8, padding: "8px 12px" }}
-        >
-          {loading ? "Sending..." : "Say Hello"}
-        </button>
-      </div>
 
-      {message && (
-        <div style={{ color: "green", marginBottom: 8 }}>Response: {message}</div>
-      )}
-      {error && (
-        <div style={{ color: "crimson", marginBottom: 8 }}>Error: {error}</div>
-      )}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex flex-1 gap-4 overflow-hidden px-6 py-6">
+            <CanvasBoard />
+            <div className="flex w-[320px] flex-col gap-4">
+              <NodeLibrary />
+              <AgentChatDock />
+            </div>
+          </div>
 
-      <hr />
-
-      <div style={{ fontSize: 12, color: "#666" }}>
-        API: <code>{API_BASE}/v1/hello</code>
-      </div>
+          <footer className="flex items-center justify-between border-t border-border/60 px-6 py-4 backdrop-blur">
+            <EnvironmentModeSwitch
+              value={environmentMode}
+              onChange={setEnvironmentMode}
+            />
+            <div className="text-xs text-muted-foreground">
+              Статус: {environmentMode === "test"
+                ? "используем моки"
+                : environmentMode === "hybrid"
+                ? "частично реальные данные"
+                : "реальный режим"}
+            </div>
+          </footer>
+        </div>
+      </main>
     </div>
+  );
+}
+
+function App(): React.ReactElement {
+  return (
+    <Routes>
+      <Route path="/" element={<MainPage />} />
+      <Route path="/auth" element={<AuthPage />} />
+    </Routes>
   );
 }
 
