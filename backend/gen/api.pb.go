@@ -10,6 +10,7 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -22,6 +23,1302 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type EnvironmentMode int32
+
+const (
+	EnvironmentMode_ENVIRONMENT_MODE_UNSPECIFIED EnvironmentMode = 0
+	EnvironmentMode_ENVIRONMENT_MODE_TEST        EnvironmentMode = 1
+	EnvironmentMode_ENVIRONMENT_MODE_HYBRID      EnvironmentMode = 2
+	EnvironmentMode_ENVIRONMENT_MODE_REAL        EnvironmentMode = 3
+)
+
+// Enum value maps for EnvironmentMode.
+var (
+	EnvironmentMode_name = map[int32]string{
+		0: "ENVIRONMENT_MODE_UNSPECIFIED",
+		1: "ENVIRONMENT_MODE_TEST",
+		2: "ENVIRONMENT_MODE_HYBRID",
+		3: "ENVIRONMENT_MODE_REAL",
+	}
+	EnvironmentMode_value = map[string]int32{
+		"ENVIRONMENT_MODE_UNSPECIFIED": 0,
+		"ENVIRONMENT_MODE_TEST":        1,
+		"ENVIRONMENT_MODE_HYBRID":      2,
+		"ENVIRONMENT_MODE_REAL":        3,
+	}
+)
+
+func (x EnvironmentMode) Enum() *EnvironmentMode {
+	p := new(EnvironmentMode)
+	*p = x
+	return p
+}
+
+func (x EnvironmentMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EnvironmentMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_proto_enumTypes[0].Descriptor()
+}
+
+func (EnvironmentMode) Type() protoreflect.EnumType {
+	return &file_api_proto_enumTypes[0]
+}
+
+func (x EnvironmentMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EnvironmentMode.Descriptor instead.
+func (EnvironmentMode) EnumDescriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{0}
+}
+
+type PipelineNode struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Label         string                 `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
+	Category      string                 `protobuf:"bytes,4,opt,name=category,proto3" json:"category,omitempty"`
+	Status        string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	Type          string                 `protobuf:"bytes,6,opt,name=type,proto3" json:"type,omitempty"`
+	PositionX     float64                `protobuf:"fixed64,7,opt,name=position_x,json=positionX,proto3" json:"position_x,omitempty"`
+	PositionY     float64                `protobuf:"fixed64,8,opt,name=position_y,json=positionY,proto3" json:"position_y,omitempty"`
+	ConfigJson    string                 `protobuf:"bytes,9,opt,name=config_json,json=configJson,proto3" json:"config_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PipelineNode) Reset() {
+	*x = PipelineNode{}
+	mi := &file_api_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PipelineNode) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PipelineNode) ProtoMessage() {}
+
+func (x *PipelineNode) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PipelineNode.ProtoReflect.Descriptor instead.
+func (*PipelineNode) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *PipelineNode) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *PipelineNode) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *PipelineNode) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *PipelineNode) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *PipelineNode) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *PipelineNode) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *PipelineNode) GetPositionX() float64 {
+	if x != nil {
+		return x.PositionX
+	}
+	return 0
+}
+
+func (x *PipelineNode) GetPositionY() float64 {
+	if x != nil {
+		return x.PositionY
+	}
+	return 0
+}
+
+func (x *PipelineNode) GetConfigJson() string {
+	if x != nil {
+		return x.ConfigJson
+	}
+	return ""
+}
+
+type PipelineEdge struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Source        string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	Target        string                 `protobuf:"bytes,3,opt,name=target,proto3" json:"target,omitempty"`
+	Label         string                 `protobuf:"bytes,4,opt,name=label,proto3" json:"label,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PipelineEdge) Reset() {
+	*x = PipelineEdge{}
+	mi := &file_api_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PipelineEdge) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PipelineEdge) ProtoMessage() {}
+
+func (x *PipelineEdge) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PipelineEdge.ProtoReflect.Descriptor instead.
+func (*PipelineEdge) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *PipelineEdge) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *PipelineEdge) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *PipelineEdge) GetTarget() string {
+	if x != nil {
+		return x.Target
+	}
+	return ""
+}
+
+func (x *PipelineEdge) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+type GetPipelineGraphRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	PipelineId    string                 `protobuf:"bytes,2,opt,name=pipeline_id,json=pipelineId,proto3" json:"pipeline_id,omitempty"`
+	Mode          EnvironmentMode        `protobuf:"varint,3,opt,name=mode,proto3,enum=api.EnvironmentMode" json:"mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetPipelineGraphRequest) Reset() {
+	*x = GetPipelineGraphRequest{}
+	mi := &file_api_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetPipelineGraphRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetPipelineGraphRequest) ProtoMessage() {}
+
+func (x *GetPipelineGraphRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetPipelineGraphRequest.ProtoReflect.Descriptor instead.
+func (*GetPipelineGraphRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GetPipelineGraphRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *GetPipelineGraphRequest) GetPipelineId() string {
+	if x != nil {
+		return x.PipelineId
+	}
+	return ""
+}
+
+func (x *GetPipelineGraphRequest) GetMode() EnvironmentMode {
+	if x != nil {
+		return x.Mode
+	}
+	return EnvironmentMode_ENVIRONMENT_MODE_UNSPECIFIED
+}
+
+type GetPipelineGraphResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Nodes         []*PipelineNode        `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	Edges         []*PipelineEdge        `protobuf:"bytes,2,rep,name=edges,proto3" json:"edges,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetPipelineGraphResponse) Reset() {
+	*x = GetPipelineGraphResponse{}
+	mi := &file_api_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetPipelineGraphResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetPipelineGraphResponse) ProtoMessage() {}
+
+func (x *GetPipelineGraphResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetPipelineGraphResponse.ProtoReflect.Descriptor instead.
+func (*GetPipelineGraphResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *GetPipelineGraphResponse) GetNodes() []*PipelineNode {
+	if x != nil {
+		return x.Nodes
+	}
+	return nil
+}
+
+func (x *GetPipelineGraphResponse) GetEdges() []*PipelineEdge {
+	if x != nil {
+		return x.Edges
+	}
+	return nil
+}
+
+type CreatePipelineNodeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	PipelineId    string                 `protobuf:"bytes,2,opt,name=pipeline_id,json=pipelineId,proto3" json:"pipeline_id,omitempty"`
+	Label         string                 `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
+	Type          string                 `protobuf:"bytes,4,opt,name=type,proto3" json:"type,omitempty"`
+	Category      string                 `protobuf:"bytes,5,opt,name=category,proto3" json:"category,omitempty"`
+	Status        string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	PositionX     float64                `protobuf:"fixed64,7,opt,name=position_x,json=positionX,proto3" json:"position_x,omitempty"`
+	PositionY     float64                `protobuf:"fixed64,8,opt,name=position_y,json=positionY,proto3" json:"position_y,omitempty"`
+	ConfigJson    string                 `protobuf:"bytes,9,opt,name=config_json,json=configJson,proto3" json:"config_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreatePipelineNodeRequest) Reset() {
+	*x = CreatePipelineNodeRequest{}
+	mi := &file_api_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreatePipelineNodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreatePipelineNodeRequest) ProtoMessage() {}
+
+func (x *CreatePipelineNodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreatePipelineNodeRequest.ProtoReflect.Descriptor instead.
+func (*CreatePipelineNodeRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CreatePipelineNodeRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *CreatePipelineNodeRequest) GetPipelineId() string {
+	if x != nil {
+		return x.PipelineId
+	}
+	return ""
+}
+
+func (x *CreatePipelineNodeRequest) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *CreatePipelineNodeRequest) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *CreatePipelineNodeRequest) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *CreatePipelineNodeRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *CreatePipelineNodeRequest) GetPositionX() float64 {
+	if x != nil {
+		return x.PositionX
+	}
+	return 0
+}
+
+func (x *CreatePipelineNodeRequest) GetPositionY() float64 {
+	if x != nil {
+		return x.PositionY
+	}
+	return 0
+}
+
+func (x *CreatePipelineNodeRequest) GetConfigJson() string {
+	if x != nil {
+		return x.ConfigJson
+	}
+	return ""
+}
+
+type UpdatePipelineNodeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	PipelineId    string                 `protobuf:"bytes,2,opt,name=pipeline_id,json=pipelineId,proto3" json:"pipeline_id,omitempty"`
+	NodeId        string                 `protobuf:"bytes,3,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Label         string                 `protobuf:"bytes,4,opt,name=label,proto3" json:"label,omitempty"`
+	Type          string                 `protobuf:"bytes,5,opt,name=type,proto3" json:"type,omitempty"`
+	Category      string                 `protobuf:"bytes,6,opt,name=category,proto3" json:"category,omitempty"`
+	Status        string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`
+	PositionX     float64                `protobuf:"fixed64,8,opt,name=position_x,json=positionX,proto3" json:"position_x,omitempty"`
+	PositionY     float64                `protobuf:"fixed64,9,opt,name=position_y,json=positionY,proto3" json:"position_y,omitempty"`
+	ConfigJson    string                 `protobuf:"bytes,10,opt,name=config_json,json=configJson,proto3" json:"config_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdatePipelineNodeRequest) Reset() {
+	*x = UpdatePipelineNodeRequest{}
+	mi := &file_api_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdatePipelineNodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdatePipelineNodeRequest) ProtoMessage() {}
+
+func (x *UpdatePipelineNodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdatePipelineNodeRequest.ProtoReflect.Descriptor instead.
+func (*UpdatePipelineNodeRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *UpdatePipelineNodeRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *UpdatePipelineNodeRequest) GetPipelineId() string {
+	if x != nil {
+		return x.PipelineId
+	}
+	return ""
+}
+
+func (x *UpdatePipelineNodeRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *UpdatePipelineNodeRequest) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *UpdatePipelineNodeRequest) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *UpdatePipelineNodeRequest) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *UpdatePipelineNodeRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *UpdatePipelineNodeRequest) GetPositionX() float64 {
+	if x != nil {
+		return x.PositionX
+	}
+	return 0
+}
+
+func (x *UpdatePipelineNodeRequest) GetPositionY() float64 {
+	if x != nil {
+		return x.PositionY
+	}
+	return 0
+}
+
+func (x *UpdatePipelineNodeRequest) GetConfigJson() string {
+	if x != nil {
+		return x.ConfigJson
+	}
+	return ""
+}
+
+type DeletePipelineNodeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	PipelineId    string                 `protobuf:"bytes,2,opt,name=pipeline_id,json=pipelineId,proto3" json:"pipeline_id,omitempty"`
+	NodeId        string                 `protobuf:"bytes,3,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeletePipelineNodeRequest) Reset() {
+	*x = DeletePipelineNodeRequest{}
+	mi := &file_api_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeletePipelineNodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeletePipelineNodeRequest) ProtoMessage() {}
+
+func (x *DeletePipelineNodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeletePipelineNodeRequest.ProtoReflect.Descriptor instead.
+func (*DeletePipelineNodeRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *DeletePipelineNodeRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *DeletePipelineNodeRequest) GetPipelineId() string {
+	if x != nil {
+		return x.PipelineId
+	}
+	return ""
+}
+
+func (x *DeletePipelineNodeRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+type CreatePipelineEdgeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	PipelineId    string                 `protobuf:"bytes,2,opt,name=pipeline_id,json=pipelineId,proto3" json:"pipeline_id,omitempty"`
+	Source        string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	Target        string                 `protobuf:"bytes,4,opt,name=target,proto3" json:"target,omitempty"`
+	Label         string                 `protobuf:"bytes,5,opt,name=label,proto3" json:"label,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreatePipelineEdgeRequest) Reset() {
+	*x = CreatePipelineEdgeRequest{}
+	mi := &file_api_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreatePipelineEdgeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreatePipelineEdgeRequest) ProtoMessage() {}
+
+func (x *CreatePipelineEdgeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreatePipelineEdgeRequest.ProtoReflect.Descriptor instead.
+func (*CreatePipelineEdgeRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *CreatePipelineEdgeRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *CreatePipelineEdgeRequest) GetPipelineId() string {
+	if x != nil {
+		return x.PipelineId
+	}
+	return ""
+}
+
+func (x *CreatePipelineEdgeRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *CreatePipelineEdgeRequest) GetTarget() string {
+	if x != nil {
+		return x.Target
+	}
+	return ""
+}
+
+func (x *CreatePipelineEdgeRequest) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+type DeletePipelineEdgeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	PipelineId    string                 `protobuf:"bytes,2,opt,name=pipeline_id,json=pipelineId,proto3" json:"pipeline_id,omitempty"`
+	EdgeId        string                 `protobuf:"bytes,3,opt,name=edge_id,json=edgeId,proto3" json:"edge_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeletePipelineEdgeRequest) Reset() {
+	*x = DeletePipelineEdgeRequest{}
+	mi := &file_api_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeletePipelineEdgeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeletePipelineEdgeRequest) ProtoMessage() {}
+
+func (x *DeletePipelineEdgeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeletePipelineEdgeRequest.ProtoReflect.Descriptor instead.
+func (*DeletePipelineEdgeRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *DeletePipelineEdgeRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *DeletePipelineEdgeRequest) GetPipelineId() string {
+	if x != nil {
+		return x.PipelineId
+	}
+	return ""
+}
+
+func (x *DeletePipelineEdgeRequest) GetEdgeId() string {
+	if x != nil {
+		return x.EdgeId
+	}
+	return ""
+}
+
+type ProjectSummary struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProjectSummary) Reset() {
+	*x = ProjectSummary{}
+	mi := &file_api_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProjectSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProjectSummary) ProtoMessage() {}
+
+func (x *ProjectSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProjectSummary.ProtoReflect.Descriptor instead.
+func (*ProjectSummary) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ProjectSummary) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ProjectSummary) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ProjectSummary) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+type PipelineSummary struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Version       int32                  `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PipelineSummary) Reset() {
+	*x = PipelineSummary{}
+	mi := &file_api_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PipelineSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PipelineSummary) ProtoMessage() {}
+
+func (x *PipelineSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PipelineSummary.ProtoReflect.Descriptor instead.
+func (*PipelineSummary) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *PipelineSummary) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *PipelineSummary) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *PipelineSummary) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *PipelineSummary) GetVersion() int32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+type ListProjectsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Projects      []*ProjectSummary      `protobuf:"bytes,1,rep,name=projects,proto3" json:"projects,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListProjectsResponse) Reset() {
+	*x = ListProjectsResponse{}
+	mi := &file_api_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListProjectsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListProjectsResponse) ProtoMessage() {}
+
+func (x *ListProjectsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListProjectsResponse.ProtoReflect.Descriptor instead.
+func (*ListProjectsResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListProjectsResponse) GetProjects() []*ProjectSummary {
+	if x != nil {
+		return x.Projects
+	}
+	return nil
+}
+
+type ListPipelinesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListPipelinesRequest) Reset() {
+	*x = ListPipelinesRequest{}
+	mi := &file_api_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListPipelinesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListPipelinesRequest) ProtoMessage() {}
+
+func (x *ListPipelinesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListPipelinesRequest.ProtoReflect.Descriptor instead.
+func (*ListPipelinesRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListPipelinesRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+type ListPipelinesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Pipelines     []*PipelineSummary     `protobuf:"bytes,1,rep,name=pipelines,proto3" json:"pipelines,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListPipelinesResponse) Reset() {
+	*x = ListPipelinesResponse{}
+	mi := &file_api_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListPipelinesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListPipelinesResponse) ProtoMessage() {}
+
+func (x *ListPipelinesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListPipelinesResponse.ProtoReflect.Descriptor instead.
+func (*ListPipelinesResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ListPipelinesResponse) GetPipelines() []*PipelineSummary {
+	if x != nil {
+		return x.Pipelines
+	}
+	return nil
+}
+
+type PublishPipelineVersionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	PipelineId    string                 `protobuf:"bytes,2,opt,name=pipeline_id,json=pipelineId,proto3" json:"pipeline_id,omitempty"`
+	Notes         string                 `protobuf:"bytes,3,opt,name=notes,proto3" json:"notes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PublishPipelineVersionRequest) Reset() {
+	*x = PublishPipelineVersionRequest{}
+	mi := &file_api_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublishPipelineVersionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishPipelineVersionRequest) ProtoMessage() {}
+
+func (x *PublishPipelineVersionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishPipelineVersionRequest.ProtoReflect.Descriptor instead.
+func (*PublishPipelineVersionRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *PublishPipelineVersionRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *PublishPipelineVersionRequest) GetPipelineId() string {
+	if x != nil {
+		return x.PipelineId
+	}
+	return ""
+}
+
+func (x *PublishPipelineVersionRequest) GetNotes() string {
+	if x != nil {
+		return x.Notes
+	}
+	return ""
+}
+
+type PublishPipelineVersionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VersionId     string                 `protobuf:"bytes,1,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
+	VersionNumber int32                  `protobuf:"varint,2,opt,name=version_number,json=versionNumber,proto3" json:"version_number,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PublishPipelineVersionResponse) Reset() {
+	*x = PublishPipelineVersionResponse{}
+	mi := &file_api_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublishPipelineVersionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishPipelineVersionResponse) ProtoMessage() {}
+
+func (x *PublishPipelineVersionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishPipelineVersionResponse.ProtoReflect.Descriptor instead.
+func (*PublishPipelineVersionResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *PublishPipelineVersionResponse) GetVersionId() string {
+	if x != nil {
+		return x.VersionId
+	}
+	return ""
+}
+
+func (x *PublishPipelineVersionResponse) GetVersionNumber() int32 {
+	if x != nil {
+		return x.VersionNumber
+	}
+	return 0
+}
+
+type ExecutePipelineRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	PipelineId    string                 `protobuf:"bytes,2,opt,name=pipeline_id,json=pipelineId,proto3" json:"pipeline_id,omitempty"`
+	Mode          EnvironmentMode        `protobuf:"varint,3,opt,name=mode,proto3,enum=api.EnvironmentMode" json:"mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecutePipelineRequest) Reset() {
+	*x = ExecutePipelineRequest{}
+	mi := &file_api_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecutePipelineRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecutePipelineRequest) ProtoMessage() {}
+
+func (x *ExecutePipelineRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecutePipelineRequest.ProtoReflect.Descriptor instead.
+func (*ExecutePipelineRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ExecutePipelineRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *ExecutePipelineRequest) GetPipelineId() string {
+	if x != nil {
+		return x.PipelineId
+	}
+	return ""
+}
+
+func (x *ExecutePipelineRequest) GetMode() EnvironmentMode {
+	if x != nil {
+		return x.Mode
+	}
+	return EnvironmentMode_ENVIRONMENT_MODE_UNSPECIFIED
+}
+
+type NodeExecutionResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	Output        string                 `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeExecutionResult) Reset() {
+	*x = NodeExecutionResult{}
+	mi := &file_api_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeExecutionResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeExecutionResult) ProtoMessage() {}
+
+func (x *NodeExecutionResult) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeExecutionResult.ProtoReflect.Descriptor instead.
+func (*NodeExecutionResult) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *NodeExecutionResult) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *NodeExecutionResult) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *NodeExecutionResult) GetOutput() string {
+	if x != nil {
+		return x.Output
+	}
+	return ""
+}
+
+type ExecutePipelineResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Results       []*NodeExecutionResult `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecutePipelineResponse) Reset() {
+	*x = ExecutePipelineResponse{}
+	mi := &file_api_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecutePipelineResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecutePipelineResponse) ProtoMessage() {}
+
+func (x *ExecutePipelineResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecutePipelineResponse.ProtoReflect.Descriptor instead.
+func (*ExecutePipelineResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ExecutePipelineResponse) GetResults() []*NodeExecutionResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
 type HelloRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -31,7 +1328,7 @@ type HelloRequest struct {
 
 func (x *HelloRequest) Reset() {
 	*x = HelloRequest{}
-	mi := &file_api_proto_msgTypes[0]
+	mi := &file_api_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43,7 +1340,7 @@ func (x *HelloRequest) String() string {
 func (*HelloRequest) ProtoMessage() {}
 
 func (x *HelloRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[0]
+	mi := &file_api_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -56,7 +1353,7 @@ func (x *HelloRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HelloRequest.ProtoReflect.Descriptor instead.
 func (*HelloRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{0}
+	return file_api_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *HelloRequest) GetName() string {
@@ -75,7 +1372,7 @@ type HelloReply struct {
 
 func (x *HelloReply) Reset() {
 	*x = HelloReply{}
-	mi := &file_api_proto_msgTypes[1]
+	mi := &file_api_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -87,7 +1384,7 @@ func (x *HelloReply) String() string {
 func (*HelloReply) ProtoMessage() {}
 
 func (x *HelloReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[1]
+	mi := &file_api_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -100,7 +1397,7 @@ func (x *HelloReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HelloReply.ProtoReflect.Descriptor instead.
 func (*HelloReply) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{1}
+	return file_api_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *HelloReply) GetMessage() string {
@@ -114,14 +1411,147 @@ var File_api_proto protoreflect.FileDescriptor
 
 const file_api_proto_rawDesc = "" +
 	"\n" +
-	"\tapi.proto\x12\x03api\x1a\x1cgoogle/api/annotations.proto\"\"\n" +
+	"\tapi.proto\x12\x03api\x1a\x1cgoogle/api/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xed\x01\n" +
+	"\fPipelineNode\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\x12\x14\n" +
+	"\x05label\x18\x03 \x01(\tR\x05label\x12\x1a\n" +
+	"\bcategory\x18\x04 \x01(\tR\bcategory\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12\x12\n" +
+	"\x04type\x18\x06 \x01(\tR\x04type\x12\x1d\n" +
+	"\n" +
+	"position_x\x18\a \x01(\x01R\tpositionX\x12\x1d\n" +
+	"\n" +
+	"position_y\x18\b \x01(\x01R\tpositionY\x12\x1f\n" +
+	"\vconfig_json\x18\t \x01(\tR\n" +
+	"configJson\"d\n" +
+	"\fPipelineEdge\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\x12\x16\n" +
+	"\x06target\x18\x03 \x01(\tR\x06target\x12\x14\n" +
+	"\x05label\x18\x04 \x01(\tR\x05label\"\x83\x01\n" +
+	"\x17GetPipelineGraphRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1f\n" +
+	"\vpipeline_id\x18\x02 \x01(\tR\n" +
+	"pipelineId\x12(\n" +
+	"\x04mode\x18\x03 \x01(\x0e2\x14.api.EnvironmentModeR\x04mode\"l\n" +
+	"\x18GetPipelineGraphResponse\x12'\n" +
+	"\x05nodes\x18\x01 \x03(\v2\x11.api.PipelineNodeR\x05nodes\x12'\n" +
+	"\x05edges\x18\x02 \x03(\v2\x11.api.PipelineEdgeR\x05edges\"\x98\x02\n" +
+	"\x19CreatePipelineNodeRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1f\n" +
+	"\vpipeline_id\x18\x02 \x01(\tR\n" +
+	"pipelineId\x12\x14\n" +
+	"\x05label\x18\x03 \x01(\tR\x05label\x12\x12\n" +
+	"\x04type\x18\x04 \x01(\tR\x04type\x12\x1a\n" +
+	"\bcategory\x18\x05 \x01(\tR\bcategory\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12\x1d\n" +
+	"\n" +
+	"position_x\x18\a \x01(\x01R\tpositionX\x12\x1d\n" +
+	"\n" +
+	"position_y\x18\b \x01(\x01R\tpositionY\x12\x1f\n" +
+	"\vconfig_json\x18\t \x01(\tR\n" +
+	"configJson\"\xb1\x02\n" +
+	"\x19UpdatePipelineNodeRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1f\n" +
+	"\vpipeline_id\x18\x02 \x01(\tR\n" +
+	"pipelineId\x12\x17\n" +
+	"\anode_id\x18\x03 \x01(\tR\x06nodeId\x12\x14\n" +
+	"\x05label\x18\x04 \x01(\tR\x05label\x12\x12\n" +
+	"\x04type\x18\x05 \x01(\tR\x04type\x12\x1a\n" +
+	"\bcategory\x18\x06 \x01(\tR\bcategory\x12\x16\n" +
+	"\x06status\x18\a \x01(\tR\x06status\x12\x1d\n" +
+	"\n" +
+	"position_x\x18\b \x01(\x01R\tpositionX\x12\x1d\n" +
+	"\n" +
+	"position_y\x18\t \x01(\x01R\tpositionY\x12\x1f\n" +
+	"\vconfig_json\x18\n" +
+	" \x01(\tR\n" +
+	"configJson\"t\n" +
+	"\x19DeletePipelineNodeRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1f\n" +
+	"\vpipeline_id\x18\x02 \x01(\tR\n" +
+	"pipelineId\x12\x17\n" +
+	"\anode_id\x18\x03 \x01(\tR\x06nodeId\"\xa1\x01\n" +
+	"\x19CreatePipelineEdgeRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1f\n" +
+	"\vpipeline_id\x18\x02 \x01(\tR\n" +
+	"pipelineId\x12\x16\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12\x16\n" +
+	"\x06target\x18\x04 \x01(\tR\x06target\x12\x14\n" +
+	"\x05label\x18\x05 \x01(\tR\x05label\"t\n" +
+	"\x19DeletePipelineEdgeRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1f\n" +
+	"\vpipeline_id\x18\x02 \x01(\tR\n" +
+	"pipelineId\x12\x17\n" +
+	"\aedge_id\x18\x03 \x01(\tR\x06edgeId\"V\n" +
+	"\x0eProjectSummary\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\"q\n" +
+	"\x0fPipelineSummary\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x18\n" +
+	"\aversion\x18\x04 \x01(\x05R\aversion\"G\n" +
+	"\x14ListProjectsResponse\x12/\n" +
+	"\bprojects\x18\x01 \x03(\v2\x13.api.ProjectSummaryR\bprojects\"5\n" +
+	"\x14ListPipelinesRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\"K\n" +
+	"\x15ListPipelinesResponse\x122\n" +
+	"\tpipelines\x18\x01 \x03(\v2\x14.api.PipelineSummaryR\tpipelines\"u\n" +
+	"\x1dPublishPipelineVersionRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1f\n" +
+	"\vpipeline_id\x18\x02 \x01(\tR\n" +
+	"pipelineId\x12\x14\n" +
+	"\x05notes\x18\x03 \x01(\tR\x05notes\"f\n" +
+	"\x1ePublishPipelineVersionResponse\x12\x1d\n" +
+	"\n" +
+	"version_id\x18\x01 \x01(\tR\tversionId\x12%\n" +
+	"\x0eversion_number\x18\x02 \x01(\x05R\rversionNumber\"\x82\x01\n" +
+	"\x16ExecutePipelineRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1f\n" +
+	"\vpipeline_id\x18\x02 \x01(\tR\n" +
+	"pipelineId\x12(\n" +
+	"\x04mode\x18\x03 \x01(\x0e2\x14.api.EnvironmentModeR\x04mode\"^\n" +
+	"\x13NodeExecutionResult\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x16\n" +
+	"\x06output\x18\x03 \x01(\tR\x06output\"M\n" +
+	"\x17ExecutePipelineResponse\x122\n" +
+	"\aresults\x18\x01 \x03(\v2\x18.api.NodeExecutionResultR\aresults\"\"\n" +
 	"\fHelloRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"&\n" +
 	"\n" +
 	"HelloReply\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage2O\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage*\x86\x01\n" +
+	"\x0fEnvironmentMode\x12 \n" +
+	"\x1cENVIRONMENT_MODE_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15ENVIRONMENT_MODE_TEST\x10\x01\x12\x1b\n" +
+	"\x17ENVIRONMENT_MODE_HYBRID\x10\x02\x12\x19\n" +
+	"\x15ENVIRONMENT_MODE_REAL\x10\x032O\n" +
 	"\aGreeter\x12D\n" +
-	"\bSayHello\x12\x11.api.HelloRequest\x1a\x0f.api.HelloReply\"\x14\x82\xd3\xe4\x93\x02\x0e:\x01*\"\t/v1/helloB\x16Z\x14brainiac/gen/api;apib\x06proto3"
+	"\bSayHello\x12\x11.api.HelloRequest\x1a\x0f.api.HelloReply\"\x14\x82\xd3\xe4\x93\x02\x0e:\x01*\"\t/v1/hello2\xc9\v\n" +
+	"\x11AgentGraphService\x12\xb5\x01\n" +
+	"\x10GetPipelineGraph\x12\x1c.api.GetPipelineGraphRequest\x1a\x1d.api.GetPipelineGraphResponse\"d\x82\xd3\xe4\x93\x02^Z#\x12!/v1/pipelines/{pipeline_id}/graph\x127/v1/projects/{project_id}/pipelines/{pipeline_id}/graph\x12\x8b\x01\n" +
+	"\x12CreatePipelineNode\x12\x1e.api.CreatePipelineNodeRequest\x1a\x11.api.PipelineNode\"B\x82\xd3\xe4\x93\x02<:\x01*\"7/v1/projects/{project_id}/pipelines/{pipeline_id}/nodes\x12\x95\x01\n" +
+	"\x12UpdatePipelineNode\x12\x1e.api.UpdatePipelineNodeRequest\x1a\x11.api.PipelineNode\"L\x82\xd3\xe4\x93\x02F:\x01*2A/v1/projects/{project_id}/pipelines/{pipeline_id}/nodes/{node_id}\x12\x97\x01\n" +
+	"\x12DeletePipelineNode\x12\x1e.api.DeletePipelineNodeRequest\x1a\x16.google.protobuf.Empty\"I\x82\xd3\xe4\x93\x02C*A/v1/projects/{project_id}/pipelines/{pipeline_id}/nodes/{node_id}\x12\x8b\x01\n" +
+	"\x12CreatePipelineEdge\x12\x1e.api.CreatePipelineEdgeRequest\x1a\x11.api.PipelineEdge\"B\x82\xd3\xe4\x93\x02<:\x01*\"7/v1/projects/{project_id}/pipelines/{pipeline_id}/edges\x12\x97\x01\n" +
+	"\x12DeletePipelineEdge\x12\x1e.api.DeletePipelineEdgeRequest\x1a\x16.google.protobuf.Empty\"I\x82\xd3\xe4\x93\x02C*A/v1/projects/{project_id}/pipelines/{pipeline_id}/edges/{edge_id}\x12W\n" +
+	"\fListProjects\x12\x16.google.protobuf.Empty\x1a\x19.api.ListProjectsResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/projects\x12s\n" +
+	"\rListPipelines\x12\x19.api.ListPipelinesRequest\x1a\x1a.api.ListPipelinesResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/projects/{project_id}/pipelines\x12\xb0\x01\n" +
+	"\x16PublishPipelineVersion\x12\".api.PublishPipelineVersionRequest\x1a#.api.PublishPipelineVersionResponse\"M\x82\xd3\xe4\x93\x02G:\x01*\"B/v1/projects/{project_id}/pipelines/{pipeline_id}/versions:publish\x12\x92\x01\n" +
+	"\x0fExecutePipeline\x12\x1b.api.ExecutePipelineRequest\x1a\x1c.api.ExecutePipelineResponse\"D\x82\xd3\xe4\x93\x02>:\x01*\"9/v1/projects/{project_id}/pipelines/{pipeline_id}:executeB\x16Z\x14brainiac/gen/api;apib\x06proto3"
 
 var (
 	file_api_proto_rawDescOnce sync.Once
@@ -135,19 +1565,68 @@ func file_api_proto_rawDescGZIP() []byte {
 	return file_api_proto_rawDescData
 }
 
-var file_api_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_api_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_api_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_api_proto_goTypes = []any{
-	(*HelloRequest)(nil), // 0: api.HelloRequest
-	(*HelloReply)(nil),   // 1: api.HelloReply
+	(EnvironmentMode)(0),                   // 0: api.EnvironmentMode
+	(*PipelineNode)(nil),                   // 1: api.PipelineNode
+	(*PipelineEdge)(nil),                   // 2: api.PipelineEdge
+	(*GetPipelineGraphRequest)(nil),        // 3: api.GetPipelineGraphRequest
+	(*GetPipelineGraphResponse)(nil),       // 4: api.GetPipelineGraphResponse
+	(*CreatePipelineNodeRequest)(nil),      // 5: api.CreatePipelineNodeRequest
+	(*UpdatePipelineNodeRequest)(nil),      // 6: api.UpdatePipelineNodeRequest
+	(*DeletePipelineNodeRequest)(nil),      // 7: api.DeletePipelineNodeRequest
+	(*CreatePipelineEdgeRequest)(nil),      // 8: api.CreatePipelineEdgeRequest
+	(*DeletePipelineEdgeRequest)(nil),      // 9: api.DeletePipelineEdgeRequest
+	(*ProjectSummary)(nil),                 // 10: api.ProjectSummary
+	(*PipelineSummary)(nil),                // 11: api.PipelineSummary
+	(*ListProjectsResponse)(nil),           // 12: api.ListProjectsResponse
+	(*ListPipelinesRequest)(nil),           // 13: api.ListPipelinesRequest
+	(*ListPipelinesResponse)(nil),          // 14: api.ListPipelinesResponse
+	(*PublishPipelineVersionRequest)(nil),  // 15: api.PublishPipelineVersionRequest
+	(*PublishPipelineVersionResponse)(nil), // 16: api.PublishPipelineVersionResponse
+	(*ExecutePipelineRequest)(nil),         // 17: api.ExecutePipelineRequest
+	(*NodeExecutionResult)(nil),            // 18: api.NodeExecutionResult
+	(*ExecutePipelineResponse)(nil),        // 19: api.ExecutePipelineResponse
+	(*HelloRequest)(nil),                   // 20: api.HelloRequest
+	(*HelloReply)(nil),                     // 21: api.HelloReply
+	(*emptypb.Empty)(nil),                  // 22: google.protobuf.Empty
 }
 var file_api_proto_depIdxs = []int32{
-	0, // 0: api.Greeter.SayHello:input_type -> api.HelloRequest
-	1, // 1: api.Greeter.SayHello:output_type -> api.HelloReply
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0,  // 0: api.GetPipelineGraphRequest.mode:type_name -> api.EnvironmentMode
+	1,  // 1: api.GetPipelineGraphResponse.nodes:type_name -> api.PipelineNode
+	2,  // 2: api.GetPipelineGraphResponse.edges:type_name -> api.PipelineEdge
+	10, // 3: api.ListProjectsResponse.projects:type_name -> api.ProjectSummary
+	11, // 4: api.ListPipelinesResponse.pipelines:type_name -> api.PipelineSummary
+	0,  // 5: api.ExecutePipelineRequest.mode:type_name -> api.EnvironmentMode
+	18, // 6: api.ExecutePipelineResponse.results:type_name -> api.NodeExecutionResult
+	20, // 7: api.Greeter.SayHello:input_type -> api.HelloRequest
+	3,  // 8: api.AgentGraphService.GetPipelineGraph:input_type -> api.GetPipelineGraphRequest
+	5,  // 9: api.AgentGraphService.CreatePipelineNode:input_type -> api.CreatePipelineNodeRequest
+	6,  // 10: api.AgentGraphService.UpdatePipelineNode:input_type -> api.UpdatePipelineNodeRequest
+	7,  // 11: api.AgentGraphService.DeletePipelineNode:input_type -> api.DeletePipelineNodeRequest
+	8,  // 12: api.AgentGraphService.CreatePipelineEdge:input_type -> api.CreatePipelineEdgeRequest
+	9,  // 13: api.AgentGraphService.DeletePipelineEdge:input_type -> api.DeletePipelineEdgeRequest
+	22, // 14: api.AgentGraphService.ListProjects:input_type -> google.protobuf.Empty
+	13, // 15: api.AgentGraphService.ListPipelines:input_type -> api.ListPipelinesRequest
+	15, // 16: api.AgentGraphService.PublishPipelineVersion:input_type -> api.PublishPipelineVersionRequest
+	17, // 17: api.AgentGraphService.ExecutePipeline:input_type -> api.ExecutePipelineRequest
+	21, // 18: api.Greeter.SayHello:output_type -> api.HelloReply
+	4,  // 19: api.AgentGraphService.GetPipelineGraph:output_type -> api.GetPipelineGraphResponse
+	1,  // 20: api.AgentGraphService.CreatePipelineNode:output_type -> api.PipelineNode
+	1,  // 21: api.AgentGraphService.UpdatePipelineNode:output_type -> api.PipelineNode
+	22, // 22: api.AgentGraphService.DeletePipelineNode:output_type -> google.protobuf.Empty
+	2,  // 23: api.AgentGraphService.CreatePipelineEdge:output_type -> api.PipelineEdge
+	22, // 24: api.AgentGraphService.DeletePipelineEdge:output_type -> google.protobuf.Empty
+	12, // 25: api.AgentGraphService.ListProjects:output_type -> api.ListProjectsResponse
+	14, // 26: api.AgentGraphService.ListPipelines:output_type -> api.ListPipelinesResponse
+	16, // 27: api.AgentGraphService.PublishPipelineVersion:output_type -> api.PublishPipelineVersionResponse
+	19, // 28: api.AgentGraphService.ExecutePipeline:output_type -> api.ExecutePipelineResponse
+	18, // [18:29] is the sub-list for method output_type
+	7,  // [7:18] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_init() }
@@ -160,13 +1639,14 @@ func file_api_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_rawDesc), len(file_api_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   2,
+			NumEnums:      1,
+			NumMessages:   21,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_api_proto_goTypes,
 		DependencyIndexes: file_api_proto_depIdxs,
+		EnumInfos:         file_api_proto_enumTypes,
 		MessageInfos:      file_api_proto_msgTypes,
 	}.Build()
 	File_api_proto = out.File

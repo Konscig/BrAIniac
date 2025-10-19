@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -114,6 +115,450 @@ var Greeter_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SayHello",
 			Handler:    _Greeter_SayHello_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "api.proto",
+}
+
+const (
+	AgentGraphService_GetPipelineGraph_FullMethodName       = "/api.AgentGraphService/GetPipelineGraph"
+	AgentGraphService_CreatePipelineNode_FullMethodName     = "/api.AgentGraphService/CreatePipelineNode"
+	AgentGraphService_UpdatePipelineNode_FullMethodName     = "/api.AgentGraphService/UpdatePipelineNode"
+	AgentGraphService_DeletePipelineNode_FullMethodName     = "/api.AgentGraphService/DeletePipelineNode"
+	AgentGraphService_CreatePipelineEdge_FullMethodName     = "/api.AgentGraphService/CreatePipelineEdge"
+	AgentGraphService_DeletePipelineEdge_FullMethodName     = "/api.AgentGraphService/DeletePipelineEdge"
+	AgentGraphService_ListProjects_FullMethodName           = "/api.AgentGraphService/ListProjects"
+	AgentGraphService_ListPipelines_FullMethodName          = "/api.AgentGraphService/ListPipelines"
+	AgentGraphService_PublishPipelineVersion_FullMethodName = "/api.AgentGraphService/PublishPipelineVersion"
+	AgentGraphService_ExecutePipeline_FullMethodName        = "/api.AgentGraphService/ExecutePipeline"
+)
+
+// AgentGraphServiceClient is the client API for AgentGraphService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type AgentGraphServiceClient interface {
+	GetPipelineGraph(ctx context.Context, in *GetPipelineGraphRequest, opts ...grpc.CallOption) (*GetPipelineGraphResponse, error)
+	CreatePipelineNode(ctx context.Context, in *CreatePipelineNodeRequest, opts ...grpc.CallOption) (*PipelineNode, error)
+	UpdatePipelineNode(ctx context.Context, in *UpdatePipelineNodeRequest, opts ...grpc.CallOption) (*PipelineNode, error)
+	DeletePipelineNode(ctx context.Context, in *DeletePipelineNodeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	CreatePipelineEdge(ctx context.Context, in *CreatePipelineEdgeRequest, opts ...grpc.CallOption) (*PipelineEdge, error)
+	DeletePipelineEdge(ctx context.Context, in *DeletePipelineEdgeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ListProjects(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListProjectsResponse, error)
+	ListPipelines(ctx context.Context, in *ListPipelinesRequest, opts ...grpc.CallOption) (*ListPipelinesResponse, error)
+	PublishPipelineVersion(ctx context.Context, in *PublishPipelineVersionRequest, opts ...grpc.CallOption) (*PublishPipelineVersionResponse, error)
+	ExecutePipeline(ctx context.Context, in *ExecutePipelineRequest, opts ...grpc.CallOption) (*ExecutePipelineResponse, error)
+}
+
+type agentGraphServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewAgentGraphServiceClient(cc grpc.ClientConnInterface) AgentGraphServiceClient {
+	return &agentGraphServiceClient{cc}
+}
+
+func (c *agentGraphServiceClient) GetPipelineGraph(ctx context.Context, in *GetPipelineGraphRequest, opts ...grpc.CallOption) (*GetPipelineGraphResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPipelineGraphResponse)
+	err := c.cc.Invoke(ctx, AgentGraphService_GetPipelineGraph_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentGraphServiceClient) CreatePipelineNode(ctx context.Context, in *CreatePipelineNodeRequest, opts ...grpc.CallOption) (*PipelineNode, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PipelineNode)
+	err := c.cc.Invoke(ctx, AgentGraphService_CreatePipelineNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentGraphServiceClient) UpdatePipelineNode(ctx context.Context, in *UpdatePipelineNodeRequest, opts ...grpc.CallOption) (*PipelineNode, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PipelineNode)
+	err := c.cc.Invoke(ctx, AgentGraphService_UpdatePipelineNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentGraphServiceClient) DeletePipelineNode(ctx context.Context, in *DeletePipelineNodeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, AgentGraphService_DeletePipelineNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentGraphServiceClient) CreatePipelineEdge(ctx context.Context, in *CreatePipelineEdgeRequest, opts ...grpc.CallOption) (*PipelineEdge, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PipelineEdge)
+	err := c.cc.Invoke(ctx, AgentGraphService_CreatePipelineEdge_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentGraphServiceClient) DeletePipelineEdge(ctx context.Context, in *DeletePipelineEdgeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, AgentGraphService_DeletePipelineEdge_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentGraphServiceClient) ListProjects(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListProjectsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListProjectsResponse)
+	err := c.cc.Invoke(ctx, AgentGraphService_ListProjects_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentGraphServiceClient) ListPipelines(ctx context.Context, in *ListPipelinesRequest, opts ...grpc.CallOption) (*ListPipelinesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPipelinesResponse)
+	err := c.cc.Invoke(ctx, AgentGraphService_ListPipelines_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentGraphServiceClient) PublishPipelineVersion(ctx context.Context, in *PublishPipelineVersionRequest, opts ...grpc.CallOption) (*PublishPipelineVersionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishPipelineVersionResponse)
+	err := c.cc.Invoke(ctx, AgentGraphService_PublishPipelineVersion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentGraphServiceClient) ExecutePipeline(ctx context.Context, in *ExecutePipelineRequest, opts ...grpc.CallOption) (*ExecutePipelineResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExecutePipelineResponse)
+	err := c.cc.Invoke(ctx, AgentGraphService_ExecutePipeline_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AgentGraphServiceServer is the server API for AgentGraphService service.
+// All implementations must embed UnimplementedAgentGraphServiceServer
+// for forward compatibility.
+type AgentGraphServiceServer interface {
+	GetPipelineGraph(context.Context, *GetPipelineGraphRequest) (*GetPipelineGraphResponse, error)
+	CreatePipelineNode(context.Context, *CreatePipelineNodeRequest) (*PipelineNode, error)
+	UpdatePipelineNode(context.Context, *UpdatePipelineNodeRequest) (*PipelineNode, error)
+	DeletePipelineNode(context.Context, *DeletePipelineNodeRequest) (*emptypb.Empty, error)
+	CreatePipelineEdge(context.Context, *CreatePipelineEdgeRequest) (*PipelineEdge, error)
+	DeletePipelineEdge(context.Context, *DeletePipelineEdgeRequest) (*emptypb.Empty, error)
+	ListProjects(context.Context, *emptypb.Empty) (*ListProjectsResponse, error)
+	ListPipelines(context.Context, *ListPipelinesRequest) (*ListPipelinesResponse, error)
+	PublishPipelineVersion(context.Context, *PublishPipelineVersionRequest) (*PublishPipelineVersionResponse, error)
+	ExecutePipeline(context.Context, *ExecutePipelineRequest) (*ExecutePipelineResponse, error)
+	mustEmbedUnimplementedAgentGraphServiceServer()
+}
+
+// UnimplementedAgentGraphServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedAgentGraphServiceServer struct{}
+
+func (UnimplementedAgentGraphServiceServer) GetPipelineGraph(context.Context, *GetPipelineGraphRequest) (*GetPipelineGraphResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPipelineGraph not implemented")
+}
+func (UnimplementedAgentGraphServiceServer) CreatePipelineNode(context.Context, *CreatePipelineNodeRequest) (*PipelineNode, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreatePipelineNode not implemented")
+}
+func (UnimplementedAgentGraphServiceServer) UpdatePipelineNode(context.Context, *UpdatePipelineNodeRequest) (*PipelineNode, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdatePipelineNode not implemented")
+}
+func (UnimplementedAgentGraphServiceServer) DeletePipelineNode(context.Context, *DeletePipelineNodeRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeletePipelineNode not implemented")
+}
+func (UnimplementedAgentGraphServiceServer) CreatePipelineEdge(context.Context, *CreatePipelineEdgeRequest) (*PipelineEdge, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreatePipelineEdge not implemented")
+}
+func (UnimplementedAgentGraphServiceServer) DeletePipelineEdge(context.Context, *DeletePipelineEdgeRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeletePipelineEdge not implemented")
+}
+func (UnimplementedAgentGraphServiceServer) ListProjects(context.Context, *emptypb.Empty) (*ListProjectsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListProjects not implemented")
+}
+func (UnimplementedAgentGraphServiceServer) ListPipelines(context.Context, *ListPipelinesRequest) (*ListPipelinesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListPipelines not implemented")
+}
+func (UnimplementedAgentGraphServiceServer) PublishPipelineVersion(context.Context, *PublishPipelineVersionRequest) (*PublishPipelineVersionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PublishPipelineVersion not implemented")
+}
+func (UnimplementedAgentGraphServiceServer) ExecutePipeline(context.Context, *ExecutePipelineRequest) (*ExecutePipelineResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExecutePipeline not implemented")
+}
+func (UnimplementedAgentGraphServiceServer) mustEmbedUnimplementedAgentGraphServiceServer() {}
+func (UnimplementedAgentGraphServiceServer) testEmbeddedByValue()                           {}
+
+// UnsafeAgentGraphServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AgentGraphServiceServer will
+// result in compilation errors.
+type UnsafeAgentGraphServiceServer interface {
+	mustEmbedUnimplementedAgentGraphServiceServer()
+}
+
+func RegisterAgentGraphServiceServer(s grpc.ServiceRegistrar, srv AgentGraphServiceServer) {
+	// If the following call pancis, it indicates UnimplementedAgentGraphServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&AgentGraphService_ServiceDesc, srv)
+}
+
+func _AgentGraphService_GetPipelineGraph_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPipelineGraphRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentGraphServiceServer).GetPipelineGraph(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentGraphService_GetPipelineGraph_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentGraphServiceServer).GetPipelineGraph(ctx, req.(*GetPipelineGraphRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentGraphService_CreatePipelineNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreatePipelineNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentGraphServiceServer).CreatePipelineNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentGraphService_CreatePipelineNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentGraphServiceServer).CreatePipelineNode(ctx, req.(*CreatePipelineNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentGraphService_UpdatePipelineNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdatePipelineNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentGraphServiceServer).UpdatePipelineNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentGraphService_UpdatePipelineNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentGraphServiceServer).UpdatePipelineNode(ctx, req.(*UpdatePipelineNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentGraphService_DeletePipelineNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeletePipelineNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentGraphServiceServer).DeletePipelineNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentGraphService_DeletePipelineNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentGraphServiceServer).DeletePipelineNode(ctx, req.(*DeletePipelineNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentGraphService_CreatePipelineEdge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreatePipelineEdgeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentGraphServiceServer).CreatePipelineEdge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentGraphService_CreatePipelineEdge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentGraphServiceServer).CreatePipelineEdge(ctx, req.(*CreatePipelineEdgeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentGraphService_DeletePipelineEdge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeletePipelineEdgeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentGraphServiceServer).DeletePipelineEdge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentGraphService_DeletePipelineEdge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentGraphServiceServer).DeletePipelineEdge(ctx, req.(*DeletePipelineEdgeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentGraphService_ListProjects_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentGraphServiceServer).ListProjects(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentGraphService_ListProjects_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentGraphServiceServer).ListProjects(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentGraphService_ListPipelines_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPipelinesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentGraphServiceServer).ListPipelines(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentGraphService_ListPipelines_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentGraphServiceServer).ListPipelines(ctx, req.(*ListPipelinesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentGraphService_PublishPipelineVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishPipelineVersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentGraphServiceServer).PublishPipelineVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentGraphService_PublishPipelineVersion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentGraphServiceServer).PublishPipelineVersion(ctx, req.(*PublishPipelineVersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentGraphService_ExecutePipeline_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExecutePipelineRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentGraphServiceServer).ExecutePipeline(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentGraphService_ExecutePipeline_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentGraphServiceServer).ExecutePipeline(ctx, req.(*ExecutePipelineRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// AgentGraphService_ServiceDesc is the grpc.ServiceDesc for AgentGraphService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var AgentGraphService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "api.AgentGraphService",
+	HandlerType: (*AgentGraphServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetPipelineGraph",
+			Handler:    _AgentGraphService_GetPipelineGraph_Handler,
+		},
+		{
+			MethodName: "CreatePipelineNode",
+			Handler:    _AgentGraphService_CreatePipelineNode_Handler,
+		},
+		{
+			MethodName: "UpdatePipelineNode",
+			Handler:    _AgentGraphService_UpdatePipelineNode_Handler,
+		},
+		{
+			MethodName: "DeletePipelineNode",
+			Handler:    _AgentGraphService_DeletePipelineNode_Handler,
+		},
+		{
+			MethodName: "CreatePipelineEdge",
+			Handler:    _AgentGraphService_CreatePipelineEdge_Handler,
+		},
+		{
+			MethodName: "DeletePipelineEdge",
+			Handler:    _AgentGraphService_DeletePipelineEdge_Handler,
+		},
+		{
+			MethodName: "ListProjects",
+			Handler:    _AgentGraphService_ListProjects_Handler,
+		},
+		{
+			MethodName: "ListPipelines",
+			Handler:    _AgentGraphService_ListPipelines_Handler,
+		},
+		{
+			MethodName: "PublishPipelineVersion",
+			Handler:    _AgentGraphService_PublishPipelineVersion_Handler,
+		},
+		{
+			MethodName: "ExecutePipeline",
+			Handler:    _AgentGraphService_ExecutePipeline_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

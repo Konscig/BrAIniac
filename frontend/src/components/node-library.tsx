@@ -6,11 +6,57 @@ import { Card, CardContent, CardHeader } from "./ui/card";
 import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
 import { cn } from "../lib/utils";
-import { mockLibraryGroups, type PipelineNode } from "../data/mock-data";
+import type { PipelineNodeCategory } from "../lib/api";
+
+type LibraryGroup = {
+  id: PipelineNodeCategory;
+  name: string;
+  items: Array<{ id: string; label: string; type: string; tagline?: string }>;
+};
+
+const NODE_LIBRARY: LibraryGroup[] = [
+  {
+    id: "LLM",
+    name: "LLM узлы",
+    items: [
+      {
+        id: "mistral-7b",
+        label: "Mistral 7B",
+        type: "llm-mistral",
+        tagline: "Фокус на русско-английских задачах"
+      }
+    ]
+  },
+  {
+    id: "Data",
+    name: "Данные",
+    items: [
+      { id: "kb-search", label: "Поиск по базе", type: "data-retrieval", tagline: "BM25 + вектор" },
+      { id: "dataset-loader", label: "Загрузка датасета", type: "dataset-loader", tagline: "CSV, Parquet" }
+    ]
+  },
+  {
+    id: "Services",
+    name: "Сервисы",
+    items: [
+      { id: "quality-judge", label: "Оценщик качества", type: "judge", tagline: "Метрики качества" },
+      { id: "tool-router", label: "Роутер инструментов", type: "tool-router", tagline: "Маршрутизация задач" }
+    ]
+  },
+  {
+    id: "Utility",
+    name: "Утилиты",
+    items: [
+      { id: "monitor", label: "Мониторинг", type: "monitor", tagline: "Графики и алерты" },
+      { id: "notifier", label: "Уведомления", type: "notifier", tagline: "Slack, Email" }
+    ]
+  }
+];
 
 type DragPayload = {
   label: string;
-  category: PipelineNode["category"];
+  category: PipelineNodeCategory;
+  type: string;
 };
 
 export function NodeLibrary(): React.ReactElement {
@@ -38,7 +84,7 @@ export function NodeLibrary(): React.ReactElement {
       <CardContent className="flex-1 overflow-hidden p-0">
         <ScrollArea className="h-full">
           <div className="space-y-3 p-3">
-            {mockLibraryGroups.map((group) => {
+            {NODE_LIBRARY.map((group) => {
               const expanded = openGroup === group.id;
               return (
                 <div key={group.id} className="rounded-lg border border-border/50 bg-muted/30">
@@ -66,7 +112,8 @@ export function NodeLibrary(): React.ReactElement {
                           onDragStart={(event) =>
                             handleDragStart(event, {
                               label: item.label,
-                              category: group.id as DragPayload["category"]
+                              category: group.id,
+                              type: item.type
                             })
                           }
                           className={cn(

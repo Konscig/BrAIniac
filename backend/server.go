@@ -13,6 +13,7 @@ import (
 	"brainiac/auth"
 	api "brainiac/gen"
 	authapi "brainiac/gen/auth"
+	"brainiac/graph"
 	"brainiac/models"
 	"brainiac/models/graphmodels"
 
@@ -84,6 +85,7 @@ func main() {
 
 	api.RegisterGreeterServer(grpcServer, &server{})
 	authapi.RegisterAuthServiceServer(grpcServer, jwtService)
+	api.RegisterAgentGraphServiceServer(grpcServer, graph.NewService(db))
 
 	go func() {
 		log.Println("Serving gRPC on :50051")
@@ -100,9 +102,11 @@ func main() {
 	if err := api.RegisterGreeterHandlerFromEndpoint(ctx, mux, "localhost:50051", opts); err != nil {
 		log.Fatalf("failed to start gateway: %v", err)
 	}
-	err = authapi.RegisterAuthServiceHandlerFromEndpoint(ctx, mux, "localhost:50051", opts)
-	if err != nil {
+	if err := authapi.RegisterAuthServiceHandlerFromEndpoint(ctx, mux, "localhost:50051", opts); err != nil {
 		log.Fatalf("failed to register AuthService gateway: %v", err)
+	}
+	if err := api.RegisterAgentGraphServiceHandlerFromEndpoint(ctx, mux, "localhost:50051", opts); err != nil {
+		log.Fatalf("failed to register AgentGraphService gateway: %v", err)
 	}
 
 	corsHandler := cors.New(cors.Options{

@@ -9,19 +9,24 @@ import { mockProjects } from "../data/mock-data";
 
 interface SidebarProjectsProps {
   activeProjectId: string;
+  activePipelineId: string;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onSelectProject: (projectId: string) => void;
+  onSelectPipeline: (pipelineId: string) => void;
 }
 
 export function SidebarProjects({
   activeProjectId,
+  activePipelineId,
   collapsed,
   onToggleCollapse,
-  onSelectProject
+  onSelectProject,
+  onSelectPipeline
 }: SidebarProjectsProps): React.ReactElement {
   const activeProject = mockProjects.find((p) => p.id === activeProjectId) ??
     mockProjects[0];
+  const pipelines = activeProject?.pipelines ?? [];
 
   return (
     <aside
@@ -73,11 +78,17 @@ export function SidebarProjects({
       )}
       <ScrollArea className="flex-1 px-2">
         <div className="space-y-2 pb-6">
-          {activeProject.pipelines.map((pipeline) => (
+          {pipelines.map((pipeline) => (
             <button
               key={pipeline.id}
               type="button"
-              className="w-full rounded-lg border border-border/50 bg-muted/30 px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+              onClick={() => onSelectPipeline(pipeline.id)}
+              className={cn(
+                "w-full rounded-lg border px-3 py-2 text-left text-sm transition",
+                pipeline.id === activePipelineId
+                  ? "border-primary/40 bg-primary/10 text-foreground"
+                  : "border-border/50 bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              )}
             >
               <div className="font-medium text-foreground">
                 {pipeline.name}
