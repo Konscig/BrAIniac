@@ -1,3 +1,33 @@
 .App {
   min-height: 100vh;
 }
+
+.react-flow__controls {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.react-flow__controls-button {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  background: hsl(var(--card)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  color: hsl(var(--foreground)) !important;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.react-flow__controls-button:hover {
+  background: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+  border-color: hsl(var(--primary)) !important;
+}
+
+.react-flow__controls-button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}

@@ -1,5 +1,6 @@
 import React from "react";
-import { Route, Routes } from "react-router-dom";
+import { LogOut } from "lucide-react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import "./App.css";
 
@@ -15,6 +16,7 @@ import { SidebarProjects } from "./components/sidebar-projects";
 import { Button } from "./components/ui/button";
 import { mockProjects } from "./data/mock-data";
 import { AuthPage } from "./pages/auth-page";
+import { useAuth } from "./providers/AuthProvider";
 
 function MainPage(): React.ReactElement {
   const [activeProjectId, setActiveProjectId] = React.useState<string>(
@@ -24,6 +26,13 @@ function MainPage(): React.ReactElement {
     "test"
   );
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const navigate = useNavigate();
+  const { clearSession } = useAuth();
+
+  const handleLogout = React.useCallback(() => {
+    clearSession();
+    navigate("/auth", { replace: true });
+  }, [clearSession, navigate]);
 
   return (
     <div className="App flex min-h-screen flex-col bg-background text-foreground">
@@ -43,6 +52,15 @@ function MainPage(): React.ReactElement {
           </Button>
           <Button className="rounded-full">Запустить пайплайн</Button>
           <ModeToggle />
+          <Button
+            type="button"
+            variant="ghost"
+            className="rounded-full border border-border/60 bg-background/60 px-3"
+            onClick={handleLogout}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Выйти
+          </Button>
         </div>
       </header>
 
@@ -82,11 +100,46 @@ function MainPage(): React.ReactElement {
   );
 }
 
+function RequireAuth({ children }: { children: React.ReactElement }): React.ReactElement {
+  const { isAuthenticated } = useAuth();
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/auth" replace state={{ from: location }} />;
+  }
+
+  return children;
+}
+
+function PublicOnly({ children }: { children: React.ReactElement }): React.ReactElement {
+  const { isAuthenticated } = useAuth();
+
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
 function App(): React.ReactElement {
   return (
     <Routes>
-      <Route path="/" element={<MainPage />} />
-      <Route path="/auth" element={<AuthPage />} />
+      <Route
+        path="/"
+        element={(
+          <RequireAuth>
+            <MainPage />
+          </RequireAuth>
+        )}
+      />
+      <Route
+        path="/auth"
+        element={(
+          <PublicOnly>
+            <AuthPage />
+          </PublicOnly>
+        )}
+      />
     </Routes>
   );
 }

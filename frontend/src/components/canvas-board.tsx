@@ -4,7 +4,6 @@ import ReactFlow, {
   BackgroundVariant,
   ConnectionLineType,
   Controls,
-  MiniMap,
   MarkerType,
   addEdge,
   applyEdgeChanges,
@@ -218,29 +217,10 @@ export function CanvasBoard({ className }: CanvasBoardProps): React.ReactElement
             size={1.6}
             color="rgba(148, 163, 184, 0.3)"
           />
-          <MiniMap
-            zoomable
-            pannable
-            nodeColor={(node) => {
-              const data = node.data as VkNodeData | undefined;
-              switch (data?.category) {
-                case "LLM":
-                  return "#2B65F9";
-                case "Data":
-                  return "#1FA0FF";
-                case "Services":
-                  return "#8B5CF6";
-                case "Utility":
-                  return "#f59e0b";
-                default:
-                  return "#0077ff";
-              }
-            }}
-            maskColor="rgba(15,23,42,0.55)"
-          />
           <Controls
             showInteractive={false}
-            className="!bg-background/80 !text-foreground"
+            className="!border-none !bg-transparent !shadow-none"
+            style={{ left: "50%", transform: "translateX(-50%)", bottom: 24 }}
           />
         </ReactFlow>
       </div>

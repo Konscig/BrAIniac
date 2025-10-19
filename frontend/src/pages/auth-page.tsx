@@ -1,10 +1,11 @@
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { ModeToggle } from "../components/mode-toggle";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { postJson, type ApiError } from "../lib/api";
+import { useAuth, normalizeAuthTokens } from "../providers/AuthProvider";
 
 type AuthMode = "login" | "register";
 
@@ -12,12 +13,48 @@ type AuthFormState = {
   email: string;
   username: string;
   password: string;
+  confirmPassword: string;
 };
 
 const initialFormState: AuthFormState = {
   email: "",
   username: "",
-  password: ""
+  password: "",
+  confirmPassword: ""
+};
+
+type PasswordStrength = {
+  score: number;
+  label: string;
+  tone: string;
+};
+
+const passwordStrengthLabels: Array<Omit<PasswordStrength, "score">> = [
+  { label: "Слишком короткий", tone: "bg-destructive/60" },
+  { label: "Слабый", tone: "bg-amber-500/70" },
+  { label: "Средний", tone: "bg-primary/50" },
+  { label: "Хороший", tone: "bg-primary/80" },
+  { label: "Отличный", tone: "bg-primary" }
+];
+
+const MIN_PASSWORD_SCORE = 2;
+
+const evaluatePassword = (value: string): PasswordStrength => {
+  const requirements = [
+    /[a-z]/.test(value),
+    /[A-Z]/.test(value),
+    /\d/.test(value),
+    /[^\w\s]/.test(value)
+  ];
+
+  let score = 0;
+  if (value.length >= 8) score += 1;
+  score += requirements.filter(Boolean).length;
+  if (value.length >= 12) score += 1;
+  const clamped = Math.min(score, passwordStrengthLabels.length - 1);
+  const { label, tone } = passwordStrengthLabels[clamped];
+
+  return { score: clamped, label, tone };
 };
 
 export function AuthPage(): React.ReactElement {
@@ -25,7 +62,20 @@ export function AuthPage(): React.ReactElement {
   const [form, setForm] = React.useState<AuthFormState>(initialFormState);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const { setSession } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
+  const passwordStrength = React.useMemo(() => evaluatePassword(form.password), [form.password]);
+  const strengthProgress = React.useMemo(() => {
+    if (!form.password) {
+      return 0;
+    }
+    return ((passwordStrength.score + 1) / passwordStrengthLabels.length) * 100;
+  }, [form.password, passwordStrength.score]);
+  const redirectTo = React.useMemo(() => {
+    const state = location.state as { from?: { pathname?: string } } | null;
+    return state?.from?.pathname || "/";
+  }, [location.state]);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -35,7 +85,7 @@ export function AuthPage(): React.ReactElement {
   const toggleMode = () => {
     setMode((prev) => (prev === "login" ? "register" : "login"));
     setError(null);
-    setForm((prev) => ({ ...prev, password: "" }));
+    setForm((prev) => ({ ...prev, password: "", confirmPassword: "" }));
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -44,36 +94,55 @@ export function AuthPage(): React.ReactElement {
     setError(null);
 
     try {
+      if (mode === "register") {
+        if (form.password !== form.confirmPassword) {
+          setError("Пароли не совпадают");
+          return;
+        }
+        if (form.password && passwordStrength.score < MIN_PASSWORD_SCORE) {
+          setError("Пароль недостаточно надёжный");
+          return;
+        }
+      }
+
       if (mode === "login") {
         const identifier = form.email.trim().toLowerCase();
         const payload = {
           username: identifier,
           password: form.password
         };
-        const tokens = await postJson<{ access_token: string; refresh_token: string }>(
+        const response = await postJson(
           "/v1/login",
           payload,
           { credentials: "include" }
         );
-        localStorage.setItem("brainiac.tokens", JSON.stringify(tokens));
-        navigate("/");
+        const tokens = normalizeAuthTokens(response);
+        if (!tokens) {
+          throw new Error("Ответ сервиса аутентификации не содержит токены");
+        }
+        setSession(tokens);
+        navigate(redirectTo, { replace: true });
         return;
       }
 
-  const email = form.email.trim().toLowerCase();
+      const email = form.email.trim().toLowerCase();
       const username = (form.username.trim() || email).trim();
       const payload = {
         email,
         username,
         password: form.password
       };
-      const tokens = await postJson<{ access_token: string; refresh_token: string }>(
+      const response = await postJson(
         "/v1/signin",
         payload,
         { credentials: "include" }
       );
-      localStorage.setItem("brainiac.tokens", JSON.stringify(tokens));
-      navigate("/");
+      const tokens = normalizeAuthTokens(response);
+      if (!tokens) {
+        throw new Error("Ответ сервиса регистрации не содержит токены");
+      }
+      setSession(tokens);
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       const apiError = err as ApiError;
       let message = "Не удалось выполнить запрос";
@@ -174,7 +243,38 @@ export function AuthPage(): React.ReactElement {
                 placeholder="••••••••"
                 className="w-full rounded-md border border-border/60 bg-background/80 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
+              {mode === "register" && (
+                <div className="space-y-1">
+                  <div className="h-2 w-full rounded-full bg-muted/40">
+                    <div
+                      className={`h-full rounded-full transition-all ${passwordStrength.tone}`}
+                      style={{ width: `${strengthProgress}%` }}
+                    />
+                  </div>
+                  <div className="text-xs text-muted-foreground">{passwordStrength.label}</div>
+                </div>
+              )}
             </div>
+
+            {mode === "register" && (
+              <div className="space-y-2">
+                <label htmlFor="confirmPassword" className="text-xs uppercase text-muted-foreground">
+                  Подтверждение пароля
+                </label>
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={6}
+                  value={form.confirmPassword}
+                  onChange={handleChange}
+                  placeholder="повторите пароль"
+                  className="w-full rounded-md border border-border/60 bg-background/80 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            )}
 
             {error && (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive-foreground">

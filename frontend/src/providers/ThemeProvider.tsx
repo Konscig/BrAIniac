@@ -19,34 +19,49 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
-  const getSystem = () =>
-    window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
+  const getSystem = () => {
+    if (typeof window === "undefined" || !window.matchMedia) {
+      return "light";
+    }
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  };
 
-  const resolved = theme === "system" ? getSystem() : theme;
+  const [resolved, setResolved] = useState<"light" | "dark">(() =>
+    theme === "system" ? getSystem() : theme
+  );
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (resolved === "dark") root.classList.add("dark");
-    else root.classList.remove("dark");
+    if (theme !== "system") {
+      setResolved(theme);
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      setResolved("light");
+      return;
+    }
+
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const updateResolved = () => {
+      setResolved(mq.matches ? "dark" : "light");
+    };
+
+    updateResolved();
+    mq.addEventListener?.("change", updateResolved);
+    return () => mq.removeEventListener?.("change", updateResolved);
+  }, [theme]);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      const root = document.documentElement;
+      root.classList.toggle("dark", resolved === "dark");
+      root.classList.toggle("light", resolved === "light");
+    }
+
     try {
       localStorage.setItem("theme", theme);
     } catch {}
   }, [resolved, theme]);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => {
-      if (theme === "system") {
-        const root = document.documentElement;
-        if (mq.matches) root.classList.add("dark");
-        else root.classList.remove("dark");
-      }
-    };
-    mq.addEventListener?.("change", handler);
-    return () => mq.removeEventListener?.("change", handler);
-  }, [theme]);
 
   const setTheme = (t: Theme) => setThemeState(t);
 
