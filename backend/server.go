@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"brainiac/auth"
-	"brainiac/auth/interceptors"
 	api "brainiac/gen"
 	"brainiac/models"
 
@@ -55,19 +54,9 @@ func main() {
 		panic("failed to connect database")
 	}
 
-	jwtService := &auth.JWTService{
-		db:              db,
-		jwtSecretKey:    os.Getenv("JWT_SECRET_KEY"),
-		refreshTokenTTL: 7 * 24 * time.Hour,
-	}
+	jwtService := auth.NewJWTService(db, os.Getenv("SECRET_KEY"), time.Hour*24*30)
 
-	grpcServer := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(
-			interceptors.DatabaseInterceptor(db),
-			interceptors.CheckTokenInterceptor("access"),
-			interceptors.NotRevokedTokenInterceptor(),
-		),
-	)
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(auth.InterceptorRouter(db, jwtService)))
 	api.RegisterGreeterServer(grpcServer, &server{})
 	go func() {
 		log.Println("Serving gRPC on :50051")

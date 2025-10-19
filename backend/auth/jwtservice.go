@@ -20,6 +20,14 @@ type JWTService struct {
 	refreshTokenTTL time.Duration
 }
 
+func NewJWTService(db *gorm.DB, jwtSecretKey string, refreshTokenTTL time.Duration) *JWTService {
+	return &JWTService{
+		db:              db,
+		jwtSecretKey:    jwtSecretKey,
+		refreshTokenTTL: refreshTokenTTL,
+	}
+}
+
 func (s *JWTService) Login(ctx context.Context, req *auth.LoginRequest) (*auth.LoginReply, error) {
 	var userAgent string
 	var ipAddr string
