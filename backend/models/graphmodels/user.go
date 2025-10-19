@@ -13,13 +13,15 @@ import (
 
 type User struct {
 	gorm.Model
-	ID           uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	Email        string    `gorm:"type:text;unique;not null"`
-	PasswordHash string    `gorm:"type:text;not null"`
-	Role         string    `gorm:"type:text;not null;default:'user'"`
-	CreatedAt    time.Time `gorm:"default:now()"`
-	UpdatedAt    time.Time `gorm:"default:now()"`
-	DeletedAt    time.Time `gorm:"default:now()"`
+	ID              uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	Email           string    `gorm:"type:text;unique;not null"`
+	Username        string    `gorm:"type:text;unique;not null"`
+	PasswordHash    string    `gorm:"type:text;not null"`
+	Role            string    `gorm:"type:text;not null;default:'user'"`
+	TokenValidAfter time.Time `gorm:"default:now()"`
+	CreatedAt       time.Time `gorm:"default:now()"`
+	UpdatedAt       time.Time `gorm:"default:now()"`
+	DeletedAt       time.Time `gorm:"default:null"`
 }
 
 // BeforeCreate ensures the user has an ID.
@@ -72,4 +74,20 @@ func FindUserByEmail(ctx context.Context, db *gorm.DB, email string) (*User, err
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (u *User) FindUserByUsername(engine *gorm.DB, username string) error {
+	err := engine.Where("username = ?", username).First(&u).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (u *User) InvalidateAccess(engine *gorm.DB, user *User) error {
+	result := engine.Model(&u).Where("id = ?", user).Update("token_valid_after", time.Now())
+	if result.Error != nil {
+		return result.Error
+	}
+	return nil
 }

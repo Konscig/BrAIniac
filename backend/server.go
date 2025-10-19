@@ -15,6 +15,7 @@ import (
 	"brainiac/models"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/joho/godotenv"
 	"github.com/rs/cors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -35,6 +36,8 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
+	godotenv.Load("../.env")
+
 	pg_user := os.Getenv("PG_USER")
 	pg_password := os.Getenv("PG_PASSWORD")
 	pg_db := os.Getenv("PG_DB")
@@ -54,7 +57,7 @@ func main() {
 		panic("failed to connect database")
 	}
 
-	jwtService := auth.NewJWTService(db, os.Getenv("SECRET_KEY"), time.Hour*24*30)
+	jwtService := auth.NewJWTService(db, os.Getenv("JWT_SECRET_KEY"), time.Hour*24*30)
 
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(auth.InterceptorRouter(db, jwtService)))
 	api.RegisterGreeterServer(grpcServer, &server{})

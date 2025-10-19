@@ -5,7 +5,8 @@ import (
 	"time"
 
 	"brainiac/gen/auth"
-	"brainiac/models/authmodels"
+	"brainiac/models"
+	"brainiac/models/graphmodels"
 
 	"github.com/gofrs/uuid/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -42,7 +43,7 @@ func (s *JWTService) Login(ctx context.Context, req *auth.LoginRequest) (*auth.L
 	}
 
 	password := []byte(req.Password)
-	var user authmodels.User
+	var user graphmodels.User
 	err := user.FindUserByUsername(s.db, req.Username)
 	if err != nil {
 		return nil, err
@@ -58,7 +59,7 @@ func (s *JWTService) Login(ctx context.Context, req *auth.LoginRequest) (*auth.L
 		return nil, err
 	}
 
-	newRefreshToken := authmodels.RefreshToken{
+	newRefreshToken := models.RefreshToken{
 		UserID:    user.ID,
 		TokenHash: string(refreshHash),
 		UserAgent: userAgent,
@@ -81,7 +82,7 @@ func (s *JWTService) RefreshToken(ctx context.Context, req *auth.RefreshTokenReq
 	var ipAddr string
 
 	tokenValue := ctx.Value("spottedToken")
-	oldRefreshToken, ok := tokenValue.(*authmodels.RefreshToken)
+	oldRefreshToken, ok := tokenValue.(*models.RefreshToken)
 	if !ok {
 		return nil, nil
 	}
@@ -105,7 +106,7 @@ func (s *JWTService) RefreshToken(ctx context.Context, req *auth.RefreshTokenReq
 		return nil, err
 	}
 
-	newRefreshToken := authmodels.RefreshToken{
+	newRefreshToken := models.RefreshToken{
 		UserID:    oldRefreshToken.UserID,
 		TokenHash: string(refreshHash),
 		UserAgent: userAgent,
@@ -134,7 +135,7 @@ func (s *JWTService) Logout(ctx context.Context, req *auth.LogoutRequest) (*auth
 		return &auth.LogoutReply{Success: false}, nil
 	}
 
-	user, ok := ctx.Value("user").(*authmodels.User)
+	user, ok := ctx.Value("user").(*graphmodels.User)
 	if !ok {
 		return &auth.LogoutReply{Success: false}, nil
 	}
@@ -144,7 +145,7 @@ func (s *JWTService) Logout(ctx context.Context, req *auth.LogoutRequest) (*auth
 		return &auth.LogoutReply{Success: false}, nil
 	}
 
-	err = (&authmodels.RefreshToken{}).DeleteRefreshToken(s.db, sub)
+	err = (&models.RefreshToken{}).DeleteRefreshToken(s.db, sub)
 	if err != nil {
 		return &auth.LogoutReply{Success: false}, nil
 	}

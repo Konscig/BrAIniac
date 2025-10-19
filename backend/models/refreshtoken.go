@@ -1,6 +1,7 @@
-package authmodels
+package models
 
 import (
+	"brainiac/models/graphmodels"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
@@ -8,15 +9,15 @@ import (
 )
 
 type RefreshToken struct {
-	ID        uint      `gorm:"primaryKey"`
-	UserID    uuid.UUID `gorm:"type:uuid;not null"`
-	User      User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
-	TokenHash string    `gorm:"type:text;not null"`
-	UserAgent string    `gorm:"type:text"`
-	IPAddress string    `gorm:"type:text"`
-	CreatedAt time.Time `gorm:"default:now()"`
-	UpdatedAt time.Time `gorm:"default:now()"`
-	Expired   bool      `gorm:"default:false"`
+	ID        uint             `gorm:"primaryKey"`
+	UserID    uuid.UUID        `gorm:"type:uuid;not null"`
+	User      graphmodels.User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	TokenHash string           `gorm:"type:text;not null"`
+	UserAgent string           `gorm:"type:text"`
+	IPAddress string           `gorm:"type:text"`
+	CreatedAt time.Time        `gorm:"default:now()"`
+	UpdatedAt time.Time        `gorm:"default:now()"`
+	Expired   bool             `gorm:"default:false"`
 }
 
 func (t *RefreshToken) CreateToken(engine *gorm.DB) (bool, error) {

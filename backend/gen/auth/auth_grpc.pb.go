@@ -19,20 +19,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	AuthService_Signin_FullMethodName       = "/auth.AuthService/Signin"
 	AuthService_Login_FullMethodName        = "/auth.AuthService/Login"
 	AuthService_RefreshToken_FullMethodName = "/auth.AuthService/RefreshToken"
 	AuthService_Logout_FullMethodName       = "/auth.AuthService/Logout"
-	AuthService_GetUserId_FullMethodName    = "/auth.AuthService/GetUserId"
 )
 
 // AuthServiceClient is the client API for AuthService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AuthServiceClient interface {
+	Signin(ctx context.Context, in *SigninRequest, opts ...grpc.CallOption) (*LoginReply, error)
 	Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (*LoginReply, error)
 	RefreshToken(ctx context.Context, in *RefreshTokenRequest, opts ...grpc.CallOption) (*RefreshTokenReply, error)
 	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*LogoutReply, error)
-	GetUserId(ctx context.Context, in *GetUserIdRequest, opts ...grpc.CallOption) (*GetUserIdReply, error)
 }
 
 type authServiceClient struct {
@@ -41,6 +41,16 @@ type authServiceClient struct {
 
 func NewAuthServiceClient(cc grpc.ClientConnInterface) AuthServiceClient {
 	return &authServiceClient{cc}
+}
+
+func (c *authServiceClient) Signin(ctx context.Context, in *SigninRequest, opts ...grpc.CallOption) (*LoginReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LoginReply)
+	err := c.cc.Invoke(ctx, AuthService_Signin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *authServiceClient) Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (*LoginReply, error) {
@@ -73,24 +83,14 @@ func (c *authServiceClient) Logout(ctx context.Context, in *LogoutRequest, opts 
 	return out, nil
 }
 
-func (c *authServiceClient) GetUserId(ctx context.Context, in *GetUserIdRequest, opts ...grpc.CallOption) (*GetUserIdReply, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetUserIdReply)
-	err := c.cc.Invoke(ctx, AuthService_GetUserId_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
 type AuthServiceServer interface {
+	Signin(context.Context, *SigninRequest) (*LoginReply, error)
 	Login(context.Context, *LoginRequest) (*LoginReply, error)
 	RefreshToken(context.Context, *RefreshTokenRequest) (*RefreshTokenReply, error)
 	Logout(context.Context, *LogoutRequest) (*LogoutReply, error)
-	GetUserId(context.Context, *GetUserIdRequest) (*GetUserIdReply, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -101,6 +101,9 @@ type AuthServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedAuthServiceServer struct{}
 
+func (UnimplementedAuthServiceServer) Signin(context.Context, *SigninRequest) (*LoginReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Signin not implemented")
+}
 func (UnimplementedAuthServiceServer) Login(context.Context, *LoginRequest) (*LoginReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Login not implemented")
 }
@@ -109,9 +112,6 @@ func (UnimplementedAuthServiceServer) RefreshToken(context.Context, *RefreshToke
 }
 func (UnimplementedAuthServiceServer) Logout(context.Context, *LogoutRequest) (*LogoutReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Logout not implemented")
-}
-func (UnimplementedAuthServiceServer) GetUserId(context.Context, *GetUserIdRequest) (*GetUserIdReply, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetUserId not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -132,6 +132,24 @@ func RegisterAuthServiceServer(s grpc.ServiceRegistrar, srv AuthServiceServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&AuthService_ServiceDesc, srv)
+}
+
+func _AuthService_Signin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SigninRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).Signin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_Signin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).Signin(ctx, req.(*SigninRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _AuthService_Login_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -188,24 +206,6 @@ func _AuthService_Logout_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AuthService_GetUserId_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetUserIdRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AuthServiceServer).GetUserId(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AuthService_GetUserId_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AuthServiceServer).GetUserId(ctx, req.(*GetUserIdRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -213,6 +213,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "auth.AuthService",
 	HandlerType: (*AuthServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Signin",
+			Handler:    _AuthService_Signin_Handler,
+		},
 		{
 			MethodName: "Login",
 			Handler:    _AuthService_Login_Handler,
@@ -224,10 +228,6 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Logout",
 			Handler:    _AuthService_Logout_Handler,
-		},
-		{
-			MethodName: "GetUserId",
-			Handler:    _AuthService_GetUserId_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

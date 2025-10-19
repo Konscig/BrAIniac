@@ -1,7 +1,8 @@
 package auth
 
 import (
-	"brainiac/models/authmodels"
+	"brainiac/models"
+	"brainiac/models/graphmodels"
 	"strings"
 
 	"context"
@@ -41,7 +42,7 @@ func CheckTokenInterceptor(tokenType string) grpc.UnaryServerInterceptor {
 
 		var token *jwt.Token
 		var sub uuid.UUID
-		var spottedToken *authmodels.RefreshToken
+		var spottedToken *models.RefreshToken
 
 		if tokenType == "refresh" {
 			clearToken, err := base64.StdEncoding.DecodeString(bearerToken)
@@ -59,7 +60,7 @@ func CheckTokenInterceptor(tokenType string) grpc.UnaryServerInterceptor {
 				return nil, status.Error(codes.Unauthenticated, "failed to extract sub")
 			}
 
-			var refreshTokens []authmodels.RefreshToken
+			var refreshTokens []models.RefreshToken
 			if err = db.Where("user_id = ? AND expired = false", sub).Find(&refreshTokens).Error; err != nil {
 				return nil, status.Error(codes.Unauthenticated, "failed to find refresh tokens")
 			}
@@ -125,7 +126,7 @@ func NotRevokedTokenInterceptor() grpc.UnaryServerInterceptor {
 			return nil, status.Error(codes.Unauthenticated, err.Error())
 		}
 
-		var user authmodels.User
+		var user graphmodels.User
 		if err := db.Where("id = ?", sub).First(&user).Error; err != nil {
 			return nil, status.Error(codes.Unauthenticated, "user not found")
 		}
@@ -139,7 +140,7 @@ func NotRevokedTokenInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
-func InterceptorRouter(db *gorm.DB, jwtService *JWTService) grpc.UnaryServerInterceptor {
+func InterceptorRouter(engine *gorm.DB, jwtService *JWTService) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
 		req interface{},
@@ -150,7 +151,7 @@ func InterceptorRouter(db *gorm.DB, jwtService *JWTService) grpc.UnaryServerInte
 		method := info.FullMethod
 
 		// Всегда добавляем базу данных в контекст
-		ctx = context.WithValue(ctx, "db", db)
+		ctx = context.WithValue(ctx, "db", engine)
 
 		switch {
 		case strings.HasSuffix(method, "Login"):
