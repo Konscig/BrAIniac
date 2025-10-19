@@ -16,18 +16,14 @@ import (
 type JWTService struct {
 	auth.UnimplementedAuthServiceServer
 	db              *gorm.DB
-	user            authmodels.User
 	jwtSecretKey    string
-	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
 }
 
 func (s *JWTService) Login(ctx context.Context, req *auth.LoginRequest) (*auth.LoginReply, error) {
-	var db *gorm.DB
 	var userAgent string
 	var ipAddr string
 
-	db = s.db
 	if meta, ok := metadata.FromIncomingContext(ctx); ok {
 		if ua := meta.Get("user-agent"); len(ua) > 0 {
 			userAgent = ua[0]
@@ -39,7 +35,7 @@ func (s *JWTService) Login(ctx context.Context, req *auth.LoginRequest) (*auth.L
 
 	password := []byte(req.Password)
 	var user authmodels.User
-	err := user.FindUserByUsername(db, req.Username)
+	err := user.FindUserByUsername(s.db, req.Username)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +45,7 @@ func (s *JWTService) Login(ctx context.Context, req *auth.LoginRequest) (*auth.L
 		return nil, err
 	}
 
-	accessToken, refreshTokenB64, refreshHash, err := generateTokens(user.ID)
+	accessToken, refreshTokenB64, refreshHash, err := GenerateTokens(user.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +57,7 @@ func (s *JWTService) Login(ctx context.Context, req *auth.LoginRequest) (*auth.L
 		IPAddress: ipAddr,
 	}
 
-	result, err := newRefreshToken.CreateToken(db)
+	result, err := newRefreshToken.CreateToken(s.db)
 	if err != nil || !result {
 		return nil, err
 	}
@@ -73,11 +69,8 @@ func (s *JWTService) Login(ctx context.Context, req *auth.LoginRequest) (*auth.L
 }
 
 func (s *JWTService) RefreshToken(ctx context.Context, req *auth.RefreshTokenRequest) (*auth.RefreshTokenReply, error) {
-	var db *gorm.DB
 	var userAgent string
 	var ipAddr string
-
-	db = s.db
 
 	tokenValue := ctx.Value("spottedToken")
 	oldRefreshToken, ok := tokenValue.(*authmodels.RefreshToken)
@@ -94,12 +87,12 @@ func (s *JWTService) RefreshToken(ctx context.Context, req *auth.RefreshTokenReq
 		}
 	}
 
-	err := oldRefreshToken.InvalidateToken(db)
+	err := oldRefreshToken.InvalidateToken(s.db)
 	if err != nil {
 		return nil, err
 	}
 
-	accessToken, refreshTokenB64, refreshHash, err := generateTokens(oldRefreshToken.UserID)
+	accessToken, refreshTokenB64, refreshHash, err := GenerateTokens(oldRefreshToken.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +104,7 @@ func (s *JWTService) RefreshToken(ctx context.Context, req *auth.RefreshTokenReq
 		IPAddress: ipAddr,
 	}
 
-	_, err = newRefreshToken.CreateToken(db)
+	_, err = newRefreshToken.CreateToken(s.db)
 	if err != nil {
 		return nil, err
 	}
@@ -122,8 +115,6 @@ func (s *JWTService) RefreshToken(ctx context.Context, req *auth.RefreshTokenReq
 }
 
 func (s *JWTService) Logout(ctx context.Context, req *auth.LogoutRequest) (*auth.LogoutReply, error) {
-	var db *gorm.DB
-	db = s.db
 
 	tokenType, ok := ctx.Value("tokenType").(string)
 	if !ok || tokenType != "access" {
@@ -140,12 +131,12 @@ func (s *JWTService) Logout(ctx context.Context, req *auth.LogoutRequest) (*auth
 		return &auth.LogoutReply{Success: false}, nil
 	}
 
-	err := user.InvalidateAccess(db, user)
+	err := user.InvalidateAccess(s.db, user)
 	if err != nil {
 		return &auth.LogoutReply{Success: false}, nil
 	}
 
-	err = (&authmodels.RefreshToken{}).DeleteRefreshToken(db, sub)
+	err = (&authmodels.RefreshToken{}).DeleteRefreshToken(s.db, sub)
 	if err != nil {
 		return &auth.LogoutReply{Success: false}, nil
 	}

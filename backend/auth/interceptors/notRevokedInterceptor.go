@@ -7,7 +7,6 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 )
@@ -19,17 +18,7 @@ func NotRevokedTokenInterceptor() grpc.UnaryServerInterceptor {
 			return nil, status.Error(codes.Internal, "DB connection not found")
 		}
 
-		md, ok := metadata.FromIncomingContext(ctx)
-		if !ok {
-			return nil, status.Error(codes.Unauthenticated, "missing metadata")
-		}
-
-		bearerToken := ""
-		if t := md.Get("authorization"); len(t) > 0 {
-			bearerToken = t[0]
-		} else {
-			return nil, status.Error(codes.Unauthenticated, "missing token")
-		}
+		bearerToken, err := auth.ExtractBearerToken(ctx)
 
 		token, err := auth.CheckToken(bearerToken, "access")
 		if err != nil {

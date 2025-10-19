@@ -8,7 +8,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
+	"brainiac/auth"
 	"brainiac/auth/interceptors"
 	api "brainiac/gen"
 	"brainiac/models"
@@ -51,6 +53,12 @@ func main() {
 	db, err := engine.CreateEngine()
 	if err != nil {
 		panic("failed to connect database")
+	}
+
+	jwtService := &auth.JWTService{
+		db:              db,
+		jwtSecretKey:    os.Getenv("JWT_SECRET_KEY"),
+		refreshTokenTTL: 7 * 24 * time.Hour,
 	}
 
 	grpcServer := grpc.NewServer(

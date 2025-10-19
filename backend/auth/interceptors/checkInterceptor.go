@@ -13,7 +13,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 )
@@ -31,22 +30,10 @@ func CheckTokenInterceptor(tokenType string) grpc.UnaryServerInterceptor {
 			return nil, status.Error(codes.Internal, "DB connection not found")
 		}
 
-		// Получаем токен из metadata
-		md, ok := metadata.FromIncomingContext(ctx)
-		if !ok {
-			return nil, status.Error(codes.Unauthenticated, "missing metadata")
-		}
-
-		bearerToken := ""
-		if t := md.Get("authorization"); len(t) > 0 {
-			bearerToken = t[0]
-		} else {
-			return nil, status.Error(codes.Unauthenticated, "missing token")
-		}
+		bearerToken, err := auth.ExtractBearerToken(ctx)
 
 		var token *jwt.Token
 		var sub uuid.UUID
-		var err error
 		var spottedToken *authmodels.RefreshToken
 
 		if tokenType == "refresh" {
