@@ -1,92 +1,249 @@
 import React from "react";
 import ReactFlow, {
   Background,
+  BackgroundVariant,
+  ConnectionLineType,
   Controls,
   MiniMap,
+  MarkerType,
+  addEdge,
   applyEdgeChanges,
   applyNodeChanges,
+  type Connection,
   type Edge,
   type EdgeChange,
+  type Node,
   type NodeChange,
-  type Node
+  type ReactFlowInstance
 } from "reactflow";
 
 import "reactflow/dist/style.css";
 
 import { Card } from "./ui/card";
-import { mockProjects } from "../data/mock-data";
+import { nodeTypes, type VkNodeData } from "./custom-nodes";
+import { mockProjects, type PipelineNode } from "../data/mock-data";
 import { cn } from "../lib/utils";
 
 const defaultProject = mockProjects[0];
-const defaultPipeline = defaultProject.pipelines[0];
+const defaultPipeline = defaultProject?.pipelines[0];
 
-const initialNodes: Node[] = defaultPipeline.nodes.map((node, index) => ({
-  id: node.id,
-  data: { label: node.label, status: node.status },
-  position: { x: 100 + index * 200, y: 100 + index * 80 },
-  style: {
-    borderRadius: 14,
-    padding: "12px 16px",
-    border: "1px solid hsl(var(--border))",
-    background: "rgba(30, 41, 59, 0.85)",
-    color: "hsl(var(--foreground))",
-    backdropFilter: "blur(8px)"
-  }
-}));
+type DraggedNodePayload = {
+  label: string;
+  category: PipelineNode["category"];
+};
 
-const initialEdges: Edge[] = defaultPipeline.edges.map((edge) => ({
-  id: edge.id,
-  source: edge.source,
-  target: edge.target,
-  animated: true,
-  style: {
-    stroke: "rgba(94, 234, 212, 0.6)",
-    strokeWidth: 2
-  }
-}));
+const defaultEdgeStyle = {
+  stroke: "rgba(39, 135, 245, 0.75)",
+  strokeWidth: 2
+};
+
+const defaultMarker = {
+  type: MarkerType.ArrowClosed,
+  width: 18,
+  height: 18,
+  color: "rgba(39, 135, 245, 0.85)"
+} as const;
+
+const initialNodes: Array<Node<VkNodeData>> = defaultPipeline
+  ? defaultPipeline.nodes.map((node, index) => ({
+      id: node.id,
+      type: "vkNode",
+      data: {
+        label: node.label,
+        category: node.category,
+        status: node.status ?? "idle"
+      },
+      position: {
+        x: 160 + index * 220,
+        y: 140 + index * 120
+      }
+    }))
+  : [];
+
+const initialEdges: Edge[] = defaultPipeline
+  ? defaultPipeline.edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      animated: true,
+      style: { ...defaultEdgeStyle },
+      markerEnd: { ...defaultMarker }
+    }))
+  : [];
+
+const generateNodeId = (category: PipelineNode["category"]): string => {
+  return `${category.toLowerCase()}-${Math.random().toString(36).slice(2, 10)}`;
+};
 
 export interface CanvasBoardProps {
   className?: string;
 }
 
 export function CanvasBoard({ className }: CanvasBoardProps): React.ReactElement {
-  const [nodes, setNodes] = React.useState<Node[]>(initialNodes);
+  const [nodes, setNodes] = React.useState<Array<Node<VkNodeData>>>(initialNodes);
   const [edges, setEdges] = React.useState<Edge[]>(initialEdges);
+  const [reactFlowInstance, setReactFlowInstance] = React.useState<ReactFlowInstance<VkNodeData> | null>(null);
+  const reactFlowWrapper = React.useRef<HTMLDivElement | null>(null);
+
   const onNodesChange = React.useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
     []
   );
+
   const onEdgesChange = React.useCallback(
     (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
     []
   );
 
+  const onConnect = React.useCallback(
+    (connection: Connection) => {
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...connection,
+            type: "smoothstep",
+            animated: true,
+            style: { ...defaultEdgeStyle },
+            markerEnd: { ...defaultMarker }
+          },
+          eds
+        )
+      );
+    },
+    []
+  );
+
+  const onInit = React.useCallback((instance: ReactFlowInstance<VkNodeData>) => {
+    setReactFlowInstance(instance);
+  }, []);
+
+  const onDragOver = React.useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onDrop = React.useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      if (!reactFlowInstance || !reactFlowWrapper.current) {
+        return;
+      }
+
+      const bounds = reactFlowWrapper.current.getBoundingClientRect();
+      if (
+        event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom
+      ) {
+        return;
+      }
+
+      const raw = event.dataTransfer.getData("application/reactflow");
+      if (!raw) {
+        return;
+      }
+
+      let payload: DraggedNodePayload;
+      try {
+        payload = JSON.parse(raw) as DraggedNodePayload;
+      } catch {
+        return;
+      }
+
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY
+      });
+
+      const newNode: Node<VkNodeData> = {
+        id: generateNodeId(payload.category),
+        type: "vkNode",
+        position,
+        data: {
+          label: payload.label,
+          category: payload.category,
+          status: "idle"
+        }
+      };
+
+      setNodes((nds) => nds.concat(newNode));
+    },
+    [reactFlowInstance]
+  );
+
+  const connectionLineStyle = React.useMemo(
+    () => ({ stroke: "rgba(39, 135, 245, 0.65)", strokeWidth: 2 }),
+    []
+  );
+
+  const defaultEdgeOptions = React.useMemo(
+    () => ({
+      type: "smoothstep" as const,
+      animated: true,
+      markerEnd: { ...defaultMarker },
+      style: { ...defaultEdgeStyle }
+    }),
+    []
+  );
+
   return (
     <Card className={cn("relative flex-1 overflow-hidden border-border/60", className)}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        fitView
-        className="bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.08),transparent_35%),radial-gradient(circle_at_center,rgba(94,234,212,0.04),transparent_45%),linear-gradient(90deg,rgba(148,163,184,0.12)_1px,transparent_1px),linear-gradient(0deg,rgba(148,163,184,0.12)_1px,transparent_1px)]"
-        style={{
-          backgroundColor: "rgba(15, 23, 42, 0.75)",
-          backgroundSize: "24px 24px, 320px 320px, 48px 48px, 48px 48px"
-        }}
-      >
-        <Background color="rgba(100,116,139,0.15)" gap={24} />
-        <MiniMap
-          zoomable
-          pannable
-          nodeColor={() => "rgba(94,234,212,0.8)"}
-          maskColor="rgba(15,23,42,0.6)"
-        />
-        <Controls
-          showInteractive={false}
-          className="!bg-background/80 !text-foreground"
-        />
-      </ReactFlow>
+      <div ref={reactFlowWrapper} className="h-full w-full">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onInit={onInit}
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          snapToGrid
+          snapGrid={[16, 16]}
+          panOnScroll
+          selectionOnDrag
+          defaultEdgeOptions={defaultEdgeOptions}
+          connectionLineType={ConnectionLineType.SmoothStep}
+          connectionLineStyle={connectionLineStyle}
+          className="bg-[radial-gradient(circle_at_center,_rgba(39,135,245,0.06),_transparent_40%)]"
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={22}
+            size={1.6}
+            color="rgba(148, 163, 184, 0.3)"
+          />
+          <MiniMap
+            zoomable
+            pannable
+            nodeColor={(node) => {
+              const data = node.data as VkNodeData | undefined;
+              switch (data?.category) {
+                case "LLM":
+                  return "#2B65F9";
+                case "Data":
+                  return "#1FA0FF";
+                case "Services":
+                  return "#8B5CF6";
+                case "Utility":
+                  return "#f59e0b";
+                default:
+                  return "#0077ff";
+              }
+            }}
+            maskColor="rgba(15,23,42,0.55)"
+          />
+          <Controls
+            showInteractive={false}
+            className="!bg-background/80 !text-foreground"
+          />
+        </ReactFlow>
+      </div>
     </Card>
   );
 }

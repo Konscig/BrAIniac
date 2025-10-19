@@ -36,11 +36,13 @@ export const mockProjects: Project[] = [
         nodes: [
           { id: "1", label: "LLM Core", category: "LLM", status: "running" },
           { id: "2", label: "Knowledge Base", category: "Data" },
-          { id: "3", label: "Evaluator", category: "Services" }
+          { id: "3", label: "Evaluator", category: "Services" },
+          { id: "4", label: "Monitoring", category: "Utility", status: "idle" }
         ],
         edges: [
           { id: "e1-2", source: "1", target: "2" },
-          { id: "e2-3", source: "2", target: "3" }
+          { id: "e2-3", source: "2", target: "3" },
+          { id: "e3-4", source: "3", target: "4" }
         ]
       }
     ]
@@ -92,6 +94,15 @@ export const mockLibraryGroups: Array<{
       { id: "stt", label: "Speech to Text" },
       { id: "tts", label: "Text to Speech" },
       { id: "http", label: "HTTP GET" }
+    ]
+  },
+  {
+    id: "Utility",
+    name: "Utility",
+    items: [
+      { id: "monitoring", label: "Monitoring" },
+      { id: "logger", label: "Logger" },
+      { id: "webhook", label: "Webhook" }
     ]
   }
 ];

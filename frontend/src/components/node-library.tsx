@@ -6,10 +6,20 @@ import { Card, CardContent, CardHeader } from "./ui/card";
 import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
 import { cn } from "../lib/utils";
-import { mockLibraryGroups } from "../data/mock-data";
+import { mockLibraryGroups, type PipelineNode } from "../data/mock-data";
+
+type DragPayload = {
+  label: string;
+  category: PipelineNode["category"];
+};
 
 export function NodeLibrary(): React.ReactElement {
   const [openGroup, setOpenGroup] = React.useState("LLM");
+
+  const handleDragStart = React.useCallback((event: React.DragEvent, payload: DragPayload) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/reactflow", JSON.stringify(payload));
+  }, []);
 
   return (
     <Card className="flex h-full min-w-[240px] max-w-xs flex-col border-border/60 bg-background/85">
@@ -52,6 +62,13 @@ export function NodeLibrary(): React.ReactElement {
                         <button
                           key={item.id}
                           type="button"
+                          draggable
+                          onDragStart={(event) =>
+                            handleDragStart(event, {
+                              label: item.label,
+                              category: group.id as DragPayload["category"]
+                            })
+                          }
                           className={cn(
                             "w-full rounded-md border border-transparent bg-muted/40 px-3 py-2 text-left text-sm text-muted-foreground transition hover:border-accent/40 hover:bg-accent/10 hover:text-foreground"
                           )}
