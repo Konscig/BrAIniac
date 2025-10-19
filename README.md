@@ -1,4 +1,4 @@
-<img align="center" width="300" height="300" alt="BRAINIAC_LOGO" src="https://github.com/user-attachments/assets/59a38236-8b78-4d84-9464-1f03a5b55593" />
+<img text-align="center" width="300" height="300" alt="BRAIN" src="https://github.com/user-attachments/assets/bea6f117-a54f-4133-9526-2bdc956aee65" />
 
 ## 🇷🇺
 # BrAIniac
