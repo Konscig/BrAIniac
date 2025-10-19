@@ -10,7 +10,6 @@ import (
 	"encoding/base64"
 
 	"github.com/gofrs/uuid/v5"
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -39,18 +38,21 @@ func CheckTokenInterceptor(tokenType string) grpc.UnaryServerInterceptor {
 		}
 
 		bearerToken, err := ExtractBearerToken(ctx)
+		if err != nil {
+			return nil, status.Error(codes.Unauthenticated, err.Error())
+		}
 
-		var token *jwt.Token
 		var sub uuid.UUID
 		var spottedToken *models.RefreshToken
 
 		if tokenType == "refresh" {
+			// Декодируем refresh токен
 			clearToken, err := base64.StdEncoding.DecodeString(bearerToken)
 			if err != nil {
 				return nil, status.Error(codes.Unauthenticated, "token decoding error")
 			}
 
-			token, err = CheckToken(string(clearToken), tokenType)
+			token, err := CheckToken(string(clearToken), tokenType)
 			if err != nil {
 				return nil, status.Error(codes.Unauthenticated, "failed to check token")
 			}
@@ -60,6 +62,7 @@ func CheckTokenInterceptor(tokenType string) grpc.UnaryServerInterceptor {
 				return nil, status.Error(codes.Unauthenticated, "failed to extract sub")
 			}
 
+			// Проверяем, есть ли токен в базе
 			var refreshTokens []models.RefreshToken
 			if err = db.Where("user_id = ? AND expired = false", sub).Find(&refreshTokens).Error; err != nil {
 				return nil, status.Error(codes.Unauthenticated, "failed to find refresh tokens")
@@ -78,7 +81,7 @@ func CheckTokenInterceptor(tokenType string) grpc.UnaryServerInterceptor {
 			}
 
 		} else if tokenType == "access" {
-			token, err = CheckToken(bearerToken, tokenType)
+			token, err := CheckToken(bearerToken, tokenType)
 			if err != nil {
 				return nil, status.Error(codes.Unauthenticated, "invalid access token")
 			}
@@ -87,18 +90,27 @@ func CheckTokenInterceptor(tokenType string) grpc.UnaryServerInterceptor {
 			if err != nil {
 				return nil, status.Error(codes.Unauthenticated, "failed to extract sub")
 			}
+
+			// Загружаем пользователя через метод модели
+			var user graphmodels.User
+			if err := user.LoadByID(db, sub); err != nil {
+				return nil, status.Error(codes.Unauthenticated, "user not found")
+			}
+
+			// Добавляем пользователя в контекст
+			ctx = context.WithValue(ctx, "user", &user)
 		} else {
-			return nil, status.Error(codes.Unauthenticated, "unauthorized")
+			return nil, status.Error(codes.Unauthenticated, "unauthorized token type")
 		}
 
-		// Передаем данные в контекст
-		newCtx := context.WithValue(ctx, "userid", sub)
-		newCtx = context.WithValue(newCtx, "tokenType", tokenType)
+		// Передаём данные в контекст
+		ctx = context.WithValue(ctx, "userid", sub)
+		ctx = context.WithValue(ctx, "tokenType", tokenType)
 		if spottedToken != nil {
-			newCtx = context.WithValue(newCtx, "spottedToken", spottedToken)
+			ctx = context.WithValue(ctx, "spottedToken", spottedToken)
 		}
 
-		return handler(newCtx, req)
+		return handler(ctx, req)
 	}
 }
 
@@ -110,6 +122,9 @@ func NotRevokedTokenInterceptor() grpc.UnaryServerInterceptor {
 		}
 
 		bearerToken, err := ExtractBearerToken(ctx)
+		if err != nil {
+			return nil, status.Error(codes.Unauthenticated, err.Error())
+		}
 
 		token, err := CheckToken(bearerToken, "access")
 		if err != nil {
@@ -162,12 +177,9 @@ func InterceptorRouter(engine *gorm.DB, jwtService *JWTService) grpc.UnaryServer
 			return checkInterceptor(ctx, req, info, handler)
 
 		case strings.HasSuffix(method, "Logout"):
+			// Только проверяем access token, не вызываем NotRevoked
 			checkInterceptor := CheckTokenInterceptor("access")
-			notRevoked := NotRevokedTokenInterceptor()
-
-			return checkInterceptor(ctx, req, info, func(c context.Context, r interface{}) (interface{}, error) {
-				return notRevoked(c, r, info, handler)
-			})
+			return checkInterceptor(ctx, req, info, handler)
 
 		default:
 			return handler(ctx, req)

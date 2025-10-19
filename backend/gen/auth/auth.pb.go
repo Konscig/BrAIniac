@@ -394,13 +394,13 @@ const file_auth_auth_proto_rawDesc = "" +
 	"\rLogoutRequest\x12#\n" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\"'\n" +
 	"\vLogoutReply\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess2\xc4\x02\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess2\xc1\x02\n" +
 	"\vAuthService\x12F\n" +
 	"\x06Signin\x12\x13.auth.SigninRequest\x1a\x10.auth.LoginReply\"\x15\x82\xd3\xe4\x93\x02\x0f:\x01*\"\n" +
 	"/v1/signin\x12C\n" +
 	"\x05Login\x12\x12.auth.LoginRequest\x1a\x10.auth.LoginReply\"\x14\x82\xd3\xe4\x93\x02\x0e:\x01*\"\t/v1/login\x12Z\n" +
-	"\fRefreshToken\x12\x19.auth.RefreshTokenRequest\x1a\x17.auth.RefreshTokenReply\"\x16\x82\xd3\xe4\x93\x02\x10:\x01*\"\v/v1/refresh\x12L\n" +
-	"\x06Logout\x12\x13.auth.LogoutRequest\x1a\x11.auth.LogoutReply\"\x1a\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/user/logoutB\x18Z\x16brainiac/gen/auth;authb\x06proto3"
+	"\fRefreshToken\x12\x19.auth.RefreshTokenRequest\x1a\x17.auth.RefreshTokenReply\"\x16\x82\xd3\xe4\x93\x02\x10:\x01*\"\v/v1/refresh\x12I\n" +
+	"\x06Logout\x12\x13.auth.LogoutRequest\x1a\x11.auth.LogoutReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/user/logoutB\x18Z\x16brainiac/gen/auth;authb\x06proto3"
 
 var (
 	file_auth_auth_proto_rawDescOnce sync.Once

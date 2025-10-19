@@ -12,6 +12,7 @@ import (
 
 	"brainiac/auth"
 	api "brainiac/gen"
+	authapi "brainiac/gen/auth"
 	"brainiac/models"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -58,9 +59,11 @@ func main() {
 	}
 
 	jwtService := auth.NewJWTService(db, os.Getenv("JWT_SECRET_KEY"), time.Hour*24*30)
-
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(auth.InterceptorRouter(db, jwtService)))
+
 	api.RegisterGreeterServer(grpcServer, &server{})
+	authapi.RegisterAuthServiceServer(grpcServer, jwtService)
+
 	go func() {
 		log.Println("Serving gRPC on :50051")
 		if err := grpcServer.Serve(lis); err != nil {
@@ -72,8 +75,13 @@ func main() {
 	ctx := context.Background()
 	mux := runtime.NewServeMux()
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+
 	if err := api.RegisterGreeterHandlerFromEndpoint(ctx, mux, "localhost:50051", opts); err != nil {
 		log.Fatalf("failed to start gateway: %v", err)
+	}
+	err = authapi.RegisterAuthServiceHandlerFromEndpoint(ctx, mux, "localhost:50051", opts)
+	if err != nil {
+		log.Fatalf("failed to register AuthService gateway: %v", err)
 	}
 
 	corsHandler := cors.New(cors.Options{

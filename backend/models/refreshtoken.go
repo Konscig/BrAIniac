@@ -30,16 +30,10 @@ func (t *RefreshToken) CreateToken(engine *gorm.DB) (bool, error) {
 
 func (t *RefreshToken) InvalidateToken(engine *gorm.DB) error {
 	result := engine.Model(&t).Update("expired", true)
-	if result.Error != nil {
-		return result.Error
-	}
-	return nil
+	return result.Error
 }
 
 func (t *RefreshToken) DeleteRefreshToken(engine *gorm.DB, userid uuid.UUID) error {
-	result := engine.Where("user_id = ?", userid).Delete(&t)
-	if result.Error != nil {
-		return result.Error
-	}
-	return nil
+	result := engine.Where("user_id = ?", userid).Delete(&RefreshToken{})
+	return result.Error
 }

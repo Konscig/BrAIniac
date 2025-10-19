@@ -2,69 +2,36 @@ package graphmodels
 
 import (
 	"context"
-	"errors"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/gofrs/uuid/v5"
 	"gorm.io/gorm"
 )
 
 type User struct {
-	gorm.Model
-	ID              uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	Email           string    `gorm:"type:text;unique;not null"`
-	Username        string    `gorm:"type:text;unique;not null"`
-	PasswordHash    string    `gorm:"type:text;not null"`
-	Role            string    `gorm:"type:text;not null;default:'user'"`
-	TokenValidAfter time.Time `gorm:"default:now()"`
-	CreatedAt       time.Time `gorm:"default:now()"`
-	UpdatedAt       time.Time `gorm:"default:now()"`
-	DeletedAt       time.Time `gorm:"default:null"`
+	ID              uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	Email           string         `gorm:"type:text;unique;not null"`
+	Username        string         `gorm:"type:text;unique;not null"`
+	PasswordHash    string         `gorm:"type:text;not null"`
+	Role            string         `gorm:"type:text;not null;default:'user'"`
+	TokenValidAfter time.Time      `gorm:"default:now()"`
+	CreatedAt       time.Time      `gorm:"autoCreateTime"`
+	UpdatedAt       time.Time      `gorm:"autoUpdateTime"`
+	DeletedAt       gorm.DeletedAt `gorm:"index"`
 }
 
-// BeforeCreate ensures the user has an ID.
-func (u *User) BeforeCreate(tx *gorm.DB) error {
-	if u.ID == uuid.Nil {
-		id, err := uuid.NewV7()
-		if err != nil {
-			return err
-		}
-		u.ID = id
+func (u *User) CreateUser(db *gorm.DB, email string, username string, passwordHash string) (*User, error) {
+	u.ID = uuid.Must(uuid.NewV4())
+	u.Email = email
+	u.Username = username
+	u.PasswordHash = passwordHash
+	u.TokenValidAfter = time.Now()
+
+	if err := db.Create(u).Error; err != nil {
+		return nil, err
 	}
-	return nil
-}
 
-// SetPassword hashes and sets the user's password.
-func (u *User) SetPassword(password string) error {
-	if len(password) < 8 {
-		return errors.New("password must be at least 8 characters")
-	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	u.PasswordHash = string(hash)
-	return nil
-}
-
-// CheckPassword verifies a plaintext password matches the stored hash.
-func (u *User) CheckPassword(password string) bool {
-	return bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) == nil
-}
-
-// IsAdmin returns true if the user has an admin role.
-func (u *User) IsAdmin() bool {
-	return u.Role == "admin"
-}
-
-// Save inserts or updates the user in the database.
-func (u *User) Save(ctx context.Context, db *gorm.DB) error {
-	if u.ID == uuid.Nil {
-		return db.WithContext(ctx).Create(u).Error
-	}
-	return db.WithContext(ctx).Save(u).Error
+	return u, nil
 }
 
 // FindUserByEmail loads a user by email.
@@ -84,10 +51,15 @@ func (u *User) FindUserByUsername(engine *gorm.DB, username string) error {
 	return nil
 }
 
-func (u *User) InvalidateAccess(engine *gorm.DB, user *User) error {
-	result := engine.Model(&u).Where("id = ?", user).Update("token_valid_after", time.Now())
+func (u *User) InvalidateAccess(engine *gorm.DB) error {
+	result := engine.Model(u).Where("id = ?", u.ID).Update("token_valid_after", time.Now())
 	if result.Error != nil {
 		return result.Error
 	}
 	return nil
+}
+
+func (u *User) LoadByID(db *gorm.DB, id uuid.UUID) error {
+	result := db.Where("id = ?", id).First(u)
+	return result.Error
 }
