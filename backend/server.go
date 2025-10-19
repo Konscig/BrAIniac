@@ -3,11 +3,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
 
+	"brainiac/auth/interceptors"
 	api "brainiac/gen"
+	"brainiac/models"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/rs/cors"
@@ -29,7 +33,33 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	grpcServer := grpc.NewServer()
+
+	pg_user := os.Getenv("PG_USER")
+	pg_password := os.Getenv("PG_PASSWORD")
+	pg_db := os.Getenv("PG_DB")
+	pg_port := os.Getenv("PG_PORT")
+	pg_host := os.Getenv("PG_HOST")
+
+	engine := models.Engine{
+		Name:     "PostgreSQL",
+		User:     pg_user,
+		Password: pg_password,
+		Database: pg_db,
+		Uri:      fmt.Sprintf("%s:%s", pg_host, pg_port),
+	}
+
+	db, err := engine.CreateEngine()
+	if err != nil {
+		panic("failed to connect database")
+	}
+
+	grpcServer := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			interceptors.DatabaseInterceptor(db),
+			interceptors.CheckTokenInterceptor("access"),
+			interceptors.NotRevokedTokenInterceptor(),
+		),
+	)
 	api.RegisterGreeterServer(grpcServer, &server{})
 	go func() {
 		log.Println("Serving gRPC on :50051")

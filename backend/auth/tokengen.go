@@ -1,4 +1,4 @@
-package main
+package auth
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ import (
 // Возвращает:
 //   - string: сгенерированный JWT access токен.
 //   - error: ошибка, если токен не удалось сгенерировать.
-func generateAccessToken(userID string) (string, error) {
+func GenerateAccessToken(userID string) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
 		"sub":  userID,
 		"exp":  time.Now().Add(time.Minute * 15).Unix(),
@@ -34,7 +34,7 @@ func generateAccessToken(userID string) (string, error) {
 // Возвращает:
 //   - string: сгенерированный JWT refresh токен.
 //   - error: ошибка, если токен не удалось сгенерировать.
-func generateRefreshToken(userID string, exp int64) (string, error) {
+func GenerateRefreshToken(userID string, exp int64) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
 		"sub":  userID,
 		"exp":  exp,
@@ -52,7 +52,7 @@ func generateRefreshToken(userID string, exp int64) (string, error) {
 // Возвращает:
 //   - *jwt.Token: объект токена, если токен валиден.
 //   - error: ошибка, если токен не валиден или имеет неверный тип.
-func checkToken(tokenString string, tokenType string) (*jwt.Token, error) {
+func CheckToken(tokenString string, tokenType string) (*jwt.Token, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		return []byte(os.Getenv("SECRET_KEY")), nil
 	})
@@ -84,7 +84,7 @@ func checkToken(tokenString string, tokenType string) (*jwt.Token, error) {
 // Возвращает:
 //   - uuid.UUID: идентификатор пользователя.
 //   - error: ошибка, если идентификатор пользователя не найден.
-func extractSub(token *jwt.Token) (uuid.UUID, error) {
+func ExtractSub(token *jwt.Token) (uuid.UUID, error) {
 	if token == nil {
 		return uuid.Nil, fmt.Errorf("token is nil")
 	}
@@ -106,7 +106,7 @@ func extractSub(token *jwt.Token) (uuid.UUID, error) {
 //
 // Возвращает:
 //   - time.Time: время создания токена.
-func getIat(token *jwt.Token) (time.Time, error) {
+func GetIat(token *jwt.Token) (time.Time, error) {
 	iat, exists := token.Claims.(jwt.MapClaims)["iat"].(float64)
 	if !exists {
 		return time.Time{}, fmt.Errorf("iat claim not found")

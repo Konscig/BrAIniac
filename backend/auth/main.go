@@ -1,4 +1,4 @@
-package main
+package auth
 
 import (
 	"bytes"
@@ -24,20 +24,6 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
-
-// @title           Example JWT Auth API
-// @version         1.0
-// @securityDefinitions.apikey  BearerAuth
-// @in header
-// @name Authorization
-
-// @description     API для аутентификации и обновления токенов JWT
-// @termsOfService  http://swagger.io/terms/
-
-// @contact.name   Konstantin Gerasimov
-// @contact.url    https://github.com/Konscig/test-backend
-
-// @license.name  No license
 
 // DatabaseMiddleware создает middleware для Gin, который устанавливает соединение с базой данных в контекст запроса.
 //
@@ -116,13 +102,13 @@ func CheckTokenMiddleware(tokenType string) gin.HandlerFunc {
 				c.Abort()
 				return
 			}
-			token, err = checkToken(string(clearToken), tokenType)
+			token, err = CheckToken(string(clearToken), tokenType)
 			if err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{"error ": "failed to check token"})
 				c.Abort()
 				return
 			}
-			sub, err := extractSub(token)
+			sub, err := ExtractSub(token)
 			if err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "failed to extract sub"})
 				c.Abort()
@@ -158,13 +144,13 @@ func CheckTokenMiddleware(tokenType string) gin.HandlerFunc {
 			c.Next()
 		} else if tokenType == "access" {
 
-			token, err = checkToken(bearerToken, tokenType)
+			token, err = CheckToken(bearerToken, tokenType)
 			if err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "not access token"})
 				c.Abort()
 				return
 			}
-			sub, err := extractSub(token)
+			sub, err := ExtractSub(token)
 			if err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "failed to extract sub"})
 				c.Abort()
@@ -201,21 +187,21 @@ func NotRevokedTokenMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		token, err = checkToken(bearerToken, "access")
+		token, err = CheckToken(bearerToken, "access")
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			c.Abort()
 			return
 		}
 
-		sub, err := extractSub(token)
+		sub, err := ExtractSub(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			c.Abort()
 			return
 		}
 
-		iat, err := getIat(token)
+		iat, err := GetIat(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			c.Abort()
@@ -254,11 +240,11 @@ func NotRevokedTokenMiddleware() gin.HandlerFunc {
 //   - err: ошибка, если что-то пошло не так.
 func generateTokens(userID uuid.UUID) (string, string, []byte, error) {
 
-	accessToken, err := generateAccessToken(userID.String())
+	accessToken, err := GenerateAccessToken(userID.String())
 	if err != nil {
 		return "", "", nil, fmt.Errorf("failed to create access token: %v", err)
 	}
-	refreshToken, err := generateRefreshToken(userID.String(), time.Now().Add(time.Hour*24*30).Unix())
+	refreshToken, err := GenerateRefreshToken(userID.String(), time.Now().Add(time.Hour*24*30).Unix())
 	if err != nil {
 		return "", "", nil, fmt.Errorf("failed to create refresh token: %v", err)
 	}
