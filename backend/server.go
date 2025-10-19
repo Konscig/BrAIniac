@@ -14,6 +14,7 @@ import (
 	api "brainiac/gen"
 	authapi "brainiac/gen/auth"
 	"brainiac/models"
+	"brainiac/models/graphmodels"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/joho/godotenv"
@@ -56,6 +57,27 @@ func main() {
 	db, err := engine.CreateEngine()
 	if err != nil {
 		panic("failed to connect database")
+	}
+
+	err = db.AutoMigrate(
+		&graphmodels.User{},
+		&graphmodels.Agent{},
+		&graphmodels.Dataset{},
+		&graphmodels.Edge{},
+		&graphmodels.Export{},
+		&graphmodels.Metric{},
+		&graphmodels.Node{},
+		&graphmodels.Pipeline{},
+		&graphmodels.PipelineVersion{},
+		&graphmodels.Project{},
+		&graphmodels.Run{},
+		&graphmodels.RunTask{},
+		&graphmodels.Tool{},
+		&models.RefreshToken{},
+		// &othermodels.SomeModel{}, // добавь сюда остальные модели по мере необходимости
+	)
+	if err != nil {
+		panic("failed to auto migrate models")
 	}
 
 	jwtService := auth.NewJWTService(db, os.Getenv("JWT_SECRET_KEY"), time.Hour*24*30)

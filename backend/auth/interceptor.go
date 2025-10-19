@@ -17,6 +17,13 @@ import (
 	"gorm.io/gorm"
 )
 
+// DatabaseInterceptor - Интерсептор, проверяет состояние БД до выполнения запроса.
+//
+// Параметры:
+//   - db: подключение к БД;
+//
+// Возвращает:
+//   - запрос с обновленным контекстом.
 func DatabaseInterceptor(db *gorm.DB) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		newCtx := context.WithValue(ctx, "db", db)
@@ -24,6 +31,13 @@ func DatabaseInterceptor(db *gorm.DB) grpc.UnaryServerInterceptor {
 	}
 }
 
+// CheckTokenInterceptor - Интерсептор, проверяет токен до выполнения запроса.
+//
+// Параметры:
+//   - tokentype: тип входящего токена;
+//
+// Возвращает:
+//   - запрос с обновленным контекстом.
 func CheckTokenInterceptor(tokenType string) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
@@ -114,6 +128,10 @@ func CheckTokenInterceptor(tokenType string) grpc.UnaryServerInterceptor {
 	}
 }
 
+// NotRevokedTokenInterceptor - Интерсептор, проверяет состояние токена до выполнения запроса.
+//
+// Возвращает:
+//   - запрос с обновленным контекстом.
 func NotRevokedTokenInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		db, ok := ctx.Value("db").(*gorm.DB)
@@ -155,6 +173,10 @@ func NotRevokedTokenInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
+// InterceptorRouter - Метод, собирающий цепочку интерсепторов для выполнения разного рода запросов.
+//
+// Возвращает:
+//   - цепочку интерсепторов.
 func InterceptorRouter(engine *gorm.DB, jwtService *JWTService) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,

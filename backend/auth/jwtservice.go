@@ -16,6 +16,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// JWTService - структура представляющая сервис JWT-аутентификации пользователя.
+//
+// Поля:
+//   - db: подключение к БД;
+//   - jwtSecretKey: секретный ключ подписи JWT-токена;
+//   - refreshTokenTTL: время жизни refresh-токена.
 type JWTService struct {
 	auth.UnimplementedAuthServiceServer
 	db              *gorm.DB
@@ -23,6 +29,14 @@ type JWTService struct {
 	refreshTokenTTL time.Duration
 }
 
+// NewJWTService - конструктор сервиса аутентификации
+//
+// # Изолированно от сервера собирает сервис аутентификации
+//
+// Параметры:
+//   - db: подключение к БД;
+//   - jwtSecretKey: секретный ключ подписи JWT-токена;
+//   - refreshTokenTTL: время жизни refresh-токена.
 func NewJWTService(db *gorm.DB, jwtSecretKey string, refreshTokenTTL time.Duration) *JWTService {
 	return &JWTService{
 		db:              db,
@@ -31,6 +45,16 @@ func NewJWTService(db *gorm.DB, jwtSecretKey string, refreshTokenTTL time.Durati
 	}
 }
 
+// Signin - метод регистрации пользователя.
+//
+// Создает нового пользователя в БД. Значение `role` по умолчанию user.
+//
+// Параметры:
+//   - ctx - контекст запроса;
+//   - req - запрос с данными пользователя.
+//
+// Возвращает:
+//   - пару access- и refresh-токенов;
 func (s *JWTService) Signin(ctx context.Context, req *auth.SigninRequest) (*auth.LoginReply, error) {
 	var db *gorm.DB
 	var userAgent, ipAddr string
@@ -46,26 +70,21 @@ func (s *JWTService) Signin(ctx context.Context, req *auth.SigninRequest) (*auth
 		}
 	}
 
-	// Хэшируем пароль
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to hash password")
 	}
 
-	// Создаём пользователя через метод структуры
 	user := &graphmodels.User{}
 	newUser, err := user.CreateUser(db, req.Email, req.Username, string(hashedPassword))
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to create user")
 	}
 
-	// Генерируем токены
 	accessToken, refreshTokenB64, refreshHash, err := GenerateTokens(newUser.ID)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to generate tokens")
 	}
-
-	// Сохраняем refresh токен
 	newRefreshToken := models.RefreshToken{
 		UserID:    newUser.ID,
 		TokenHash: string(refreshHash),
@@ -76,14 +95,22 @@ func (s *JWTService) Signin(ctx context.Context, req *auth.SigninRequest) (*auth
 	if _, err := newRefreshToken.CreateToken(db); err != nil {
 		return nil, status.Error(codes.Internal, "failed to save refresh token")
 	}
-
-	// Возвращаем токены
 	return &auth.LoginReply{
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenB64,
 	}, nil
 }
 
+// Login - метод авторизации пользователя.
+//
+// Сверяет значения введенного пароля с hash пароля пользователя в базе.
+//
+// Параметры:
+//   - ctx - контекст запроса;
+//   - req - запрос с данными пользователя.
+//
+// Возвращает:
+//   - пару access- и refresh-токенов;
 func (s *JWTService) Login(ctx context.Context, req *auth.LoginRequest) (*auth.LoginReply, error) {
 	var userAgent string
 	var ipAddr string
@@ -132,6 +159,16 @@ func (s *JWTService) Login(ctx context.Context, req *auth.LoginRequest) (*auth.L
 	}, nil
 }
 
+// RefreshToken - метод выдачи новой пары access- и refresh-токенов по refresh-токену.
+//
+// Выдает новую пару токенов, при этом старый refresh-токен помечается как истекший.
+//
+// Параметры:
+//   - ctx - контекст запроса;
+//   - req - запрос с данными пользователя.
+//
+// Возвращает:
+//   - пару access- и refresh-токенов;
 func (s *JWTService) RefreshToken(ctx context.Context, req *auth.RefreshTokenRequest) (*auth.RefreshTokenReply, error) {
 	var userAgent string
 	var ipAddr string
@@ -178,6 +215,16 @@ func (s *JWTService) RefreshToken(ctx context.Context, req *auth.RefreshTokenReq
 	}, nil
 }
 
+// Logout - метод деавторизации пользователя.
+//
+// "Убивает" access-токены, путем выставления нового значения `valid-token-after`, после которого старые access-токены не могут быть использованы.
+//
+// Параметры:
+//   - ctx - контекст запроса;
+//   - req - запрос с данными пользователя.
+//
+// Возвращает:
+//   - статус деавторизации;
 func (s *JWTService) Logout(ctx context.Context, req *auth.LogoutRequest) (*auth.LogoutReply, error) {
 	tokenType, ok := ctx.Value("tokenType").(string)
 	if !ok || tokenType != "access" {

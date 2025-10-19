@@ -9,7 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// generateAccessToken генерирует JWT access токен доступа для указанного пользователя.
+// GenerateAccessToken генерирует JWT access токен доступа для указанного пользователя.
 //
 // Параметры:
 //   - userID: идентификатор пользователя (UUID).
@@ -26,7 +26,7 @@ func GenerateAccessToken(userID string) (string, error) {
 	}).SignedString([]byte(os.Getenv("SECRET_KEY")))
 }
 
-// generateRefreshToken генерирует JWT refresh токен доступа для указанного пользователя.
+// GenerateRefreshToken генерирует JWT refresh токен доступа для указанного пользователя.
 //
 // Параметры:
 //   - userID: идентификатор пользователя (UUID).
@@ -43,7 +43,7 @@ func GenerateRefreshToken(userID string, exp int64) (string, error) {
 	}).SignedString([]byte(os.Getenv("SECRET_KEY")))
 }
 
-// checkToken проверяет валидность токена и его тип.
+// CheckToken проверяет валидность токена и его тип.
 //
 // Параметры:
 //   - tokenString: строка токена.
@@ -76,7 +76,7 @@ func CheckToken(tokenString string, tokenType string) (*jwt.Token, error) {
 	return token, err
 }
 
-// extractSub извлекает идентификатор пользователя из токена.
+// ExtractSub извлекает идентификатор пользователя из токена.
 //
 // Параметры:
 //   - token: объект токена.
@@ -99,7 +99,7 @@ func ExtractSub(token *jwt.Token) (uuid.UUID, error) {
 	return subUUID, nil
 }
 
-// getIat извлекает время создания токена из токена.
+// GetIat извлекает время создания токена из токена.
 //
 // Параметры:
 //   - token: объект токена.

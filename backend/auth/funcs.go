@@ -13,6 +13,19 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+// GenerateTokens создает пару access и refresh токенов для пользователя с заданным userID.
+//
+// Формирует access токен, refresh токен, кодирует refresh в base64,
+// хэширует sha256 и bcrypt для безопасного хранения в базе.
+//
+// Параметры:
+//   - userID: идентификатор пользователя, для которого создаются токены.
+//
+// Возвращает:
+//   - accessToken: строка JWT access токена,
+//   - refreshTokenB64: строка base64-кодированного refresh токена,
+//   - refreshHash: bcrypt-хэш sha256-образа refresh токена,
+//   - err: ошибка, если что-то пошло не так.
 func GenerateTokens(userID uuid.UUID) (string, string, []byte, error) {
 
 	accessToken, err := GenerateAccessToken(userID.String())
@@ -34,6 +47,14 @@ func GenerateTokens(userID uuid.UUID) (string, string, []byte, error) {
 	return accessToken, b64Token, refreshHash, nil
 }
 
+// ExtractBearerToken извлекает Bearer токен из заголовка Authorization HTTP запроса.
+//
+// Параметры:
+//   - ctx - контекст запроса;
+//
+// Возвращает:
+//   - строку токена (без префикса "Bearer ").
+//   - ошибку, если заголовок отсутствует или формат неверный.
 func ExtractBearerToken(ctx context.Context) (string, error) {
 	meta, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
