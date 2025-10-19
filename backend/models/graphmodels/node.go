@@ -9,11 +9,11 @@ import (
 
 type Node struct {
 	gorm.Model
-	ID         uuid.UUID       `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	VersionID  PipelineVersion `gorm:"foreignKey:PipelineVersionID;constraint:OnDelete:CASCADE"`
-	Key        string          `gorm:"type:text;not null"`
-	Type       string          `gorm:"type:text;not null"`
-	ConfigJSON string          `gorm:"type:jsonb;not null"`
+	ID         uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	VersionID  uuid.UUID `gorm:"foreignKey:PipelineVersionID;constraint:OnDelete:CASCADE"`
+	Key        string    `gorm:"type:text;not null"`
+	Type       string    `gorm:"type:text;not null"`
+	ConfigJSON string    `gorm:"type:jsonb;not null"`
 }
 
 func (n *Node) BeforeCreate(tx *gorm.DB) error {

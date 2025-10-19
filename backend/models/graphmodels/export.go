@@ -12,7 +12,7 @@ import (
 type Export struct {
 	gorm.Model
 	ID         uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	ProjectID  Project   `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	ProjectID  uuid.UUID `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
 	Type       string    `gorm:"type:text;not null"`
 	Uri        string    `gorm:"type:text;not null"`
 	ConfigJSON string    `gorm:"type:jsonb;not null"`

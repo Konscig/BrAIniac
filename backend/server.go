@@ -74,7 +74,6 @@ func main() {
 		&graphmodels.RunTask{},
 		&graphmodels.Tool{},
 		&models.RefreshToken{},
-		// &othermodels.SomeModel{}, // добавь сюда остальные модели по мере необходимости
 	)
 	if err != nil {
 		panic("failed to auto migrate models")
