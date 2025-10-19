@@ -34,7 +34,6 @@ func (u *User) CreateUser(db *gorm.DB, email string, username string, passwordHa
 	return u, nil
 }
 
-// FindUserByEmail loads a user by email.
 func FindUserByEmail(ctx context.Context, db *gorm.DB, email string) (*User, error) {
 	var user User
 	if err := db.WithContext(ctx).Where("email = ?", email).First(&user).Error; err != nil {
