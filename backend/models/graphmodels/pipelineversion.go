@@ -1,4 +1,4 @@
-package models
+package graphmodels
 
 import (
 	"context"

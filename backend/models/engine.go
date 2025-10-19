@@ -5,16 +5,17 @@ import (
 
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
+	sqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	_ "modernc.org/sqlite" // pure Go sqlite
 )
 
 type Engine struct {
-	gorm.Model
 	Name     string
 	User     string
 	Password string
 	Database string
+	Driver   string
 	Uri      string
 }
 
@@ -31,7 +32,11 @@ func (e Engine) CreateEngine() (*gorm.DB, error) {
 		dsn = e.User + ":" + e.Password + "@tcp(" + e.Uri + ")/" + e.Database
 		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	case "SQLite":
-		db, err = gorm.Open(sqlite.Open(e.Database), &gorm.Config{})
+		// Используем pure-Go драйвер
+		db, err = gorm.Open(sqlite.New(sqlite.Config{
+			DriverName: "sqlite",
+			DSN:        e.Database, // ":memory:" или путь к файлу
+		}), &gorm.Config{})
 	default:
 		return nil, errors.New("unsupported database type")
 	}
