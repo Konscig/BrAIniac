@@ -1,5 +1,5 @@
 import React from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { ModeToggle } from "../components/mode-toggle";
 import { Button } from "../components/ui/button";
@@ -169,11 +169,6 @@ export function AuthPage(): React.ReactElement {
       />
       <div className="absolute inset-0 bg-background/75 backdrop-blur" />
 
-      <div className="absolute left-8 top-8">
-        <Link to="/" className="text-sm font-semibold text-muted-foreground transition hover:text-foreground">
-          ← Назад в студию
-        </Link>
-      </div>
       <div className="absolute right-8 top-8">
         <ModeToggle />
       </div>
