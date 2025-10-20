@@ -4,7 +4,6 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 
 import "./App.css";
 
-import { AgentChatDock } from "./components/agent-chat-dock";
 import { CanvasBoard } from "./components/canvas-board";
 import {
   EnvironmentModeSwitch,
@@ -13,19 +12,34 @@ import {
 import { ModeToggle } from "./components/mode-toggle";
 import { NodeLibrary } from "./components/node-library";
 import { SidebarProjects } from "./components/sidebar-projects";
+import { PipelineRunner } from "./components/pipeline-runner";
 import { Button } from "./components/ui/button";
-import { mockProjects } from "./data/mock-data";
-import { publishPipelineVersion } from "./lib/api";
+import {
+  createPipeline,
+  createProject,
+  executePipeline,
+  listPipelines,
+  listProjects,
+  publishPipelineVersion,
+  type EnvironmentModeApi,
+  type ExecutePipelineResponse,
+  type PipelineSummary,
+  type ProjectSummary
+} from "./lib/api";
 import { AuthPage } from "./pages/auth-page";
 import { useAuth } from "./providers/AuthProvider";
 
+const MODE_API_MAP: Record<EnvironmentMode, EnvironmentModeApi> = {
+  test: "ENVIRONMENT_MODE_TEST",
+  hybrid: "ENVIRONMENT_MODE_HYBRID",
+  real: "ENVIRONMENT_MODE_REAL"
+};
+
 function MainPage(): React.ReactElement {
-  const [activeProjectId, setActiveProjectId] = React.useState<string>(
-    mockProjects[0]?.id ?? ""
-  );
-  const [activePipelineId, setActivePipelineId] = React.useState<string>(
-    mockProjects[0]?.pipelines[0]?.id ?? ""
-  );
+  const [projects, setProjects] = React.useState<ProjectSummary[]>([]);
+  const [pipelines, setPipelines] = React.useState<PipelineSummary[]>([]);
+  const [activeProjectId, setActiveProjectId] = React.useState<string>("");
+  const [activePipelineId, setActivePipelineId] = React.useState<string>("");
   const [environmentMode, setEnvironmentMode] = React.useState<EnvironmentMode>(
     "test"
   );
@@ -33,11 +47,19 @@ function MainPage(): React.ReactElement {
   const [refreshToken, setRefreshToken] = React.useState(0);
   const [boardStatus, setBoardStatus] = React.useState({
     isOffline: false,
-    hasUnsavedChanges: false
+    hasUnsavedChanges: false,
+    lastError: null as string | null
   });
   const [saveFeedback, setSaveFeedback] = React.useState<
     { type: "success" | "error"; message: string } | null
   >(null);
+  const [dataError, setDataError] = React.useState<string | null>(null);
+  const [isLoadingProjects, setIsLoadingProjects] = React.useState(false);
+  const [isLoadingPipelines, setIsLoadingPipelines] = React.useState(false);
+  const [triggerInput, setTriggerInput] = React.useState("");
+  const [runResult, setRunResult] = React.useState<ExecutePipelineResponse | null>(null);
+  const [runError, setRunError] = React.useState<string | null>(null);
+  const [isRunning, setIsRunning] = React.useState(false);
   const navigate = useNavigate();
   const { clearSession } = useAuth();
 
@@ -46,24 +68,102 @@ function MainPage(): React.ReactElement {
     navigate("/auth", { replace: true });
   }, [clearSession, navigate]);
 
-  React.useEffect(() => {
-    const project = mockProjects.find((p) => p.id === activeProjectId);
-    if (!project) {
+  const handleSelectProject = React.useCallback((projectId: string) => {
+    setActiveProjectId(projectId);
+    setActivePipelineId("");
+    setRunResult(null);
+    setRunError(null);
+  }, []);
+
+  const handleSelectPipeline = React.useCallback((pipelineId: string) => {
+    setActivePipelineId(pipelineId);
+    setRunResult(null);
+    setRunError(null);
+  }, []);
+
+  const loadProjects = React.useCallback(async () => {
+    setIsLoadingProjects(true);
+    setDataError(null);
+    try {
+      let projectList = await listProjects();
+      if (projectList.length === 0) {
+        const created = await createProject(
+          "Демо проект",
+          "Проект создан автоматически"
+        );
+        projectList = [created];
+      }
+      setProjects(projectList);
+      setActiveProjectId((prev) => {
+        if (prev && projectList.some((project) => project.id === prev)) {
+          return prev;
+        }
+        return projectList[0]?.id ?? "";
+      });
+    } catch (error) {
+      console.error("Failed to load projects", error);
+      setDataError("Не удалось загрузить проекты");
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }, []);
+
+  const loadPipelines = React.useCallback(async (projectId: string) => {
+    if (!projectId) {
+      setPipelines([]);
       setActivePipelineId("");
       return;
     }
 
-    const belongsToProject = project.pipelines.some((pipeline) => pipeline.id === activePipelineId);
-    if (!belongsToProject) {
-      setActivePipelineId(project.pipelines[0]?.id ?? "");
+    setIsLoadingPipelines(true);
+    setDataError(null);
+    try {
+      let pipelineList = await listPipelines(projectId);
+      if (pipelineList.length === 0) {
+        const created = await createPipeline(
+          projectId,
+          "Основной пайплайн",
+          "Пайплайн создан автоматически"
+        );
+        pipelineList = [created];
+      }
+      setPipelines(pipelineList);
+      setActivePipelineId((prev) => {
+        if (prev && pipelineList.some((pipeline) => pipeline.id === prev)) {
+          return prev;
+        }
+        return pipelineList[0]?.id ?? "";
+      });
+    } catch (error) {
+      console.error("Failed to load pipelines", error);
+      setDataError("Не удалось загрузить пайплайны");
+      setPipelines([]);
+      setActivePipelineId("");
+    } finally {
+      setIsLoadingPipelines(false);
     }
-  }, [activePipelineId, activeProjectId]);
+  }, []);
+
+  React.useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
+
+  React.useEffect(() => {
+    if (activeProjectId) {
+      void loadPipelines(activeProjectId);
+    }
+  }, [activeProjectId, loadPipelines]);
+
+  React.useEffect(() => {
+    setTriggerInput("");
+  }, [activeProjectId, activePipelineId]);
 
   const handleBoardStatusChange = React.useCallback(
-    (status: { isOffline: boolean; hasUnsavedChanges: boolean }) => {
+    (status: { isOffline: boolean; hasUnsavedChanges: boolean; lastError?: string | null }) => {
       setBoardStatus({
         isOffline: status.isOffline,
-        hasUnsavedChanges: status.hasUnsavedChanges
+        hasUnsavedChanges: status.hasUnsavedChanges,
+        lastError: status.lastError ?? null
       });
     },
     []
@@ -74,6 +174,11 @@ function MainPage(): React.ReactElement {
 
     if (!activeProjectId || !activePipelineId) {
       setSaveFeedback({ type: "error", message: "Выберите проект и пайплайн" });
+      return;
+    }
+
+    if (isLoadingProjects || isLoadingPipelines) {
+      setSaveFeedback({ type: "error", message: "Подождите завершения загрузки данных" });
       return;
     }
 
@@ -97,7 +202,60 @@ function MainPage(): React.ReactElement {
       console.error("Failed to save draft", error);
       setSaveFeedback({ type: "error", message: "Не удалось сохранить черновик" });
     }
-  }, [activePipelineId, activeProjectId, boardStatus.isOffline]);
+  }, [
+    activePipelineId,
+    activeProjectId,
+    boardStatus.isOffline,
+    isLoadingPipelines,
+    isLoadingProjects
+  ]);
+
+  const handleRunPipeline = React.useCallback(async () => {
+    setRunError(null);
+
+    if (!activeProjectId || !activePipelineId) {
+      setRunError("Выберите проект и пайплайн");
+      return;
+    }
+
+    const prompt = triggerInput.trim();
+    if (!prompt) {
+      setRunError("Введите запрос для запуска пайплайна");
+      return;
+    }
+
+    if (boardStatus.isOffline) {
+      setRunError("Пайплайн работает в офлайн-режиме. Синхронизируйте изменения");
+      return;
+    }
+
+    setIsRunning(true);
+    setRunResult(null);
+    try {
+      const response = await executePipeline(
+        activeProjectId,
+        activePipelineId,
+        MODE_API_MAP[environmentMode],
+        prompt
+      );
+      setRunResult(response);
+    } catch (error) {
+      console.error("Failed to execute pipeline", error);
+      const apiError = error as { status?: number; message?: string };
+      const fallbackMessage = apiError.status === 404
+        ? "Опубликуйте пайплайн или добавьте узлы"
+        : apiError.message ?? "Не удалось запустить пайплайн";
+      setRunError(fallbackMessage);
+    } finally {
+      setIsRunning(false);
+    }
+  }, [
+    activePipelineId,
+    activeProjectId,
+    boardStatus.isOffline,
+    environmentMode,
+    triggerInput
+  ]);
 
   return (
     <div className="App flex min-h-screen flex-col bg-background text-foreground">
@@ -116,12 +274,30 @@ function MainPage(): React.ReactElement {
             <Button
               variant="secondary"
               className="rounded-full"
-              disabled={!activePipelineId || boardStatus.isOffline}
+              disabled={
+                !activePipelineId ||
+                boardStatus.isOffline ||
+                isLoadingProjects ||
+                isLoadingPipelines
+              }
               onClick={handleSaveDraft}
             >
               Сохранить черновик
             </Button>
-            <Button className="rounded-full">Запустить пайплайн</Button>
+            <Button
+              className="rounded-full"
+              disabled={
+                !activePipelineId ||
+                !triggerInput.trim() ||
+                boardStatus.isOffline ||
+                isLoadingProjects ||
+                isLoadingPipelines ||
+                isRunning
+              }
+              onClick={handleRunPipeline}
+            >
+              {isRunning ? "Запускаем..." : "Запустить пайплайн"}
+            </Button>
             <ModeToggle />
             <Button
               type="button"
@@ -142,17 +318,25 @@ function MainPage(): React.ReactElement {
               {saveFeedback.message}
             </span>
           )}
+          {dataError && (
+            <span className="text-xs text-red-300">{dataError}</span>
+          )}
+          {boardStatus.lastError && (
+            <span className="text-xs text-red-300">{boardStatus.lastError}</span>
+          )}
         </div>
       </header>
 
       <main className="flex flex-1 overflow-hidden">
         <SidebarProjects
+          projects={projects}
+          pipelines={pipelines}
           activeProjectId={activeProjectId}
           activePipelineId={activePipelineId}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
-          onSelectProject={setActiveProjectId}
-          onSelectPipeline={setActivePipelineId}
+          onSelectProject={handleSelectProject}
+          onSelectPipeline={handleSelectPipeline}
         />
 
         <div className="flex flex-1 flex-col overflow-hidden">
@@ -162,10 +346,25 @@ function MainPage(): React.ReactElement {
               pipelineId={activePipelineId}
               mode={environmentMode}
               refreshToken={refreshToken}
+              onStatusChange={handleBoardStatusChange}
             />
-            <div className="flex w-[320px] flex-col gap-4">
+            <div className="flex w-[340px] flex-col gap-4">
               <NodeLibrary />
-              <AgentChatDock />
+              <PipelineRunner
+                triggerInput={triggerInput}
+                onTriggerInputChange={setTriggerInput}
+                onRun={handleRunPipeline}
+                isRunning={isRunning}
+                isDisabled={
+                  !activePipelineId ||
+                  boardStatus.isOffline ||
+                  isLoadingProjects ||
+                  isLoadingPipelines ||
+                  !triggerInput.trim()
+                }
+                result={runResult}
+                error={runError}
+              />
             </div>
           </div>
 

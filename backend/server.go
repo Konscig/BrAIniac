@@ -81,11 +81,12 @@ func main() {
 	}
 
 	jwtService := auth.NewJWTService(db, os.Getenv("JWT_SECRET_KEY"), time.Hour*24*30)
+	mistralKey := os.Getenv("MISTRAL_API_KEY")
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(auth.InterceptorRouter(db, jwtService)))
 
 	api.RegisterGreeterServer(grpcServer, &server{})
 	authapi.RegisterAuthServiceServer(grpcServer, jwtService)
-	api.RegisterAgentGraphServiceServer(grpcServer, graph.NewService(db))
+	api.RegisterAgentGraphServiceServer(grpcServer, graph.NewService(db, mistralKey))
 
 	go func() {
 		log.Println("Serving gRPC on :50051")
