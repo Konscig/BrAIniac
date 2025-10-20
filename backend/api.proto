@@ -161,6 +161,7 @@ message ExecutePipelineRequest {
   string project_id = 1;
   string pipeline_id = 2;
   EnvironmentMode mode = 3;
+  string trigger_input = 4;
 }
 
 message NodeExecutionResult {
@@ -171,6 +172,18 @@ message NodeExecutionResult {
 
 message ExecutePipelineResponse {
   repeated NodeExecutionResult results = 1;
+  string final_output = 2;
+}
+
+message CreateProjectRequest {
+  string name = 1;
+  string description = 2;
+}
+
+message CreatePipelineRequest {
+  string project_id = 1;
+  string name = 2;
+  string description = 3;
 }
 
 service Greeter {
@@ -183,6 +196,18 @@ service Greeter {
 }
 
 service AgentGraphService {
+  rpc CreateProject (CreateProjectRequest) returns (ProjectSummary) {
+    option (google.api.http) = {
+      post: "/v1/projects"
+      body: "*"
+    };
+  }
+  rpc CreatePipeline (CreatePipelineRequest) returns (PipelineSummary) {
+    option (google.api.http) = {
+      post: "/v1/projects/{project_id}/pipelines"
+      body: "*"
+    };
+  }
   rpc GetPipelineGraph (GetPipelineGraphRequest) returns (GetPipelineGraphResponse) {
     option (google.api.http) = {
       get: "/v1/projects/{project_id}/pipelines/{pipeline_id}/graph"

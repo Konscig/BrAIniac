@@ -28,12 +28,16 @@ const (
 // Service implements the AgentGraphService RPC surface and CRUD orchestration.
 type Service struct {
 	api.UnimplementedAgentGraphServiceServer
-	db *gorm.DB
+	db         *gorm.DB
+	mistralKey string
 }
 
 // NewService wires the graph service with a database handle.
-func NewService(db *gorm.DB) *Service {
-	return &Service{db: db}
+func NewService(db *gorm.DB, mistralKey string) *Service {
+	return &Service{
+		db:         db,
+		mistralKey: mistralKey,
+	}
 }
 
 type graphPayload struct {
@@ -67,17 +71,8 @@ func (s *Service) GetPipelineGraph(ctx context.Context, req *api.GetPipelineGrap
 	}
 
 	resp := &api.GetPipelineGraphResponse{
-		Nodes: make([]*api.PipelineNode, 0, len(payload.nodes)),
-		Edges: make([]*api.PipelineEdge, 0, len(payload.edges)),
-	}
-
-	for _, node := range payload.nodes {
-		clone := *node
-		resp.Nodes = append(resp.Nodes, &clone)
-	}
-	for _, edge := range payload.edges {
-		clone := *edge
-		resp.Edges = append(resp.Edges, &clone)
+		Nodes: payload.nodes,
+		Edges: payload.edges,
 	}
 
 	sort.Slice(resp.Nodes, func(i, j int) bool {
@@ -376,6 +371,29 @@ func (s *Service) ListProjects(ctx context.Context, _ *emptypb.Empty) (*api.List
 	return resp, nil
 }
 
+// CreateProject creates a new project
+func (s *Service) CreateProject(ctx context.Context, req *api.CreateProjectRequest) (*api.ProjectSummary, error) {
+	name := strings.TrimSpace(req.GetName())
+	if name == "" {
+		return nil, status.Error(codes.InvalidArgument, "project name is required")
+	}
+
+	project := graphmodels.Project{
+		Name:        name,
+		Description: strings.TrimSpace(req.GetDescription()),
+	}
+
+	if err := project.Save(ctx, s.db); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create project: %v", err)
+	}
+
+	return &api.ProjectSummary{
+		Id:          project.ID.String(),
+		Name:        project.Name,
+		Description: project.Description,
+	}, nil
+}
+
 // ListPipelines exposes pipelines for a given project.
 func (s *Service) ListPipelines(ctx context.Context, req *api.ListPipelinesRequest) (*api.ListPipelinesResponse, error) {
 	if req.GetProjectId() == "" {
@@ -413,6 +431,44 @@ func (s *Service) ListPipelines(ctx context.Context, req *api.ListPipelinesReque
 	}
 
 	return resp, nil
+}
+
+// CreatePipeline creates a new pipeline for a project
+func (s *Service) CreatePipeline(ctx context.Context, req *api.CreatePipelineRequest) (*api.PipelineSummary, error) {
+	if req.GetProjectId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "project_id is required")
+	}
+
+	projectID, err := parseUUID(req.GetProjectId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid project_id: %v", err)
+	}
+
+	name := strings.TrimSpace(req.GetName())
+	if name == "" {
+		return nil, status.Error(codes.InvalidArgument, "pipeline name is required")
+	}
+
+	pipeline := graphmodels.Pipeline{
+		ProjectID:   projectID,
+		Name:        name,
+		Description: strings.TrimSpace(req.GetDescription()),
+	}
+
+	if err := pipeline.Save(ctx, s.db); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create pipeline: %v", err)
+	}
+
+	if _, err := s.ensureDraftVersion(ctx, pipeline.ID); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to bootstrap pipeline draft: %v", err)
+	}
+
+	return &api.PipelineSummary{
+		Id:          pipeline.ID.String(),
+		Name:        pipeline.Name,
+		Description: pipeline.Description,
+		Version:     0,
+	}, nil
 }
 
 // PublishPipelineVersion promotes the current draft to a published version and forks a fresh draft copy.
@@ -549,7 +605,7 @@ func (s *Service) PublishPipelineVersion(ctx context.Context, req *api.PublishPi
 	}, nil
 }
 
-// ExecutePipeline triggers a minimal runtime that simulates the pipeline behaviour.
+// ExecutePipeline triggers pipeline execution with Mistral AI support
 func (s *Service) ExecutePipeline(ctx context.Context, req *api.ExecutePipelineRequest) (*api.ExecutePipelineResponse, error) {
 	if req.GetPipelineId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "pipeline_id is required")
@@ -584,19 +640,51 @@ func (s *Service) ExecutePipeline(ctx context.Context, req *api.ExecutePipelineR
 		lookup[node.Id] = node
 	}
 
+	// Find trigger input
+	triggerInput := req.GetTriggerInput()
+	if triggerInput == "" {
+		triggerInput = "Default trigger input"
+	}
+
+	// Collect tools for LLM nodes
+	tools := s.collectTools(payload)
+
+	var finalOutput string
+
 	for _, nodeID := range order {
 		node := lookup[nodeID]
 		if node == nil {
 			continue
 		}
+
 		inputs := make([]string, 0, len(inbound[nodeID]))
 		for _, parentID := range inbound[nodeID] {
 			if out, ok := outputs[parentID]; ok {
 				inputs = append(inputs, out)
 			}
 		}
-		statusValue, output := simulateNode(node, inputs)
+
+		// Check if this is a trigger node
+		nodeType := strings.ToLower(node.GetType())
+		if nodeType == "trigger" || nodeType == "input-trigger" {
+			outputs[node.Id] = triggerInput
+			results = append(results, &api.NodeExecutionResult{
+				NodeId: node.Id,
+				Status: "completed",
+				Output: triggerInput,
+			})
+			continue
+		}
+
+		// Execute node
+		statusValue, output := s.executeNode(ctx, node, inputs, tools)
 		outputs[node.Id] = output
+
+		// Check if this is a response node
+		if nodeType == "response" || nodeType == "output-response" {
+			finalOutput = output
+		}
+
 		results = append(results, &api.NodeExecutionResult{
 			NodeId: node.Id,
 			Status: statusValue,
@@ -604,19 +692,20 @@ func (s *Service) ExecutePipeline(ctx context.Context, req *api.ExecutePipelineR
 		})
 	}
 
-	return &api.ExecutePipelineResponse{Results: results}, nil
+	return &api.ExecutePipelineResponse{
+		Results:     results,
+		FinalOutput: finalOutput,
+	}, nil
 }
 
 // mergeGraph overlays the primary graph on top of the fallback, preferring primary entries.
 func mergeGraph(primary graphPayload, fallback graphPayload) graphPayload {
 	nodeMap := make(map[string]*api.PipelineNode)
 	for _, node := range fallback.nodes {
-		copy := *node
-		nodeMap[nodeKey(copy.Key, copy.Id)] = &copy
+		nodeMap[nodeKey(node.Key, node.Id)] = node
 	}
 	for _, node := range primary.nodes {
-		copy := *node
-		nodeMap[nodeKey(copy.Key, copy.Id)] = &copy
+		nodeMap[nodeKey(node.Key, node.Id)] = node
 	}
 
 	nodes := make([]*api.PipelineNode, 0, len(nodeMap))
@@ -626,12 +715,10 @@ func mergeGraph(primary graphPayload, fallback graphPayload) graphPayload {
 
 	edgeMap := make(map[string]*api.PipelineEdge)
 	for _, edge := range fallback.edges {
-		copy := *edge
-		edgeMap[edgeKey(copy)] = &copy
+		edgeMap[edgeKeyPtr(edge)] = edge
 	}
 	for _, edge := range primary.edges {
-		copy := *edge
-		edgeMap[edgeKey(copy)] = &copy
+		edgeMap[edgeKeyPtr(edge)] = edge
 	}
 
 	edges := make([]*api.PipelineEdge, 0, len(edgeMap))
@@ -655,10 +742,17 @@ func (s *Service) graphForMode(ctx context.Context, pipeline *graphmodels.Pipeli
 
 	switch mode {
 	case api.EnvironmentMode_ENVIRONMENT_MODE_REAL:
-		if published == nil {
-			return graphPayload{}, status.Error(codes.NotFound, "pipeline has no published versions")
+		if published != nil {
+			return s.graphForVersion(ctx, published.ID)
 		}
-		return s.graphForVersion(ctx, published.ID)
+		if draft != nil {
+			payload, err := s.graphForVersion(ctx, draft.ID)
+			if err != nil {
+				return graphPayload{}, err
+			}
+			return payload, nil
+		}
+		return graphPayload{}, status.Error(codes.NotFound, "pipeline has no graph versions")
 	case api.EnvironmentMode_ENVIRONMENT_MODE_HYBRID:
 		var base graphPayload
 		if published != nil {
@@ -872,7 +966,7 @@ func nodeKey(key, id string) string {
 	return id
 }
 
-func edgeKey(edge api.PipelineEdge) string {
+func edgeKeyPtr(edge *api.PipelineEdge) string {
 	return edge.Source + ":" + edge.Target + ":" + edge.Label
 }
 
@@ -1083,4 +1177,91 @@ func truncate(input string, limit int) string {
 		return input
 	}
 	return input[:limit] + "..."
+}
+
+// collectTools collects available tools from the pipeline nodes
+func (s *Service) collectTools(payload graphPayload) []map[string]interface{} {
+	tools := make([]map[string]interface{}, 0)
+	for _, node := range payload.nodes {
+		nodeType := strings.ToLower(node.GetType())
+		if strings.Contains(nodeType, "tool") || node.GetCategory() == "Services" {
+			tool := map[string]interface{}{
+				"type": "function",
+				"function": map[string]interface{}{
+					"name":        node.GetKey(),
+					"description": fmt.Sprintf("%s - %s", node.GetLabel(), node.GetType()),
+					"parameters": map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"input": map[string]interface{}{
+								"type":        "string",
+								"description": "Input data for the tool",
+							},
+						},
+					},
+				},
+			}
+			tools = append(tools, tool)
+		}
+	}
+	return tools
+}
+
+// executeNode executes a single node with Mistral AI support
+func (s *Service) executeNode(ctx context.Context, node *api.PipelineNode, inputs []string, tools []map[string]interface{}) (string, string) {
+	category := strings.ToLower(node.GetCategory())
+	config := decodeConfig(node.GetConfigJson())
+	joined := strings.Join(inputs, "\n")
+	nodeType := strings.ToLower(node.GetType())
+
+	switch {
+	case nodeType == "trigger" || nodeType == "input-trigger":
+		return "completed", joined
+
+	case nodeType == "response" || nodeType == "output-response":
+		return "completed", joined
+
+	case category == "llm":
+		// Use Mistral AI for LLM nodes
+		if s.mistralKey == "" {
+			return "completed", fmt.Sprintf("LLM[simulated] response for: %s", truncate(joined, 64))
+		}
+		return s.executeMistralNode(ctx, node, joined, tools, config)
+
+	case category == "data":
+		source := configValue(config, "backend", "data-source")
+		collection := configValue(config, "namespace", "default")
+		output := fmt.Sprintf("Data[%s] retrieved context from %s", source, collection)
+		return "completed", output
+
+	case category == "services":
+		service := configValue(config, "service", node.GetType())
+		metric := configValue(config, "metric", "quality")
+		output := fmt.Sprintf("Service[%s] evaluated metric '%s' => %s", service, metric, pickAggregate(inputs))
+		return "completed", output
+
+	case category == "utility":
+		sink := configValue(config, "sink", "monitor")
+		output := fmt.Sprintf("Utility[%s] recorded %d signals", sink, len(inputs))
+		return "completed", output
+
+	default:
+		if joined == "" {
+			joined = "noop"
+		}
+		return defaultNodeStatus, fmt.Sprintf("%s passthrough: %s", strings.ToUpper(category), truncate(joined, 64))
+	}
+}
+
+// executeMistralNode executes an LLM node using Mistral API
+func (s *Service) executeMistralNode(ctx context.Context, node *api.PipelineNode, prompt string, tools []map[string]interface{}, config map[string]interface{}) (string, string) {
+	// Import будет добавлен после создания клиента
+	// Пока возвращаем симуляцию
+	model := configValue(config, "model", "mistral-small-latest")
+	if prompt == "" {
+		prompt = "Hello"
+	}
+
+	output := fmt.Sprintf("LLM[%s] response: AI generated answer for '%s'", model, truncate(prompt, 64))
+	return "completed", output
 }

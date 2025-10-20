@@ -274,6 +274,25 @@ export function CanvasBoard({
 		} catch (error) {
 			console.error("Failed to load pipeline graph", error);
 			const apiError = error as ApiError;
+			if (apiError?.status === 404 && mode === "real") {
+				try {
+					const draftGraph = await getPipelineGraph(projectId, pipelineId, MODE_MAP.test);
+					const draftNodes = draftGraph.nodes.map(toFlowNode);
+					const draftEdges = draftGraph.edges.map(toFlowEdge);
+					setNodes(draftNodes);
+					setEdges(draftEdges);
+					updateEmptyState(draftNodes.length, draftEdges.length);
+					setFallbackMode(false);
+					setOfflineNotice(
+						"Опубликованная версия не найдена. Показан черновик пайплайна"
+					);
+					setLocalUnsaved(false);
+					onGraphLoaded?.(draftGraph.nodes);
+					return;
+				} catch (fallbackError) {
+					console.error("Failed to load draft graph fallback", fallbackError);
+				}
+			}
 			if (apiError?.status === 404) {
 				setFallbackMode(true);
 				setFetchError(null);

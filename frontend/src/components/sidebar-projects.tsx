@@ -5,9 +5,11 @@ import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
 import { cn } from "../lib/utils";
-import { mockProjects } from "../data/mock-data";
+import type { PipelineSummary, ProjectSummary } from "../lib/api";
 
 interface SidebarProjectsProps {
+  projects: ProjectSummary[];
+  pipelines: PipelineSummary[];
   activeProjectId: string;
   activePipelineId: string;
   collapsed: boolean;
@@ -17,6 +19,8 @@ interface SidebarProjectsProps {
 }
 
 export function SidebarProjects({
+  projects,
+  pipelines,
   activeProjectId,
   activePipelineId,
   collapsed,
@@ -24,9 +28,8 @@ export function SidebarProjects({
   onSelectProject,
   onSelectPipeline
 }: SidebarProjectsProps): React.ReactElement {
-  const activeProject = mockProjects.find((p) => p.id === activeProjectId) ??
-    mockProjects[0];
-  const pipelines = activeProject?.pipelines ?? [];
+  const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0];
+  const otherProjects = projects.filter((project) => project.id !== activeProject?.id);
 
   return (
     <aside
@@ -50,7 +53,7 @@ export function SidebarProjects({
                 Текущий проект
               </div>
               <div className="font-semibold text-foreground">
-                {activeProject.name}
+                {activeProject ? activeProject.name : "Нет проектов"}
               </div>
             </div>
           )}
@@ -78,6 +81,11 @@ export function SidebarProjects({
       )}
       <ScrollArea className="flex-1 px-2">
         <div className="space-y-2 pb-6">
+          {pipelines.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              Пайплайнов пока нет
+            </div>
+          )}
           {pipelines.map((pipeline) => (
             <button
               key={pipeline.id}
@@ -94,7 +102,7 @@ export function SidebarProjects({
                 {pipeline.name}
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                {pipeline.nodes.length} нод
+                Версия {pipeline.version ?? 0}
               </div>
             </button>
           ))}
@@ -104,9 +112,7 @@ export function SidebarProjects({
               <div className="pt-2 text-xs uppercase tracking-wide text-muted-foreground">
                 Другие проекты
               </div>
-              {mockProjects
-                .filter((project) => project.id !== activeProject.id)
-                .map((project) => (
+              {otherProjects.map((project) => (
                   <button
                     key={project.id}
                     type="button"

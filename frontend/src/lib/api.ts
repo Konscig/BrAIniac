@@ -133,6 +133,7 @@ export interface NodeExecutionResultDto {
 
 export interface ExecutePipelineResponse {
   results: NodeExecutionResultDto[];
+  finalOutput?: string;
 }
 
 export async function listProjects(): Promise<ProjectSummary[]> {
@@ -140,11 +141,27 @@ export async function listProjects(): Promise<ProjectSummary[]> {
   return payload.projects ?? [];
 }
 
+export async function createProject(name: string, description: string): Promise<ProjectSummary> {
+  return postJson<ProjectSummary>("/v1/projects", { name, description });
+}
+
 export async function listPipelines(projectId: string): Promise<PipelineSummary[]> {
   const payload = await apiRequest<{ pipelines: PipelineSummary[] }>(
     `/v1/projects/${projectId}/pipelines`
   );
   return payload.pipelines ?? [];
+}
+
+export async function createPipeline(
+  projectId: string,
+  name: string,
+  description: string
+): Promise<PipelineSummary> {
+  return postJson<PipelineSummary>(`/v1/projects/${projectId}/pipelines`, {
+    projectId,
+    name,
+    description
+  });
 }
 
 export async function getPipelineGraph(
@@ -242,10 +259,11 @@ export async function publishPipelineVersion(
 export async function executePipeline(
   projectId: string,
   pipelineId: string,
-  mode: EnvironmentModeApi
+  mode: EnvironmentModeApi,
+  triggerInput?: string
 ): Promise<ExecutePipelineResponse> {
   return postJson<ExecutePipelineResponse>(
     `/v1/projects/${projectId}/pipelines/${pipelineId}:execute`,
-    { mode }
+    { mode, triggerInput }
   );
 }
