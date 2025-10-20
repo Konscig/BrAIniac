@@ -172,6 +172,17 @@ export function CanvasBoard({
 	const reactFlowInstance = React.useRef<ReactFlowInstance<VkNodeData> | null>(null);
 	const localGraphsRef = React.useRef<Record<string, LocalGraphSnapshot>>({});
 
+	// refs to access latest nodes/edges inside async loadGraph without
+	// closing over stale values
+	const nodesRef = React.useRef<Array<Node<VkNodeData>>>(nodes);
+	const edgesRef = React.useRef<Edge[]>(edges);
+	React.useEffect(() => {
+		nodesRef.current = nodes;
+	}, [nodes]);
+	React.useEffect(() => {
+		edgesRef.current = edges;
+	}, [edges]);
+
 	const modeParam = MODE_MAP[mode];
 	const hasContext = Boolean(projectId && pipelineId);
 	const hasValidProjectId = !projectId || uuidRegex.test(projectId);
@@ -294,15 +305,26 @@ export function CanvasBoard({
 				}
 			}
 			if (apiError?.status === 404) {
+				// If we already have a loaded graph (from previous successful load),
+				// keep it visible instead of clearing it when the server returns 404
+				// for the requested mode. Only restore the browser-local snapshot when
+				// we have nothing loaded.
 				setFallbackMode(true);
 				setFetchError(null);
-				const isEmpty = restoreLocalGraph();
-				setOfflineNotice(
-					"Сервер не нашёл этот пайплайн. Продолжаем в локальном режиме — данные сохраняются в браузере"
-				);
-				if (isEmpty) {
-					setEmptyStateMessage(
-						"Создайте узлы — мы сохраним их локально до синхронизации с сервером"
+				if (nodesRef.current.length === 0 && edgesRef.current.length === 0) {
+					const isEmpty = restoreLocalGraph();
+					setOfflineNotice(
+						"Сервер не нашёл этот пайплайн. Продолжаем в локальном режиме — данные сохраняются в браузере"
+					);
+					if (isEmpty) {
+						setEmptyStateMessage(
+							"Создайте узлы — мы сохраним их локально до синхронизации с сервером"
+							);
+					}
+				} else {
+					// keep current nodes/edges and show notice
+					setOfflineNotice(
+						"Сервер не нашёл этот пайплайн для выбранного режима — показываем предыдущую версию"
 					);
 				}
 			} else {

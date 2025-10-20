@@ -378,6 +378,30 @@ func (s *Service) CreateProject(ctx context.Context, req *api.CreateProjectReque
 		return nil, status.Error(codes.InvalidArgument, "project name is required")
 	}
 
+	// If a project with the same name exists (including soft-deleted), handle it.
+	var existing graphmodels.Project
+	if err := s.db.WithContext(ctx).Unscoped().Where("name = ?", name).First(&existing).Error; err == nil {
+		// Found an existing project with this name
+		if existing.DeletedAt.Valid {
+			// restore soft-deleted project: clear deleted_at and update description
+			if err := s.db.WithContext(ctx).Unscoped().Model(&existing).Updates(map[string]interface{}{
+				"deleted_at":  nil,
+				"description": strings.TrimSpace(req.GetDescription()),
+			}).Error; err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to restore project: %v", err)
+			}
+
+			return &api.ProjectSummary{
+				Id:          existing.ID.String(),
+				Name:        existing.Name,
+				Description: existing.Description,
+			}, nil
+		}
+
+		// Active project with same name exists
+		return nil, status.Error(codes.AlreadyExists, "project with this name already exists")
+	}
+
 	project := graphmodels.Project{
 		Name:        name,
 		Description: strings.TrimSpace(req.GetDescription()),

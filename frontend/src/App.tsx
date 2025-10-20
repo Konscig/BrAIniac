@@ -27,6 +27,7 @@ import {
   type PipelineSummary,
   type ProjectSummary
 } from "./lib/api";
+import { updateProject } from "./lib/api";
 import { AuthPage } from "./pages/auth-page";
 import { useAuth } from "./providers/AuthProvider";
 
@@ -140,6 +141,19 @@ function MainPage(): React.ReactElement {
       setIsLoadingProjects(false);
     }
   }, [activeProjectId]);
+
+  const handleEditProject = React.useCallback(async (projectId: string, name: string, description?: string) => {
+    setIsLoadingProjects(true);
+    try {
+      await updateProject(projectId, name, description);
+      setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, name } : p)));
+    } catch (err) {
+      console.error('Failed to update project', err);
+      setDataError('Не удалось обновить проект');
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }, []);
 
   const loadPipelines = React.useCallback(async (projectId: string) => {
     if (!projectId) {
@@ -372,6 +386,7 @@ function MainPage(): React.ReactElement {
           onSelectPipeline={handleSelectPipeline}
           onCreateProject={handleCreateProject}
           onDeleteProject={handleDeleteProject}
+          onEditProject={handleEditProject}
         />
 
         <div className="flex flex-1 flex-col overflow-hidden">
