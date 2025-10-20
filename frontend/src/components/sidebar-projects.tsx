@@ -170,6 +170,14 @@ export function SidebarProjects({
                       </div>
                       <div className="flex justify-end gap-2">
                         <Button variant="ghost" onClick={() => setDialogOpen(false)}>Отмена</Button>
+                        {typeof onDeleteProject === 'function' && (
+                          <Button variant="destructive" onClick={() => {
+                            if (window.confirm('Удалить проект?')) {
+                              onDeleteProject(project.id);
+                              setDialogOpen(false);
+                            }
+                          }}>Удалить</Button>
+                        )}
                         <Button onClick={() => { const name = editingName.trim(); if (name && typeof onEditProject === 'function') { onEditProject(project.id, name, editingDesc); } setDialogOpen(false); }}>Сохранить</Button>
                       </div>
                     </div>
