@@ -759,8 +759,6 @@ func local_request_AgentGraphService_ExecutePipeline_0(ctx context.Context, mars
 	return msg, metadata, err
 }
 
-<<<<<<< HEAD
-=======
 func request_AgentGraphService_CreateProjectWithOwner_0(ctx context.Context, marshaler runtime.Marshaler, client AgentGraphServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq CreateProjectRequest
@@ -788,7 +786,6 @@ func local_request_AgentGraphService_CreateProjectWithOwner_0(ctx context.Contex
 	return msg, metadata, err
 }
 
->>>>>>> origin/func-for-agents
 func request_AgentGraphService_GetProject_0(ctx context.Context, marshaler runtime.Marshaler, client AgentGraphServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq GetProjectRequest
@@ -1209,8 +1206,6 @@ func RegisterAgentGraphServiceHandlerServer(ctx context.Context, mux *runtime.Se
 		}
 		forward_AgentGraphService_ExecutePipeline_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-<<<<<<< HEAD
-=======
 	mux.Handle(http.MethodPost, pattern_AgentGraphService_CreateProjectWithOwner_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -1231,7 +1226,6 @@ func RegisterAgentGraphServiceHandlerServer(ctx context.Context, mux *runtime.Se
 		}
 		forward_AgentGraphService_CreateProjectWithOwner_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
->>>>>>> origin/func-for-agents
 	mux.Handle(http.MethodGet, pattern_AgentGraphService_GetProject_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -1620,8 +1614,6 @@ func RegisterAgentGraphServiceHandlerClient(ctx context.Context, mux *runtime.Se
 		}
 		forward_AgentGraphService_ExecutePipeline_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-<<<<<<< HEAD
-=======
 	mux.Handle(http.MethodPost, pattern_AgentGraphService_CreateProjectWithOwner_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -1639,7 +1631,6 @@ func RegisterAgentGraphServiceHandlerClient(ctx context.Context, mux *runtime.Se
 		}
 		forward_AgentGraphService_CreateProjectWithOwner_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
->>>>>>> origin/func-for-agents
 	mux.Handle(http.MethodGet, pattern_AgentGraphService_GetProject_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -1724,10 +1715,7 @@ var (
 	pattern_AgentGraphService_ListPipelines_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v1", "projects", "project_id", "pipelines"}, ""))
 	pattern_AgentGraphService_PublishPipelineVersion_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5}, []string{"v1", "projects", "project_id", "pipelines", "pipeline_id", "versions"}, "publish"))
 	pattern_AgentGraphService_ExecutePipeline_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"v1", "projects", "project_id", "pipelines", "pipeline_id"}, "execute"))
-<<<<<<< HEAD
-=======
 	pattern_AgentGraphService_CreateProjectWithOwner_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "projects", "create"}, ""))
->>>>>>> origin/func-for-agents
 	pattern_AgentGraphService_GetProject_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2}, []string{"v1", "projects", "project_id"}, ""))
 	pattern_AgentGraphService_UpdateProject_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v1", "projects", "project_id", "update"}, ""))
 	pattern_AgentGraphService_DeleteProject_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v1", "projects", "project_id", "delete"}, ""))
@@ -1747,10 +1735,7 @@ var (
 	forward_AgentGraphService_ListPipelines_0          = runtime.ForwardResponseMessage
 	forward_AgentGraphService_PublishPipelineVersion_0 = runtime.ForwardResponseMessage
 	forward_AgentGraphService_ExecutePipeline_0        = runtime.ForwardResponseMessage
-<<<<<<< HEAD
-=======
 	forward_AgentGraphService_CreateProjectWithOwner_0 = runtime.ForwardResponseMessage
->>>>>>> origin/func-for-agents
 	forward_AgentGraphService_GetProject_0             = runtime.ForwardResponseMessage
 	forward_AgentGraphService_UpdateProject_0          = runtime.ForwardResponseMessage
 	forward_AgentGraphService_DeleteProject_0          = runtime.ForwardResponseMessage
