@@ -383,7 +383,7 @@ func (s *Service) CreateProject(ctx context.Context, req *api.CreateProjectReque
 		Description: strings.TrimSpace(req.GetDescription()),
 	}
 
-	if err := project.Save(ctx, s.db); err != nil {
+	if err := s.db.WithContext(ctx).Create(&project).Error; err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create project: %v", err)
 	}
 
@@ -1105,41 +1105,7 @@ func buildInboundIndex(payload graphPayload) map[string][]string {
 	return inbound
 }
 
-func simulateNode(node *api.PipelineNode, inputs []string) (string, string) {
-	category := strings.ToLower(node.GetCategory())
-	config := decodeConfig(node.GetConfigJson())
-	joined := strings.Join(inputs, "\n")
-
-	switch category {
-	case "llm":
-		model := configValue(config, "model", node.GetType())
-		prompt := joined
-		if prompt == "" {
-			prompt = "<empty prompt>"
-		}
-		output := fmt.Sprintf("LLM[%s] response: generated answer for '%s'", model, truncate(prompt, 64))
-		return "completed", output
-	case "data":
-		source := configValue(config, "backend", "data-source")
-		collection := configValue(config, "namespace", "default")
-		output := fmt.Sprintf("Data[%s] retrieved context from %s", source, collection)
-		return "completed", output
-	case "services":
-		service := configValue(config, "service", node.GetType())
-		metric := configValue(config, "metric", "quality")
-		output := fmt.Sprintf("Service[%s] evaluated metric '%s' => %s", service, metric, pickAggregate(inputs))
-		return "completed", output
-	case "utility":
-		sink := configValue(config, "sink", "monitor")
-		output := fmt.Sprintf("Utility[%s] recorded %d signals", sink, len(inputs))
-		return "completed", output
-	default:
-		if joined == "" {
-			joined = "noop"
-		}
-		return defaultNodeStatus, fmt.Sprintf("%s passthrough: %s", strings.ToUpper(category), truncate(joined, 64))
-	}
-}
+// simulateNode removed — logic embedded in executeNode and simulate paths above.
 
 func decodeConfig(raw string) map[string]interface{} {
 	result := make(map[string]interface{})

@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	api "brainiac/gen"
+
+	"google.golang.org/protobuf/proto"
 )
 
 var defaultMockNodes = []*api.PipelineNode{
@@ -82,18 +84,18 @@ func mockGraph(projectID, pipelineID string) graphPayload {
 
 	nodes := make([]*api.PipelineNode, 0, len(defaultMockNodes))
 	for _, template := range defaultMockNodes {
-		copy := *template
-		copy.Id = fmt.Sprintf("%s::%s", template.Id, suffix)
-		nodes = append(nodes, &copy)
+		cloned := proto.Clone(template).(*api.PipelineNode)
+		cloned.Id = fmt.Sprintf("%s::%s", template.Id, suffix)
+		nodes = append(nodes, cloned)
 	}
 
 	edges := make([]*api.PipelineEdge, 0, len(defaultMockEdges))
 	for _, template := range defaultMockEdges {
-		copy := *template
-		copy.Id = fmt.Sprintf("%s::%s", template.Id, suffix)
-		copy.Source = fmt.Sprintf("%s::%s", template.Source, suffix)
-		copy.Target = fmt.Sprintf("%s::%s", template.Target, suffix)
-		edges = append(edges, &copy)
+		cloned := proto.Clone(template).(*api.PipelineEdge)
+		cloned.Id = fmt.Sprintf("%s::%s", template.Id, suffix)
+		cloned.Source = fmt.Sprintf("%s::%s", template.Source, suffix)
+		cloned.Target = fmt.Sprintf("%s::%s", template.Target, suffix)
+		edges = append(edges, cloned)
 	}
 
 	return graphPayload{nodes: nodes, edges: edges}

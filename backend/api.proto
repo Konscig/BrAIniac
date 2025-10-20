@@ -102,10 +102,10 @@ message ProjectResponse {
 }
 
 message CreateProjectRequest {
-    string owner_id = 1;
-    string name = 2;
-    string description = 3;
-    string config_json = 4;
+  string owner_id = 1;
+  string name = 2;
+  string description = 3;
+  string config_json = 4;
 }
 
 message GetProjectRequest {
@@ -175,10 +175,7 @@ message ExecutePipelineResponse {
   string final_output = 2;
 }
 
-message CreateProjectRequest {
-  string name = 1;
-  string description = 2;
-}
+// (The canonical CreateProjectRequest with owner_id is defined above.)
 
 message CreatePipelineRequest {
   string project_id = 1;
@@ -261,7 +258,8 @@ service AgentGraphService {
       body: "*"
     };
   }
-  rpc CreateProject(CreateProjectRequest) returns (ProjectResponse) {
+  // Admin/owner-aware create endpoint. Named differently to avoid duplicate RPC name.
+  rpc CreateProjectWithOwner(CreateProjectRequest) returns (ProjectResponse) {
     option (google.api.http) = {
       post: "/v1/projects/create"
       body: "*"
