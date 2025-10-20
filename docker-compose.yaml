@@ -9,7 +9,7 @@ services:
       - POSTGRES_DB=${PG_DB}
       - POSTGRES_PORT=${PG_PORT}
     env_file:
-      - .env
+      - .env.docker
     ports: 
       - "${PG_PORT}:5433"
     volumes:
@@ -29,7 +29,7 @@ services:
     container_name: api
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.docker
     depends_on:
       db:
         condition: service_healthy

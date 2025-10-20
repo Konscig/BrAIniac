@@ -391,12 +391,12 @@ func (s *Service) ListProjects(ctx context.Context, _ *emptypb.Empty) (*api.List
 	}
 
 	resp := &api.ListProjectsResponse{
-		Projects: make([]*api.ProjectSummary, 0, len(projects)),
+		Projects: make([]*api.ProjectResponse, 0, len(projects)),
 	}
 
 	for _, project := range projects {
 		proj := project
-		resp.Projects = append(resp.Projects, &api.ProjectSummary{
+		resp.Projects = append(resp.Projects, &api.ProjectResponse{
 			Id:          proj.ID.String(),
 			Name:        proj.Name,
 			Description: proj.Description,
@@ -407,7 +407,7 @@ func (s *Service) ListProjects(ctx context.Context, _ *emptypb.Empty) (*api.List
 }
 
 // CreateProject creates a new project
-func (s *Service) CreateProject(ctx context.Context, req *api.CreateProjectRequest) (*api.ProjectSummary, error) {
+func (s *Service) CreateProject(ctx context.Context, req *api.CreateProjectRequest) (*api.ProjectResponse, error) {
 	name := strings.TrimSpace(req.GetName())
 	if name == "" {
 		return nil, status.Error(codes.InvalidArgument, "project name is required")
@@ -426,7 +426,7 @@ func (s *Service) CreateProject(ctx context.Context, req *api.CreateProjectReque
 				return nil, status.Errorf(codes.Internal, "failed to restore project: %v", err)
 			}
 
-			return &api.ProjectSummary{
+			return &api.ProjectResponse{
 				Id:          existing.ID.String(),
 				Name:        existing.Name,
 				Description: existing.Description,
@@ -446,7 +446,7 @@ func (s *Service) CreateProject(ctx context.Context, req *api.CreateProjectReque
 		return nil, status.Errorf(codes.Internal, "failed to create project: %v", err)
 	}
 
-	return &api.ProjectSummary{
+	return &api.ProjectResponse{
 		Id:          project.ID.String(),
 		Name:        project.Name,
 		Description: project.Description,
