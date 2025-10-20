@@ -94,11 +94,44 @@ message ProjectSummary {
   string description = 3;
 }
 
+message ProjectResponse {
+    string id = 1;
+    string name = 2;
+    string description = 3;
+    string config_json = 4;
+}
+
+message CreateProjectRequest {
+    string owner_id = 1;
+    string name = 2;
+    string description = 3;
+    string config_json = 4;
+}
+
+message GetProjectRequest {
+    string project_id = 1;
+}
+
+message UpdateProjectRequest {
+    string project_id = 1;
+    string name = 2;
+    string description = 3;
+    string config_json = 4;
+}
+
+message DeleteProjectRequest {
+    string project_id = 1;
+}
+
 message PipelineSummary {
   string id = 1;
   string name = 2;
   string description = 3;
   int32 version = 4;
+}
+
+message ListProjectsRequest {
+    string owner_id = 1;
 }
 
 message ListProjectsResponse {
@@ -186,11 +219,6 @@ service AgentGraphService {
       delete: "/v1/projects/{project_id}/pipelines/{pipeline_id}/edges/{edge_id}"
     };
   }
-  rpc ListProjects (.google.protobuf.Empty) returns (ListProjectsResponse) {
-    option (google.api.http) = {
-      get: "/v1/projects"
-    };
-  }
   rpc ListPipelines (ListPipelinesRequest) returns (ListPipelinesResponse) {
     option (google.api.http) = {
       get: "/v1/projects/{project_id}/pipelines"
@@ -206,6 +234,33 @@ service AgentGraphService {
     option (google.api.http) = {
       post: "/v1/projects/{project_id}/pipelines/{pipeline_id}:execute"
       body: "*"
+    };
+  }
+  rpc CreateProject(CreateProjectRequest) returns (ProjectResponse) {
+    option (google.api.http) = {
+      post: "/v1/projects/create"
+      body: "*"
+    };
+  }
+  rpc GetProject(GetProjectRequest) returns (ProjectResponse) {
+    option (google.api.http) = {
+      get: "/v1/projects/{project_id}"
+    };
+  }
+  rpc UpdateProject(UpdateProjectRequest) returns (ProjectResponse) {
+    option (google.api.http) = {
+      put: "/v1/projects/{project_id}/update"
+      body: "*"
+    };
+  }
+  rpc DeleteProject(DeleteProjectRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/projects/{project_id}/delete"
+    };
+  }
+  rpc ListProjects (.google.protobuf.Empty) returns (ListProjectsResponse) {
+    option (google.api.http) = {
+      get: "/v1/projects"
     };
   }
 }

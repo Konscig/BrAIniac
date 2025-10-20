@@ -1,57 +1,52 @@
 package graphmodels
 
 import (
-	"context"
-	"errors"
-
 	"github.com/gofrs/uuid/v5"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
 type Project struct {
 	gorm.Model
-	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	OwnerID     uuid.UUID `gorm:"type:uuid"`
-	Name        string    `gorm:"type:text;not null;unique"`
-	Description string    `gorm:"type:text;not null;default:''"`
+	ID          uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	OwnerID     uuid.UUID      `gorm:"type:uuid"`
+	Name        string         `gorm:"type:text;not null;unique"`
+	Description string         `gorm:"type:text;not null;default:''"`
+	Config      datatypes.JSON `gorm:"type:jsonb;default:'{}'"`
 }
 
-// BeforeCreate ensures the project has a UUID.
-func (p *Project) BeforeCreate(tx *gorm.DB) error {
-	if p.ID == uuid.Nil {
-		id, err := uuid.NewV7()
-		if err != nil {
-			return err
-		}
-		p.ID = id
-	}
-	return nil
+func (p *Project) CreateProject(engine *gorm.DB, userID uuid.UUID, projectName string, desc string, cfg datatypes.JSON) error {
+	p.ID = uuid.Must(uuid.NewV4())
+	p.OwnerID = userID
+	p.Name = projectName
+	p.Description = desc
+	p.Config = cfg
+
+	result := engine.Create(p)
+	return result.Error
 }
 
-// Validate performs basic validation on the project fields.
-func (p *Project) Validate() error {
-	if p.Name == "" {
-		return errors.New("project name is required")
-	}
-	return nil
+func (p *Project) DeleteProject(engine *gorm.DB, pID uuid.UUID) error {
+	result := engine.Where("id = ?", pID).Delete(p)
+	return result.Error
 }
 
-// Save creates or updates the project after validation.
-func (p *Project) Save(ctx context.Context, db *gorm.DB) error {
-	if err := p.Validate(); err != nil {
-		return err
-	}
-	if p.ID == uuid.Nil {
-		return db.WithContext(ctx).Create(p).Error
-	}
-	return db.WithContext(ctx).Save(p).Error
+func (p *Project) UpdateProject(engine *gorm.DB, pID uuid.UUID, newProjectName string, newDesc string, newConfig datatypes.JSON) error {
+	result := engine.Model(&p).Where("id = ?", pID).Updates(Project{Name: newProjectName, Description: newDesc, Config: newConfig})
+	return result.Error
 }
 
-// FindProjectByName finds a project by unique name.
-func FindProjectByName(ctx context.Context, db *gorm.DB, name string) (*Project, error) {
-	var pr Project
-	if err := db.WithContext(ctx).Where("name = ?", name).First(&pr).Error; err != nil {
-		return nil, err
+func GetProjectByID(engine *gorm.DB, projectID uuid.UUID) (*Project, error) {
+	var project Project
+	result := engine.First(&project, "id = ?", projectID)
+	if result.Error != nil {
+		return nil, result.Error
 	}
-	return &pr, nil
+	return &project, nil
+}
+
+func ShowAllProjects(engine *gorm.DB, userID uuid.UUID) ([]Project, error) {
+	var projects []Project
+	result := engine.Where("OwnerID = ?", userID).Find(&projects)
+	return projects, result.Error
 }
