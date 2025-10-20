@@ -102,6 +102,7 @@ func main() {
 		&graphmodels.Pipeline{},
 		&graphmodels.PipelineVersion{},
 		&graphmodels.Project{},
+		&graphmodels.Document{},
 		&graphmodels.Run{},
 		&graphmodels.RunTask{},
 		&graphmodels.Tool{},
