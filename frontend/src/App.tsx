@@ -21,6 +21,7 @@ import {
   listPipelines,
   listProjects,
   publishPipelineVersion,
+  deleteProject,
   type EnvironmentModeApi,
   type ExecutePipelineResponse,
   type PipelineSummary,
@@ -107,6 +108,38 @@ function MainPage(): React.ReactElement {
       setIsLoadingProjects(false);
     }
   }, []);
+
+  const handleCreateProject = React.useCallback(async (name: string, description: string) => {
+    setIsLoadingProjects(true);
+    try {
+      const p = await createProject(name, description);
+      setProjects((prev) => [p, ...prev]);
+      setActiveProjectId(p.id);
+    } catch (err) {
+      console.error('Failed to create project', err);
+      setDataError('Не удалось создать проект');
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }, []);
+
+  const handleDeleteProject = React.useCallback(async (projectId: string) => {
+    setIsLoadingProjects(true);
+    try {
+      await deleteProject(projectId);
+      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+      if (activeProjectId === projectId) {
+        setActiveProjectId("");
+        setPipelines([]);
+        setActivePipelineId("");
+      }
+    } catch (err) {
+      console.error('Failed to delete project', err);
+      setDataError('Не удалось удалить проект');
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }, [activeProjectId]);
 
   const loadPipelines = React.useCallback(async (projectId: string) => {
     if (!projectId) {
@@ -337,6 +370,8 @@ function MainPage(): React.ReactElement {
           onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
           onSelectProject={handleSelectProject}
           onSelectPipeline={handleSelectPipeline}
+          onCreateProject={handleCreateProject}
+          onDeleteProject={handleDeleteProject}
         />
 
         <div className="flex flex-1 flex-col overflow-hidden">

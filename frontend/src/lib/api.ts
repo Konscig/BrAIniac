@@ -164,6 +164,10 @@ export async function createPipeline(
   });
 }
 
+export async function deleteProject(projectId: string): Promise<void> {
+  return deleteRequest(`/v1/projects/${projectId}/delete`);
+}
+
 export async function getPipelineGraph(
   projectId: string,
   pipelineId: string,

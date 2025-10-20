@@ -16,6 +16,8 @@ interface SidebarProjectsProps {
   onToggleCollapse: () => void;
   onSelectProject: (projectId: string) => void;
   onSelectPipeline: (pipelineId: string) => void;
+  onCreateProject?: (name: string, description: string) => void;
+  onDeleteProject?: (projectId: string) => void;
 }
 
 export function SidebarProjects({
@@ -27,6 +29,7 @@ export function SidebarProjects({
   onToggleCollapse,
   onSelectProject,
   onSelectPipeline
+  , onCreateProject, onDeleteProject
 }: SidebarProjectsProps): React.ReactElement {
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0];
   const otherProjects = projects.filter((project) => project.id !== activeProject?.id);
@@ -112,6 +115,19 @@ export function SidebarProjects({
               <div className="pt-2 text-xs uppercase tracking-wide text-muted-foreground">
                 Другие проекты
               </div>
+              <div className="flex gap-2">
+                <button
+                  className="text-sm text-primary underline"
+                  onClick={() => {
+                    const name = prompt('Название нового проекта')?.trim();
+                    if (name && typeof onCreateProject === 'function') {
+                      onCreateProject(name, 'Создано пользователем');
+                    }
+                  }}
+                >
+                  + Создать проект
+                </button>
+              </div>
               {otherProjects.map((project) => (
                   <button
                     key={project.id}
@@ -120,7 +136,18 @@ export function SidebarProjects({
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
                   >
                     <Dot className="h-4 w-4 text-muted-foreground" />
-                    {project.name}
+                    <div className="flex-1">{project.name}</div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (typeof onDeleteProject === 'function' && window.confirm('Удалить проект?')) {
+                          onDeleteProject(project.id);
+                        }
+                      }}
+                      className="text-xs text-red-400"
+                    >
+                      Удалить
+                    </button>
                   </button>
                 ))}
             </div>

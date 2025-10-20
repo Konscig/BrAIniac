@@ -101,7 +101,7 @@ func (s *Service) GetProject(ctx context.Context, req *api.GetProjectRequest) (*
 	return resp, nil
 }
 
-func (s *Service) ListProjects(ctx context.Context, _ *api.ListProjectsRequest) (*api.ListProjectsResponse, error) {
+func (s *Service) ListProjects(ctx context.Context, _ *emptypb.Empty) (*api.ListProjectsResponse, error) {
 	// Тут можно брать userID из ctx или gRPC metadata
 	var userID uuid.UUID // получаем от фронта/токена
 	projects, err := graphmodels.ShowAllProjects(s.db, userID)

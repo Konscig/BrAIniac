@@ -47,6 +47,12 @@ func GetProjectByID(engine *gorm.DB, projectID uuid.UUID) (*Project, error) {
 
 func ShowAllProjects(engine *gorm.DB, userID uuid.UUID) ([]Project, error) {
 	var projects []Project
-	result := engine.Where("OwnerID = ?", userID).Find(&projects)
+	if userID == uuid.Nil {
+		// no user filter — return all projects
+		result := engine.Find(&projects)
+		return projects, result.Error
+	}
+	// use snake_case column name to match DB naming
+	result := engine.Where("owner_id = ?", userID).Find(&projects)
 	return projects, result.Error
 }
