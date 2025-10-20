@@ -108,9 +108,9 @@ func (s *Service) ListProjects(ctx context.Context, _ *api.ListProjectsRequest) 
 		return nil, status.Errorf(codes.Internal, "failed to list projects: %v", err)
 	}
 
-	resp := &api.ListProjectsResponse{Projects: make([]*api.ProjectSummary, 0, len(projects))}
+	resp := &api.ListProjectsResponse{Projects: make([]*api.ProjectResponse, 0, len(projects))}
 	for _, p := range projects {
-		resp.Projects = append(resp.Projects, &api.ProjectSummary{
+		resp.Projects = append(resp.Projects, &api.ProjectResponse{
 			Id:          p.ID.String(),
 			Name:        p.Name,
 			Description: p.Description,
