@@ -77,6 +77,15 @@ export async function patchJson<TResponse = unknown, TPayload = unknown>(
   return apiRequest<TResponse>(path, { ...options, method: "PATCH", body });
 }
 
+export async function putJson<TResponse = unknown, TPayload = unknown>(
+  path: string,
+  payload: TPayload,
+  options: ApiOptions = {}
+): Promise<TResponse> {
+  const body = JSON.stringify(payload);
+  return apiRequest<TResponse>(path, { ...options, method: "PUT", body });
+}
+
 export async function deleteRequest(path: string, options: ApiOptions = {}): Promise<void> {
   await apiRequest(path, { ...options, method: "DELETE" });
 }
@@ -162,6 +171,14 @@ export async function createPipeline(
     name,
     description
   });
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  return deleteRequest(`/v1/projects/${projectId}/delete`);
+}
+
+export async function updateProject(projectId: string, name: string, description?: string) {
+  return putJson(`/v1/projects/${projectId}/update`, { name, description });
 }
 
 export async function getPipelineGraph(

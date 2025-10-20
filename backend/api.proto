@@ -96,10 +96,10 @@ message ProjectResponse {
 }
 
 message CreateProjectRequest {
-    string owner_id = 1;
-    string name = 2;
-    string description = 3;
-    string config_json = 4;
+  string owner_id = 1;
+  string name = 2;
+  string description = 3;
+  string config_json = 4;
 }
 
 message GetProjectRequest {
@@ -247,6 +247,13 @@ service AgentGraphService {
   rpc ExecutePipeline (ExecutePipelineRequest) returns (ExecutePipelineResponse) {
     option (google.api.http) = {
       post: "/v1/projects/{project_id}/pipelines/{pipeline_id}:execute"
+      body: "*"
+    };
+  }
+  // Admin/owner-aware create endpoint. Named differently to avoid duplicate RPC name.
+  rpc CreateProjectWithOwner(CreateProjectRequest) returns (ProjectResponse) {
+    option (google.api.http) = {
+      post: "/v1/projects/create"
       body: "*"
     };
   }

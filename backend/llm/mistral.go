@@ -162,6 +162,61 @@ func (c *Client) SimpleCompletion(ctx context.Context, prompt string, model stri
 	return resp.Choices[0].Message.Content, nil
 }
 
+// EmbeddingsRequest defines the payload for embeddings API
+type EmbeddingsRequest struct {
+	Model string   `json:"model"`
+	Input []string `json:"input"`
+}
+
+// EmbeddingsResponse is a minimal embeddings response
+type EmbeddingsResponse struct {
+	Data []struct {
+		Embedding []float32 `json:"embedding"`
+		Index     int       `json:"index"`
+	} `json:"data"`
+}
+
+// GetEmbeddings requests embeddings from Mistral embeddings endpoint
+func (c *Client) GetEmbeddings(ctx context.Context, inputs []string, model string) ([][]float32, error) {
+	if model == "" {
+		model = "mistral-embedding-1"
+	}
+
+	reqBody, err := json.Marshal(EmbeddingsRequest{Model: model, Input: inputs})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal embeddings request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/embeddings", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create embeddings request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call embeddings endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("embeddings API error: status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var embResp EmbeddingsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&embResp); err != nil {
+		return nil, fmt.Errorf("failed to decode embeddings response: %w", err)
+	}
+
+	result := make([][]float32, 0, len(embResp.Data))
+	for _, d := range embResp.Data {
+		result = append(result, d.Embedding)
+	}
+	return result, nil
+}
+
 // CompletionWithTools sends a completion request with available tools
 func (c *Client) CompletionWithTools(ctx context.Context, prompt string, tools []Tool, model string) (*ChatResponse, error) {
 	if model == "" {

@@ -1622,7 +1622,11 @@ type CreatePipelineRequest struct {
 
 func (x *CreatePipelineRequest) Reset() {
 	*x = CreatePipelineRequest{}
+<<<<<<< HEAD
 	mi := &file_api_proto_msgTypes[24]
+=======
+	mi := &file_api_proto_msgTypes[25]
+>>>>>>> origin/func-for-agents
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1634,7 +1638,11 @@ func (x *CreatePipelineRequest) String() string {
 func (*CreatePipelineRequest) ProtoMessage() {}
 
 func (x *CreatePipelineRequest) ProtoReflect() protoreflect.Message {
+<<<<<<< HEAD
 	mi := &file_api_proto_msgTypes[24]
+=======
+	mi := &file_api_proto_msgTypes[25]
+>>>>>>> origin/func-for-agents
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1647,7 +1655,11 @@ func (x *CreatePipelineRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePipelineRequest.ProtoReflect.Descriptor instead.
 func (*CreatePipelineRequest) Descriptor() ([]byte, []int) {
+<<<<<<< HEAD
 	return file_api_proto_rawDescGZIP(), []int{24}
+=======
+	return file_api_proto_rawDescGZIP(), []int{25}
+>>>>>>> origin/func-for-agents
 }
 
 func (x *CreatePipelineRequest) GetProjectId() string {
@@ -1680,7 +1692,11 @@ type HelloRequest struct {
 
 func (x *HelloRequest) Reset() {
 	*x = HelloRequest{}
+<<<<<<< HEAD
 	mi := &file_api_proto_msgTypes[25]
+=======
+	mi := &file_api_proto_msgTypes[26]
+>>>>>>> origin/func-for-agents
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1692,7 +1708,11 @@ func (x *HelloRequest) String() string {
 func (*HelloRequest) ProtoMessage() {}
 
 func (x *HelloRequest) ProtoReflect() protoreflect.Message {
+<<<<<<< HEAD
 	mi := &file_api_proto_msgTypes[25]
+=======
+	mi := &file_api_proto_msgTypes[26]
+>>>>>>> origin/func-for-agents
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1705,7 +1725,11 @@ func (x *HelloRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HelloRequest.ProtoReflect.Descriptor instead.
 func (*HelloRequest) Descriptor() ([]byte, []int) {
+<<<<<<< HEAD
 	return file_api_proto_rawDescGZIP(), []int{25}
+=======
+	return file_api_proto_rawDescGZIP(), []int{26}
+>>>>>>> origin/func-for-agents
 }
 
 func (x *HelloRequest) GetName() string {
@@ -1724,7 +1748,11 @@ type HelloReply struct {
 
 func (x *HelloReply) Reset() {
 	*x = HelloReply{}
+<<<<<<< HEAD
 	mi := &file_api_proto_msgTypes[26]
+=======
+	mi := &file_api_proto_msgTypes[27]
+>>>>>>> origin/func-for-agents
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1736,7 +1764,11 @@ func (x *HelloReply) String() string {
 func (*HelloReply) ProtoMessage() {}
 
 func (x *HelloReply) ProtoReflect() protoreflect.Message {
+<<<<<<< HEAD
 	mi := &file_api_proto_msgTypes[26]
+=======
+	mi := &file_api_proto_msgTypes[27]
+>>>>>>> origin/func-for-agents
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1749,7 +1781,11 @@ func (x *HelloReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HelloReply.ProtoReflect.Descriptor instead.
 func (*HelloReply) Descriptor() ([]byte, []int) {
+<<<<<<< HEAD
 	return file_api_proto_rawDescGZIP(), []int{26}
+=======
+	return file_api_proto_rawDescGZIP(), []int{27}
+>>>>>>> origin/func-for-agents
 }
 
 func (x *HelloReply) GetMessage() string {
@@ -1922,9 +1958,15 @@ const file_api_proto_rawDesc = "" +
 	"\x17ENVIRONMENT_MODE_HYBRID\x10\x02\x12\x19\n" +
 	"\x15ENVIRONMENT_MODE_REAL\x10\x032O\n" +
 	"\aGreeter\x12D\n" +
+<<<<<<< HEAD
 	"\bSayHello\x12\x11.api.HelloRequest\x1a\x0f.api.HelloReply\"\x14\x82\xd3\xe4\x93\x02\x0e:\x01*\"\t/v1/hello2\xd4\x0f\n" +
 	"\x11AgentGraphService\x12Y\n" +
 	"\rCreateProject\x12\x19.api.CreateProjectRequest\x1a\x14.api.ProjectResponse\"\x17\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/v1/projects\x12r\n" +
+=======
+	"\bSayHello\x12\x11.api.HelloRequest\x1a\x0f.api.HelloReply\"\x14\x82\xd3\xe4\x93\x02\x0e:\x01*\"\t/v1/hello2\xbe\x10\n" +
+	"\x11AgentGraphService\x12X\n" +
+	"\rCreateProject\x12\x19.api.CreateProjectRequest\x1a\x13.api.ProjectSummary\"\x17\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/v1/projects\x12r\n" +
+>>>>>>> origin/func-for-agents
 	"\x0eCreatePipeline\x12\x1a.api.CreatePipelineRequest\x1a\x14.api.PipelineSummary\".\x82\xd3\xe4\x93\x02(:\x01*\"#/v1/projects/{project_id}/pipelines\x12\xb5\x01\n" +
 	"\x10GetPipelineGraph\x12\x1c.api.GetPipelineGraphRequest\x1a\x1d.api.GetPipelineGraphResponse\"d\x82\xd3\xe4\x93\x02^Z#\x12!/v1/pipelines/{pipeline_id}/graph\x127/v1/projects/{project_id}/pipelines/{pipeline_id}/graph\x12\x8b\x01\n" +
 	"\x12CreatePipelineNode\x12\x1e.api.CreatePipelineNodeRequest\x1a\x11.api.PipelineNode\"B\x82\xd3\xe4\x93\x02<:\x01*\"7/v1/projects/{project_id}/pipelines/{pipeline_id}/nodes\x12\x95\x01\n" +
@@ -1934,7 +1976,12 @@ const file_api_proto_rawDesc = "" +
 	"\x12DeletePipelineEdge\x12\x1e.api.DeletePipelineEdgeRequest\x1a\x16.google.protobuf.Empty\"I\x82\xd3\xe4\x93\x02C*A/v1/projects/{project_id}/pipelines/{pipeline_id}/edges/{edge_id}\x12s\n" +
 	"\rListPipelines\x12\x19.api.ListPipelinesRequest\x1a\x1a.api.ListPipelinesResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/projects/{project_id}/pipelines\x12\xb0\x01\n" +
 	"\x16PublishPipelineVersion\x12\".api.PublishPipelineVersionRequest\x1a#.api.PublishPipelineVersionResponse\"M\x82\xd3\xe4\x93\x02G:\x01*\"B/v1/projects/{project_id}/pipelines/{pipeline_id}/versions:publish\x12\x92\x01\n" +
+<<<<<<< HEAD
 	"\x0fExecutePipeline\x12\x1b.api.ExecutePipelineRequest\x1a\x1c.api.ExecutePipelineResponse\"D\x82\xd3\xe4\x93\x02>:\x01*\"9/v1/projects/{project_id}/pipelines/{pipeline_id}:execute\x12]\n" +
+=======
+	"\x0fExecutePipeline\x12\x1b.api.ExecutePipelineRequest\x1a\x1c.api.ExecutePipelineResponse\"D\x82\xd3\xe4\x93\x02>:\x01*\"9/v1/projects/{project_id}/pipelines/{pipeline_id}:execute\x12i\n" +
+	"\x16CreateProjectWithOwner\x12\x19.api.CreateProjectRequest\x1a\x14.api.ProjectResponse\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/projects/create\x12]\n" +
+>>>>>>> origin/func-for-agents
 	"\n" +
 	"GetProject\x12\x16.api.GetProjectRequest\x1a\x14.api.ProjectResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/projects/{project_id}\x12m\n" +
 	"\rUpdateProject\x12\x19.api.UpdateProjectRequest\x1a\x14.api.ProjectResponse\"+\x82\xd3\xe4\x93\x02%:\x01*\x1a /v1/projects/{project_id}/update\x12l\n" +
@@ -1954,7 +2001,11 @@ func file_api_proto_rawDescGZIP() []byte {
 }
 
 var file_api_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+<<<<<<< HEAD
 var file_api_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+=======
+var file_api_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+>>>>>>> origin/func-for-agents
 var file_api_proto_goTypes = []any{
 	(EnvironmentMode)(0),                   // 0: api.EnvironmentMode
 	(*PipelineNode)(nil),                   // 1: api.PipelineNode
@@ -1966,6 +2017,7 @@ var file_api_proto_goTypes = []any{
 	(*DeletePipelineNodeRequest)(nil),      // 7: api.DeletePipelineNodeRequest
 	(*CreatePipelineEdgeRequest)(nil),      // 8: api.CreatePipelineEdgeRequest
 	(*DeletePipelineEdgeRequest)(nil),      // 9: api.DeletePipelineEdgeRequest
+<<<<<<< HEAD
 	(*ProjectResponse)(nil),                // 10: api.ProjectResponse
 	(*CreateProjectRequest)(nil),           // 11: api.CreateProjectRequest
 	(*GetProjectRequest)(nil),              // 12: api.GetProjectRequest
@@ -1985,6 +2037,28 @@ var file_api_proto_goTypes = []any{
 	(*HelloRequest)(nil),                   // 26: api.HelloRequest
 	(*HelloReply)(nil),                     // 27: api.HelloReply
 	(*emptypb.Empty)(nil),                  // 28: google.protobuf.Empty
+=======
+	(*ProjectSummary)(nil),                 // 10: api.ProjectSummary
+	(*ProjectResponse)(nil),                // 11: api.ProjectResponse
+	(*CreateProjectRequest)(nil),           // 12: api.CreateProjectRequest
+	(*GetProjectRequest)(nil),              // 13: api.GetProjectRequest
+	(*UpdateProjectRequest)(nil),           // 14: api.UpdateProjectRequest
+	(*DeleteProjectRequest)(nil),           // 15: api.DeleteProjectRequest
+	(*PipelineSummary)(nil),                // 16: api.PipelineSummary
+	(*ListProjectsRequest)(nil),            // 17: api.ListProjectsRequest
+	(*ListProjectsResponse)(nil),           // 18: api.ListProjectsResponse
+	(*ListPipelinesRequest)(nil),           // 19: api.ListPipelinesRequest
+	(*ListPipelinesResponse)(nil),          // 20: api.ListPipelinesResponse
+	(*PublishPipelineVersionRequest)(nil),  // 21: api.PublishPipelineVersionRequest
+	(*PublishPipelineVersionResponse)(nil), // 22: api.PublishPipelineVersionResponse
+	(*ExecutePipelineRequest)(nil),         // 23: api.ExecutePipelineRequest
+	(*NodeExecutionResult)(nil),            // 24: api.NodeExecutionResult
+	(*ExecutePipelineResponse)(nil),        // 25: api.ExecutePipelineResponse
+	(*CreatePipelineRequest)(nil),          // 26: api.CreatePipelineRequest
+	(*HelloRequest)(nil),                   // 27: api.HelloRequest
+	(*HelloReply)(nil),                     // 28: api.HelloReply
+	(*emptypb.Empty)(nil),                  // 29: google.protobuf.Empty
+>>>>>>> origin/func-for-agents
 }
 var file_api_proto_depIdxs = []int32{
 	0,  // 0: api.GetPipelineGraphRequest.mode:type_name -> api.EnvironmentMode
@@ -1993,16 +2067,24 @@ var file_api_proto_depIdxs = []int32{
 	10, // 3: api.ListProjectsResponse.projects:type_name -> api.ProjectResponse
 	15, // 4: api.ListPipelinesResponse.pipelines:type_name -> api.PipelineSummary
 	0,  // 5: api.ExecutePipelineRequest.mode:type_name -> api.EnvironmentMode
+<<<<<<< HEAD
 	23, // 6: api.ExecutePipelineResponse.results:type_name -> api.NodeExecutionResult
 	26, // 7: api.Greeter.SayHello:input_type -> api.HelloRequest
 	11, // 8: api.AgentGraphService.CreateProject:input_type -> api.CreateProjectRequest
 	25, // 9: api.AgentGraphService.CreatePipeline:input_type -> api.CreatePipelineRequest
+=======
+	24, // 6: api.ExecutePipelineResponse.results:type_name -> api.NodeExecutionResult
+	27, // 7: api.Greeter.SayHello:input_type -> api.HelloRequest
+	12, // 8: api.AgentGraphService.CreateProject:input_type -> api.CreateProjectRequest
+	26, // 9: api.AgentGraphService.CreatePipeline:input_type -> api.CreatePipelineRequest
+>>>>>>> origin/func-for-agents
 	3,  // 10: api.AgentGraphService.GetPipelineGraph:input_type -> api.GetPipelineGraphRequest
 	5,  // 11: api.AgentGraphService.CreatePipelineNode:input_type -> api.CreatePipelineNodeRequest
 	6,  // 12: api.AgentGraphService.UpdatePipelineNode:input_type -> api.UpdatePipelineNodeRequest
 	7,  // 13: api.AgentGraphService.DeletePipelineNode:input_type -> api.DeletePipelineNodeRequest
 	8,  // 14: api.AgentGraphService.CreatePipelineEdge:input_type -> api.CreatePipelineEdgeRequest
 	9,  // 15: api.AgentGraphService.DeletePipelineEdge:input_type -> api.DeletePipelineEdgeRequest
+<<<<<<< HEAD
 	18, // 16: api.AgentGraphService.ListPipelines:input_type -> api.ListPipelinesRequest
 	20, // 17: api.AgentGraphService.PublishPipelineVersion:input_type -> api.PublishPipelineVersionRequest
 	22, // 18: api.AgentGraphService.ExecutePipeline:input_type -> api.ExecutePipelineRequest
@@ -2028,6 +2110,35 @@ var file_api_proto_depIdxs = []int32{
 	17, // 38: api.AgentGraphService.ListProjects:output_type -> api.ListProjectsResponse
 	23, // [23:39] is the sub-list for method output_type
 	7,  // [7:23] is the sub-list for method input_type
+=======
+	19, // 16: api.AgentGraphService.ListPipelines:input_type -> api.ListPipelinesRequest
+	21, // 17: api.AgentGraphService.PublishPipelineVersion:input_type -> api.PublishPipelineVersionRequest
+	23, // 18: api.AgentGraphService.ExecutePipeline:input_type -> api.ExecutePipelineRequest
+	12, // 19: api.AgentGraphService.CreateProjectWithOwner:input_type -> api.CreateProjectRequest
+	13, // 20: api.AgentGraphService.GetProject:input_type -> api.GetProjectRequest
+	14, // 21: api.AgentGraphService.UpdateProject:input_type -> api.UpdateProjectRequest
+	15, // 22: api.AgentGraphService.DeleteProject:input_type -> api.DeleteProjectRequest
+	29, // 23: api.AgentGraphService.ListProjects:input_type -> google.protobuf.Empty
+	28, // 24: api.Greeter.SayHello:output_type -> api.HelloReply
+	10, // 25: api.AgentGraphService.CreateProject:output_type -> api.ProjectSummary
+	16, // 26: api.AgentGraphService.CreatePipeline:output_type -> api.PipelineSummary
+	4,  // 27: api.AgentGraphService.GetPipelineGraph:output_type -> api.GetPipelineGraphResponse
+	1,  // 28: api.AgentGraphService.CreatePipelineNode:output_type -> api.PipelineNode
+	1,  // 29: api.AgentGraphService.UpdatePipelineNode:output_type -> api.PipelineNode
+	29, // 30: api.AgentGraphService.DeletePipelineNode:output_type -> google.protobuf.Empty
+	2,  // 31: api.AgentGraphService.CreatePipelineEdge:output_type -> api.PipelineEdge
+	29, // 32: api.AgentGraphService.DeletePipelineEdge:output_type -> google.protobuf.Empty
+	20, // 33: api.AgentGraphService.ListPipelines:output_type -> api.ListPipelinesResponse
+	22, // 34: api.AgentGraphService.PublishPipelineVersion:output_type -> api.PublishPipelineVersionResponse
+	25, // 35: api.AgentGraphService.ExecutePipeline:output_type -> api.ExecutePipelineResponse
+	11, // 36: api.AgentGraphService.CreateProjectWithOwner:output_type -> api.ProjectResponse
+	11, // 37: api.AgentGraphService.GetProject:output_type -> api.ProjectResponse
+	11, // 38: api.AgentGraphService.UpdateProject:output_type -> api.ProjectResponse
+	29, // 39: api.AgentGraphService.DeleteProject:output_type -> google.protobuf.Empty
+	18, // 40: api.AgentGraphService.ListProjects:output_type -> api.ListProjectsResponse
+	24, // [24:41] is the sub-list for method output_type
+	7,  // [7:24] is the sub-list for method input_type
+>>>>>>> origin/func-for-agents
 	7,  // [7:7] is the sub-list for extension type_name
 	7,  // [7:7] is the sub-list for extension extendee
 	0,  // [0:7] is the sub-list for field type_name
@@ -2044,7 +2155,11 @@ func file_api_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_rawDesc), len(file_api_proto_rawDesc)),
 			NumEnums:      1,
+<<<<<<< HEAD
 			NumMessages:   27,
+=======
+			NumMessages:   28,
+>>>>>>> origin/func-for-agents
 			NumExtensions: 0,
 			NumServices:   2,
 		},

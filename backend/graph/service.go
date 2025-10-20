@@ -2,14 +2,17 @@ package graph
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
 
 	api "brainiac/gen"
+	"brainiac/llm"
 	"brainiac/models/graphmodels"
 
 	"github.com/gofrs/uuid/v5"
@@ -30,6 +33,38 @@ type Service struct {
 	api.UnimplementedAgentGraphServiceServer
 	db         *gorm.DB
 	mistralKey string
+}
+
+// bytesToFloat32Slice decodes a byte slice (little-endian float32 sequence) into []float32
+func bytesToFloat32Slice(b []byte) []float32 {
+	if len(b)%4 != 0 {
+		return nil
+	}
+	n := len(b) / 4
+	out := make([]float32, n)
+	for i := 0; i < n; i++ {
+		bits := binary.LittleEndian.Uint32(b[i*4 : i*4+4])
+		out[i] = math.Float32frombits(bits)
+	}
+	return out
+}
+
+// cosineSimilarity computes cosine between two vectors; returns -1..1
+func cosineSimilarity(a, b []float32) float32 {
+	if len(a) == 0 || len(b) == 0 || len(a) != len(b) {
+		return -1
+	}
+	var dot float32
+	var na, nb float32
+	for i := range a {
+		dot += a[i] * b[i]
+		na += a[i] * a[i]
+		nb += b[i] * b[i]
+	}
+	if na == 0 || nb == 0 {
+		return -1
+	}
+	return dot / (float32(math.Sqrt(float64(na))) * float32(math.Sqrt(float64(nb))))
 }
 
 // NewService wires the graph service with a database handle.
@@ -378,12 +413,36 @@ func (s *Service) CreateProject(ctx context.Context, req *api.CreateProjectReque
 		return nil, status.Error(codes.InvalidArgument, "project name is required")
 	}
 
+	// If a project with the same name exists (including soft-deleted), handle it.
+	var existing graphmodels.Project
+	if err := s.db.WithContext(ctx).Unscoped().Where("name = ?", name).First(&existing).Error; err == nil {
+		// Found an existing project with this name
+		if existing.DeletedAt.Valid {
+			// restore soft-deleted project: clear deleted_at and update description
+			if err := s.db.WithContext(ctx).Unscoped().Model(&existing).Updates(map[string]interface{}{
+				"deleted_at":  nil,
+				"description": strings.TrimSpace(req.GetDescription()),
+			}).Error; err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to restore project: %v", err)
+			}
+
+			return &api.ProjectSummary{
+				Id:          existing.ID.String(),
+				Name:        existing.Name,
+				Description: existing.Description,
+			}, nil
+		}
+
+		// Active project with same name exists
+		return nil, status.Error(codes.AlreadyExists, "project with this name already exists")
+	}
+
 	project := graphmodels.Project{
 		Name:        name,
 		Description: strings.TrimSpace(req.GetDescription()),
 	}
 
-	if err := project.Save(ctx, s.db); err != nil {
+	if err := s.db.WithContext(ctx).Create(&project).Error; err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create project: %v", err)
 	}
 
@@ -649,6 +708,12 @@ func (s *Service) ExecutePipeline(ctx context.Context, req *api.ExecutePipelineR
 	// Collect tools for LLM nodes
 	tools := s.collectTools(payload)
 
+	// Prepare Mistral client if key available
+	var mistralClient *llm.Client
+	if s.mistralKey != "" {
+		mistralClient = llm.NewClient(s.mistralKey)
+	}
+
 	var finalOutput string
 
 	for _, nodeID := range order {
@@ -677,7 +742,7 @@ func (s *Service) ExecutePipeline(ctx context.Context, req *api.ExecutePipelineR
 		}
 
 		// Execute node
-		statusValue, output := s.executeNode(ctx, node, inputs, tools)
+		statusValue, output := s.executeNode(ctx, node, inputs, tools, mistralClient)
 		outputs[node.Id] = output
 
 		// Check if this is a response node
@@ -1105,41 +1170,7 @@ func buildInboundIndex(payload graphPayload) map[string][]string {
 	return inbound
 }
 
-func simulateNode(node *api.PipelineNode, inputs []string) (string, string) {
-	category := strings.ToLower(node.GetCategory())
-	config := decodeConfig(node.GetConfigJson())
-	joined := strings.Join(inputs, "\n")
-
-	switch category {
-	case "llm":
-		model := configValue(config, "model", node.GetType())
-		prompt := joined
-		if prompt == "" {
-			prompt = "<empty prompt>"
-		}
-		output := fmt.Sprintf("LLM[%s] response: generated answer for '%s'", model, truncate(prompt, 64))
-		return "completed", output
-	case "data":
-		source := configValue(config, "backend", "data-source")
-		collection := configValue(config, "namespace", "default")
-		output := fmt.Sprintf("Data[%s] retrieved context from %s", source, collection)
-		return "completed", output
-	case "services":
-		service := configValue(config, "service", node.GetType())
-		metric := configValue(config, "metric", "quality")
-		output := fmt.Sprintf("Service[%s] evaluated metric '%s' => %s", service, metric, pickAggregate(inputs))
-		return "completed", output
-	case "utility":
-		sink := configValue(config, "sink", "monitor")
-		output := fmt.Sprintf("Utility[%s] recorded %d signals", sink, len(inputs))
-		return "completed", output
-	default:
-		if joined == "" {
-			joined = "noop"
-		}
-		return defaultNodeStatus, fmt.Sprintf("%s passthrough: %s", strings.ToUpper(category), truncate(joined, 64))
-	}
-}
+// simulateNode removed — logic embedded in executeNode and simulate paths above.
 
 func decodeConfig(raw string) map[string]interface{} {
 	result := make(map[string]interface{})
@@ -1208,7 +1239,7 @@ func (s *Service) collectTools(payload graphPayload) []map[string]interface{} {
 }
 
 // executeNode executes a single node with Mistral AI support
-func (s *Service) executeNode(ctx context.Context, node *api.PipelineNode, inputs []string, tools []map[string]interface{}) (string, string) {
+func (s *Service) executeNode(ctx context.Context, node *api.PipelineNode, inputs []string, tools []map[string]interface{}, mistralClient *llm.Client) (string, string) {
 	category := strings.ToLower(node.GetCategory())
 	config := decodeConfig(node.GetConfigJson())
 	joined := strings.Join(inputs, "\n")
@@ -1228,11 +1259,71 @@ func (s *Service) executeNode(ctx context.Context, node *api.PipelineNode, input
 		}
 		return s.executeMistralNode(ctx, node, joined, tools, config)
 
-	case category == "data":
-		source := configValue(config, "backend", "data-source")
-		collection := configValue(config, "namespace", "default")
-		output := fmt.Sprintf("Data[%s] retrieved context from %s", source, collection)
-		return "completed", output
+	case nodeType == "retriever" || strings.Contains(nodeType, "retriev"):
+		// Retriever node: uses Mistral embeddings to embed the query and find top-k documents
+		if mistralClient == nil {
+			return "completed", "retriever[simulated] no mistral key"
+		}
+		query := joined
+		if query == "" {
+			query = configValue(config, "query", "")
+		}
+		if query == "" {
+			return "completed", "no query provided"
+		}
+
+		// Top K
+		topK := 3
+		if kStr := configValue(config, "top_k", "3"); kStr != "" {
+			fmt.Sscanf(kStr, "%d", &topK)
+		}
+
+		// Get embedding for query
+		embs, err := mistralClient.GetEmbeddings(ctx, []string{query}, "mistral-embedding-1")
+		if err != nil || len(embs) == 0 {
+			return "error", fmt.Sprintf("failed to compute embedding: %v", err)
+		}
+		qEmb := embs[0]
+
+		// Load documents for project or dataset
+		var docs []graphmodels.Document
+		q := s.db.WithContext(ctx).Model(&graphmodels.Document{})
+		if pid := configValue(config, "project_id", ""); pid != "" {
+			if p, err := parseUUID(pid); err == nil {
+				q = q.Where("project_id = ?", p)
+			}
+		}
+		if err := q.Find(&docs).Error; err != nil {
+			return "error", fmt.Sprintf("failed to load documents: %v", err)
+		}
+
+		type scoredDoc struct {
+			Text  string
+			Score float32
+		}
+		scored := make([]scoredDoc, 0, len(docs))
+		for _, d := range docs {
+			if len(d.Embedding) == 0 {
+				continue
+			}
+			vec := bytesToFloat32Slice(d.Embedding)
+			sim := cosineSimilarity(qEmb, vec)
+			scored = append(scored, scoredDoc{Text: d.Content, Score: sim})
+		}
+		sort.Slice(scored, func(i, j int) bool { return scored[i].Score > scored[j].Score })
+
+		if len(scored) == 0 {
+			return "completed", "no documents indexed"
+		}
+
+		if topK > len(scored) {
+			topK = len(scored)
+		}
+		parts := make([]string, 0, topK)
+		for i := 0; i < topK; i++ {
+			parts = append(parts, fmt.Sprintf("[score=%.4f] %s", scored[i].Score, scored[i].Text))
+		}
+		return "completed", strings.Join(parts, "\n\n")
 
 	case category == "services":
 		service := configValue(config, "service", node.GetType())

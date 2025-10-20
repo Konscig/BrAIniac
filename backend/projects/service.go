@@ -44,7 +44,8 @@ func sanitizeJSON(raw string) (datatypes.JSON, error) {
 	return datatypes.JSON(cleaned), nil
 }
 
-func (s *Service) CreateProject(ctx context.Context, req *api.CreateProjectRequest) (*api.ProjectResponse, error) {
+// CreateProjectWithOwner handles project creation when owner_id and config_json may be provided.
+func (s *Service) CreateProjectWithOwner(ctx context.Context, req *api.CreateProjectRequest) (*api.ProjectResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Error(codes.InvalidArgument, "Project name is needed!")
 	}
@@ -77,7 +78,7 @@ func (s *Service) CreateProject(ctx context.Context, req *api.CreateProjectReque
 	return resp, nil
 }
 
-func (s *Service) GetProject(ctx context.Context, req *api.UpdateProjectRequest) (*api.ProjectResponse, error) {
+func (s *Service) GetProject(ctx context.Context, req *api.GetProjectRequest) (*api.ProjectResponse, error) {
 	projectID, err := uuid.FromString(req.GetProjectId())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid project ID: %v", err)
@@ -100,7 +101,7 @@ func (s *Service) GetProject(ctx context.Context, req *api.UpdateProjectRequest)
 	return resp, nil
 }
 
-func (s *Service) ListProjects(ctx context.Context, _ *api.ListProjectsRequest) (*api.ListProjectsResponse, error) {
+func (s *Service) ListProjects(ctx context.Context, _ *emptypb.Empty) (*api.ListProjectsResponse, error) {
 	// Тут можно брать userID из ctx или gRPC metadata
 	var userID uuid.UUID // получаем от фронта/токена
 	projects, err := graphmodels.ShowAllProjects(s.db, userID)
