@@ -24,7 +24,9 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	host := os.Getenv("POSTGRES_HOST")
 	port := os.Getenv("POSTGRES_PORT")
 
-	if user == "" || pass == "" || dbname == "" {
+	t.Logf("PG_HOST=%s, PG_USER=%s", os.Getenv("PG_HOST"), os.Getenv("POSTGRES_USER"))
+
+	if user == "" || pass == "" || dbname == "" || host == "" || port == "" {
 		t.Fatal("set POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_HOST, POSTGRES_PORT")
 	}
 
@@ -42,6 +44,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to drop tables: %v", err)
 	}
 
+	// Мигрируем заново
 	err = db.AutoMigrate(&graphmodels.User{}, &models.RefreshToken{})
 	if err != nil {
 		t.Fatalf("failed to migrate: %v", err)

@@ -5,33 +5,30 @@ services:
     image: postgres:15
     container_name: brainiac_integration_test
     environment:
-      - POSTGRES_USER=${PG_USER}
-      - POSTGRES_PASSWORD=${PG_PASSWORD}
-      - POSTGRES_DB=${PG_DB}
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: ${PG_PORT}
     ports:
       - "${PG_PORT}:5432"
     env_file:
       - .env.test
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${PG_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
       interval: 2s
       retries: 10
       timeout: 2s
 
   tests:
-    image: golang:1.21
+    image: golang:1.24
     container_name: brainiac_tests
-    working_dir: /app
+    working_dir: /app/backend
     volumes:
-      - .:/app
-    environment:
-      - POSTGRES_USER=${PG_USER}
-      - POSTGRES_PASSWORD=${PG_PASSWORD}
-      - POSTGRES_DB=${PG_DB}
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - SECRET_KEY=${JWT_SECRET_KEY}
+      - ./backend:/app/backend
+    env_file:
+      - .env.test
     depends_on:
       postgres:
         condition: service_healthy
-    command: sh -c "go mod download && go test ./... -v"
+    command: sh -c "go mod tidy && go test ./... -v"
