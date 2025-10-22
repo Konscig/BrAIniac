@@ -144,7 +144,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AgentGraphServiceClient interface {
-	CreateProject(ctx context.Context, in *CreateProjectRequest, opts ...grpc.CallOption) (*ProjectSummary, error)
+	CreateProject(ctx context.Context, in *CreateProjectRequest, opts ...grpc.CallOption) (*ProjectResponse, error)
 	CreatePipeline(ctx context.Context, in *CreatePipelineRequest, opts ...grpc.CallOption) (*PipelineSummary, error)
 	GetPipelineGraph(ctx context.Context, in *GetPipelineGraphRequest, opts ...grpc.CallOption) (*GetPipelineGraphResponse, error)
 	CreatePipelineNode(ctx context.Context, in *CreatePipelineNodeRequest, opts ...grpc.CallOption) (*PipelineNode, error)
@@ -171,9 +171,9 @@ func NewAgentGraphServiceClient(cc grpc.ClientConnInterface) AgentGraphServiceCl
 	return &agentGraphServiceClient{cc}
 }
 
-func (c *agentGraphServiceClient) CreateProject(ctx context.Context, in *CreateProjectRequest, opts ...grpc.CallOption) (*ProjectSummary, error) {
+func (c *agentGraphServiceClient) CreateProject(ctx context.Context, in *CreateProjectRequest, opts ...grpc.CallOption) (*ProjectResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ProjectSummary)
+	out := new(ProjectResponse)
 	err := c.cc.Invoke(ctx, AgentGraphService_CreateProject_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -335,7 +335,7 @@ func (c *agentGraphServiceClient) ListProjects(ctx context.Context, in *emptypb.
 // All implementations must embed UnimplementedAgentGraphServiceServer
 // for forward compatibility.
 type AgentGraphServiceServer interface {
-	CreateProject(context.Context, *CreateProjectRequest) (*ProjectSummary, error)
+	CreateProject(context.Context, *CreateProjectRequest) (*ProjectResponse, error)
 	CreatePipeline(context.Context, *CreatePipelineRequest) (*PipelineSummary, error)
 	GetPipelineGraph(context.Context, *GetPipelineGraphRequest) (*GetPipelineGraphResponse, error)
 	CreatePipelineNode(context.Context, *CreatePipelineNodeRequest) (*PipelineNode, error)
@@ -362,7 +362,7 @@ type AgentGraphServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedAgentGraphServiceServer struct{}
 
-func (UnimplementedAgentGraphServiceServer) CreateProject(context.Context, *CreateProjectRequest) (*ProjectSummary, error) {
+func (UnimplementedAgentGraphServiceServer) CreateProject(context.Context, *CreateProjectRequest) (*ProjectResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateProject not implemented")
 }
 func (UnimplementedAgentGraphServiceServer) CreatePipeline(context.Context, *CreatePipelineRequest) (*PipelineSummary, error) {

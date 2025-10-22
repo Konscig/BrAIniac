@@ -88,12 +88,6 @@ message DeletePipelineEdgeRequest {
   string edge_id = 3;
 }
 
-message ProjectSummary {
-  string id = 1;
-  string name = 2;
-  string description = 3;
-}
-
 message ProjectResponse {
     string id = 1;
     string name = 2;
@@ -135,7 +129,7 @@ message ListProjectsRequest {
 }
 
 message ListProjectsResponse {
-  repeated ProjectSummary projects = 1;
+  repeated ProjectResponse projects = 1;
 }
 
 message ListPipelinesRequest {
@@ -175,8 +169,6 @@ message ExecutePipelineResponse {
   string final_output = 2;
 }
 
-// (The canonical CreateProjectRequest with owner_id is defined above.)
-
 message CreatePipelineRequest {
   string project_id = 1;
   string name = 2;
@@ -193,7 +185,7 @@ service Greeter {
 }
 
 service AgentGraphService {
-  rpc CreateProject (CreateProjectRequest) returns (ProjectSummary) {
+  rpc CreateProject (CreateProjectRequest) returns (ProjectResponse) {
     option (google.api.http) = {
       post: "/v1/projects"
       body: "*"
