@@ -3,7 +3,6 @@ package graphmodels
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/gofrs/uuid/v5"
 	"gorm.io/gorm"
@@ -11,13 +10,11 @@ import (
 
 type Pipeline struct {
 	gorm.Model
-	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	ProjectID   uuid.UUID `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
-	Name        string    `gorm:"type:text;not null;unique"`
-	LastVersion uuid.UUID `gorm:"foreignKey:PipelineVersionID;constraint:OnDelete:SET NULL"`
-	CreatedAt   time.Time `gorm:"default:now()"`
-	UpdatedAt   time.Time `gorm:"default:now()"`
-	DeletedAt   time.Time `gorm:"default:now()"`
+	ID                     uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	ProjectID              uuid.UUID `gorm:"type:uuid;not null;index;uniqueIndex:idx_pipeline_project_name"`
+	Name                   string    `gorm:"type:text;not null;uniqueIndex:idx_pipeline_project_name"`
+	Description            string    `gorm:"type:text;not null;default:''"`
+	LastPublishedVersionID uuid.UUID `gorm:"type:uuid"`
 }
 
 func (p *Pipeline) BeforeCreate(tx *gorm.DB) error {
