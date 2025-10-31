@@ -79,6 +79,7 @@ pkg/
 vendor/
 # Go modules
 go.sum
+backend-old
 # Uncomment if you vendor manually:
 # !vendor/
 
