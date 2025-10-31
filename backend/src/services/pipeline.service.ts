@@ -19,6 +19,11 @@ export async function listPipelines(projectId?: string) {
   return prisma.pipeline.findMany({ where: { projectId } });
 }
 
+export async function listPipelinesByOwner(ownerId?: string) {
+  if (!ownerId) return prisma.pipeline.findMany();
+  return prisma.pipeline.findMany({ where: { project: { ownerId } } });
+}
+
 export async function updatePipeline(id: string, data: { name?: string; description?: string; lastPublishedVersionId?: string }) {
   return prisma.pipeline.update({ where: { id }, data });
 }
