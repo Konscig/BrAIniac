@@ -1,5 +1,6 @@
 import express from 'express';
 import { createUser, findUserById, findUserByEmail } from '../services/user.service.js';
+import { requireAuth } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -17,6 +18,10 @@ router.post('/', async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'internal error' });
   }
+});
+
+router.get('/me', requireAuth, async (req: any, res) => {
+  res.json(req.user);
 });
 
 router.get('/:id', async (req, res) => {

@@ -1,6 +1,6 @@
 import prisma from '../db.js';
 
-export async function createRefreshToken(data: { userId: string; tokenHash: string; userAgent?: string; ipAddress?: string }) {
+export async function createRefreshToken(data: { userId: string; tokenHash: string; userAgent?: string | undefined; ipAddress?: string | undefined }) {
   const rt = await prisma.refreshToken.create({ data: {
     userId: data.userId,
     tokenHash: data.tokenHash,

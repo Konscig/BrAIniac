@@ -2,6 +2,7 @@ import express from 'express';
 import userRouter from './routes/user.routes.js';
 import projectRouter from './routes/project.routes.js';
 import refreshTokenRouter from './routes/refresh_token.routes.js';
+import authRouter from './routes/auth.routes.js';
 import agentRouter from './routes/agent.routes.js';
 import datasetRouter from './routes/dataset.routes.js';
 import documentRouter from './routes/document.routes.js';
@@ -22,6 +23,7 @@ app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/users', userRouter);
+app.use('/auth', authRouter);
 app.use('/projects', projectRouter);
 app.use('/refresh-tokens', refreshTokenRouter);
 app.use('/agents', agentRouter);

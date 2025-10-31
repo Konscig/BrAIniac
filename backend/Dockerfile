@@ -20,5 +20,9 @@ RUN npx tsc
 # Expose port (change if needed)
 EXPOSE 3000
 
-# Start the app (adjust if your entrypoint is different)
-CMD npx prisma migrate deploy && node dist/index.js
+# Copy entrypoint and make executable
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# ENTRYPOINT will run migrations (prisma migrate deploy) then start the app
+ENTRYPOINT ["/app/entrypoint.sh"]
