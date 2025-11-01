@@ -3,14 +3,16 @@ import { Brain, Cable, Database, Settings2 } from "lucide-react";
 import { Handle, Position, type NodeProps } from "reactflow";
 
 import { cn } from "../lib/utils";
-import type { PipelineNode } from "../data/mock-data";
+import type { PipelineNodeCategory } from "../lib/api";
 
-type CanvasNodeStatus = Exclude<PipelineNode["status"], undefined>;
+type CanvasNodeStatus = "idle" | "running" | "error" | "completed";
 
 type CanvasNodeData = {
   label: string;
-  category: PipelineNode["category"];
-  status?: PipelineNode["status"];
+  category: PipelineNodeCategory;
+  status?: CanvasNodeStatus | string;
+  nodeType?: string;
+  configJson?: string;
 };
 
 const statusTokens: Record<CanvasNodeStatus, { label: string; dot: string; text: string }> = {
@@ -28,10 +30,15 @@ const statusTokens: Record<CanvasNodeStatus, { label: string; dot: string; text:
     label: "Ошибка",
     dot: "bg-red-400",
     text: "text-red-300"
+  },
+  completed: {
+    label: "Готово",
+    dot: "bg-sky-400",
+    text: "text-sky-300"
   }
 };
 
-const categoryTokens: Record<PipelineNode["category"], {
+const categoryTokens: Record<PipelineNodeCategory, {
   icon: React.ComponentType<{ className?: string }>;
   subtitle: string;
   badgeClass: string;
@@ -72,9 +79,10 @@ export type VkNodeData = CanvasNodeData;
 
 export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
   const { label, category, status } = data;
-  const tokens = categoryTokens[category];
+  const tokens = categoryTokens[category] ?? categoryTokens.Utility;
   const Icon = tokens.icon;
-  const statusToken = status ? statusTokens[status as CanvasNodeStatus] : undefined;
+  const normalizedStatus = status && status in statusTokens ? (status as CanvasNodeStatus) : undefined;
+  const statusToken = normalizedStatus ? statusTokens[normalizedStatus] : undefined;
 
   return (
     <div

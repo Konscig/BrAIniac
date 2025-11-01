@@ -7,11 +7,10 @@ services:
       - POSTGRES_USER=${PG_USER}
       - POSTGRES_PASSWORD=${PG_PASSWORD}
       - POSTGRES_DB=${PG_DB}
-      - POSTGRES_PORT=${PG_PORT}
     env_file:
-      - .env
+      - .env.docker
     ports: 
-      - "${PG_PORT}:5433"
+      - "${PG_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -29,14 +28,35 @@ services:
     container_name: api
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.docker
+    environment:
+      - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
+      - PRISMA_MIGRATE=push
+      - PRISMA_DB_PUSH_ACCEPT_DATA_LOSS=1
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - 8080:8080
+      - "8080:3000"
     networks:
      - brainiac-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    command: >
+      sh -c "
+      if [ \"$PRISMA_MIGRATE\" = \"deploy\" ]; then
+        npx prisma migrate deploy --skip-generate;
+      else
+        # Dev default: always accept data loss to ensure schema sync
+        npx prisma db push --accept-data-loss --skip-generate;
+      fi &&
+      node dist/index.js
+      "
 
   frontend:
     build: ./frontend

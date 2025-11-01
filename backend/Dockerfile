@@ -1,21 +1,24 @@
-FROM golang:1.24.4 AS builder
+# Dockerfile for TypeScript/Node.js backend with Prisma
+FROM node:20-alpine
 
+# Set working directory
 WORKDIR /app
 
-COPY go.mod go.sum ./
-RUN go mod download
+# Install dependencies
+COPY package.json package-lock.json* ./
+RUN npm install
 
+# Copy source code
 COPY . .
 
-RUN go build -o app
+# Generate Prisma client
+RUN npx prisma generate
 
-FROM debian:bookworm-slim
+# Build TypeScript
+RUN npx tsc
 
-WORKDIR /app
+# Expose port (change if needed)
+EXPOSE 3000
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /app/app .
-
-EXPOSE 8080
-CMD ["./app"]
+# Start server; migrations are invoked via docker-compose command
+CMD ["node", "dist/index.js"]
