@@ -49,11 +49,11 @@ services:
       start_period: 10s
     command: >
       sh -c "
-      npx prisma generate &&
       if [ \"$PRISMA_MIGRATE\" = \"deploy\" ]; then
-        npx prisma migrate deploy;
+        npx prisma migrate deploy --skip-generate;
       else
-        npx prisma db push ${PRISMA_DB_PUSH_ACCEPT_DATA_LOSS:+--accept-data-loss};
+        # Dev default: always accept data loss to ensure schema sync
+        npx prisma db push --accept-data-loss --skip-generate;
       fi &&
       node dist/index.js
       "

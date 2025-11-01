@@ -7,8 +7,15 @@ router.post('/signup', async (req, res) => {
   try {
     const { email, username, password } = req.body;
     if (!email || !username || !password) return res.status(400).json({ error: 'missing fields' });
-    const user = await signup({ email, username, password });
-    res.status(201).json(user);
+    await signup({ email, username, password });
+    // Issue tokens immediately after signup for better UX
+    const tokens = await login({
+      email,
+      password,
+      userAgent: req.headers['user-agent'] as string | undefined,
+      ipAddress: req.ip
+    });
+    res.status(201).json(tokens);
   } catch (err: any) {
     console.error(err);
     if (err.message === 'user exists') return res.status(409).json({ error: 'user exists' });
