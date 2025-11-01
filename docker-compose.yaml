@@ -7,11 +7,10 @@ services:
       - POSTGRES_USER=${PG_USER}
       - POSTGRES_PASSWORD=${PG_PASSWORD}
       - POSTGRES_DB=${PG_DB}
-      - POSTGRES_PORT=${PG_PORT}
     env_file:
       - .env.docker
     ports: 
-      - "${PG_PORT}:5433"
+      - "${PG_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -30,6 +29,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env.docker
+    environment:
+      - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -37,6 +39,12 @@ services:
       - "8080:3000"
     networks:
      - brainiac-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
 
   frontend:
     build: ./frontend
