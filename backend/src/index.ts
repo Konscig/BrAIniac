@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import userRouter from './routes/user.routes.js';
 import projectRouter from './routes/project.routes.js';
 import refreshTokenRouter from './routes/refresh_token.routes.js';
@@ -20,6 +21,30 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// CORS configuration
+const defaultOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+const parsedOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+const allowedOrigins = parsedOrigins.length > 0 ? parsedOrigins : defaultOrigins;
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true); // allow non-browser tools
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('CORS: origin not allowed'));
+  },
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization']
+}));
+// Express 5 no longer accepts '*' in path-to-regexp; use a regex to match all paths
+app.options(/.*/, cors());
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/users', userRouter);

@@ -32,6 +32,8 @@ services:
     environment:
       - PORT=3000
       - DATABASE_URL=${DATABASE_URL}
+      - PRISMA_MIGRATE=push
+      - PRISMA_DB_PUSH_ACCEPT_DATA_LOSS=1
     depends_on:
       db:
         condition: service_healthy
@@ -45,6 +47,16 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+    command: >
+      sh -c "
+      npx prisma generate &&
+      if [ \"$PRISMA_MIGRATE\" = \"deploy\" ]; then
+        npx prisma migrate deploy;
+      else
+        npx prisma db push ${PRISMA_DB_PUSH_ACCEPT_DATA_LOSS:+--accept-data-loss};
+      fi &&
+      node dist/index.js
+      "
 
   frontend:
     build: ./frontend

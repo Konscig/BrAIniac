@@ -106,15 +106,12 @@ export function AuthPage(): React.ReactElement {
       }
 
       if (mode === "login") {
-        const identifier = form.email.trim().toLowerCase();
-        const payload = {
-          username: identifier,
-          password: form.password
-        };
+        const email = form.email.trim().toLowerCase();
+        const payload = { email, password: form.password };
         const response = await postJson(
-          "/v1/login",
+          "/auth/login",
           payload,
-          { credentials: "include" }
+          { credentials: "include", skipAuthHeaders: true }
         );
         const tokens = normalizeAuthTokens(response);
         if (!tokens) {
@@ -133,9 +130,9 @@ export function AuthPage(): React.ReactElement {
         password: form.password
       };
       const response = await postJson(
-        "/v1/signin",
+        "/auth/signup",
         payload,
-        { credentials: "include" }
+        { credentials: "include", skipAuthHeaders: true }
       );
       const tokens = normalizeAuthTokens(response);
       if (!tokens) {
