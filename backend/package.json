@@ -15,8 +15,10 @@
     "prisma:push": "prisma db push",
     "prisma:reset": "prisma migrate reset --force",
     "prisma:studio": "prisma studio",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "test:integration": "node ./scripts/integration-test.mjs"
+    "test": "npm run test:integration && npm run test:auth && npm run test:ownership",
+    "test:integration": "node ./scripts/integration-test.mjs",
+    "test:auth": "node ./scripts/auth-test.mjs",
+    "test:ownership": "node ./scripts/ownership-test.mjs"
   },
   "keywords": [],
   "author": "",
