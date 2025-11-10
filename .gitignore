@@ -28,6 +28,7 @@ out/
 .vite/
 .cache/
 *.tsbuildinfo
+jmeter_report
 
 # -----------------------
 # Python
