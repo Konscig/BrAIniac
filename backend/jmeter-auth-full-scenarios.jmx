@@ -36,15 +36,17 @@
         </elementProp>
       </ThreadGroup>
       <hashTree>
+        <!-- Cookie Manager: сохраняет и отправляет cookies с токенами -->
+        <CookieManager guiclass="CookiePanel" testclass="CookieManager" testname="HTTP Cookie Manager" enabled="true">
+          <collectionProp name="CookieManager.cookies"/>
+          <boolProp name="CookieManager.clearEachIteration">false</boolProp>
+          <stringProp name="CookieManager.policy">standard</stringProp>
+          <boolProp name="CookieManager.controlledByThread">false</boolProp>
+        </CookieManager>
+        <hashTree/>
 
         <!-- Генерация уникального пользователя -->
-        <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Set Unique User Variables" enabled="true">
-          <stringProp name="script">
-            vars.put('email', 'user_' + System.nanoTime() + '@example.com');
-            vars.put('username', 'user_' + java.util.UUID.randomUUID().toString().replaceAll('-', '').substring(0,8));
-          </stringProp>
-        </JSR223PreProcessor>
-        <hashTree/>
+        <!-- генерация перенесена внутрь Signup -->
 
         <!-- Signup -->
         <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Signup" enabled="true">
@@ -66,6 +68,14 @@
           </elementProp>
         </HTTPSamplerProxy>
         <hashTree>
+          <!-- Генерация уникальных данных ТОЛЬКО перед Signup -->
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Set Unique User Variables" enabled="true">
+            <stringProp name="script">
+              vars.put('email', 'user_' + System.nanoTime() + '@example.com');
+              vars.put('username', 'user_' + java.util.UUID.randomUUID().toString().replaceAll('-', '').substring(0,8));
+            </stringProp>
+          </JSR223PreProcessor>
+          <hashTree/>
           <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Header Signup" enabled="true">
             <collectionProp name="HeaderManager.headers">
               <elementProp name="" elementType="Header">
@@ -74,10 +84,6 @@
               </elementProp>
             </collectionProp>
           </HeaderManager>
-          <hashTree/>
-          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Wait after Signup" enabled="true">
-            <stringProp name="ConstantTimer.delay">10000</stringProp>
-          </ConstantTimer>
           <hashTree/>
         </hashTree>
 
@@ -110,109 +116,183 @@
             </collectionProp>
           </HeaderManager>
           <hashTree/>
-          <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="Extract Tokens" enabled="true">
+          <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="Extract Tokens (JSON)" enabled="true">
             <stringProp name="JSONPostProcessor.referenceNames">accessToken,refreshToken</stringProp>
             <stringProp name="JSONPostProcessor.jsonPathExpressions">$.accessToken,$.refreshToken</stringProp>
             <stringProp name="JSONPostProcessor.matchNumbers">1,1</stringProp>
+            <stringProp name="JSONPostProcessor.defaultValues"></stringProp>
           </JSONPostProcessor>
+          <hashTree/>
+          <!-- Fallback: токены из Set-Cookie -->
+          <RegexExtractor guiclass="RegexExtractorGui" testclass="RegexExtractor" testname="Extract accessToken from Set-Cookie" enabled="true">
+            <stringProp name="RegexExtractor.refname">accessTokenFromCookie</stringProp>
+            <stringProp name="RegexExtractor.regex">(?i)accessToken=([^;]+)</stringProp>
+            <stringProp name="RegexExtractor.template">$1$</stringProp>
+            <stringProp name="RegexExtractor.default">NOT_FOUND</stringProp>
+            <stringProp name="RegexExtractor.matcher">1</stringProp>
+            <stringProp name="RegexExtractor.useHeaders">true</stringProp>
+          </RegexExtractor>
+          <hashTree/>
+          <RegexExtractor guiclass="RegexExtractorGui" testclass="RegexExtractor" testname="Extract refreshToken from Set-Cookie" enabled="true">
+            <stringProp name="RegexExtractor.refname">refreshTokenFromCookie</stringProp>
+            <stringProp name="RegexExtractor.regex">(?i)refreshToken=([^;]+)</stringProp>
+            <stringProp name="RegexExtractor.template">$1$</stringProp>
+            <stringProp name="RegexExtractor.default">NOT_FOUND</stringProp>
+            <stringProp name="RegexExtractor.matcher">1</stringProp>
+            <stringProp name="RegexExtractor.useHeaders">true</stringProp>
+          </RegexExtractor>
+          <hashTree/>
+          <!-- Объединение источников токенов -->
+          <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Coalesce Tokens (JSON or Cookie)" enabled="true">
+            <stringProp name="script">
+              def at = vars.get('accessToken')
+              if (!at || at == '') { at = vars.get('accessTokenFromCookie') }
+              if (at &amp;&amp; at != 'NOT_FOUND') { vars.put('accessToken', at) }
+              def rt = vars.get('refreshToken')
+              if (!rt || rt == '') { rt = vars.get('refreshTokenFromCookie') }
+              if (rt &amp;&amp; rt != 'NOT_FOUND') { vars.put('refreshToken', rt) }
+            </stringProp>
+          </JSR223PostProcessor>
           <hashTree/>
         </hashTree>
 
         <!-- Refresh Token -->
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Refresh Token" enabled="true">
-          <stringProp name="HTTPSampler.domain">${base_url}</stringProp>
-          <stringProp name="HTTPSampler.port">${port}</stringProp>
-          <stringProp name="HTTPSampler.protocol">http</stringProp>
-          <stringProp name="HTTPSampler.path">/auth/refresh</stringProp>
-          <stringProp name="HTTPSampler.method">POST</stringProp>
-          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
-          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
-          <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
-            <collectionProp name="Arguments.arguments">
-              <elementProp name="" elementType="HTTPArgument">
-                <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <stringProp name="Argument.value">{&quot;refreshToken&quot;:&quot;${refreshToken}&quot;}</stringProp>
-                <stringProp name="Argument.metadata">=</stringProp>
-              </elementProp>
-            </collectionProp>
-          </elementProp>
-        </HTTPSamplerProxy>
+        <!-- Выполняем Refresh только если есть refreshToken -->
+        <IfController guiclass="IfControllerPanel" testclass="IfController" testname="If refreshToken present" enabled="true">
+          <stringProp name="IfController.condition">${__groovy(vars.get('refreshToken') != null &amp;&amp; !vars.get('refreshToken').isEmpty())}</stringProp>
+          <boolProp name="IfController.evaluateAll">false</boolProp>
+        </IfController>
         <hashTree>
-          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Header Refresh" enabled="true">
-            <collectionProp name="HeaderManager.headers">
-              <elementProp name="" elementType="Header">
-                <stringProp name="Header.name">Content-Type</stringProp>
-                <stringProp name="Header.value">application/json</stringProp>
-              </elementProp>
-            </collectionProp>
-          </HeaderManager>
-          <hashTree/>
-          <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="Extract AccessToken from Refresh" enabled="true">
-            <stringProp name="JSONPostProcessor.referenceNames">accessToken</stringProp>
-            <stringProp name="JSONPostProcessor.jsonPathExpressions">$.accessToken</stringProp>
-            <stringProp name="JSONPostProcessor.matchNumbers">1</stringProp>
-          </JSONPostProcessor>
-          <hashTree/>
-          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Wait after Refresh" enabled="true">
-            <stringProp name="ConstantTimer.delay">500</stringProp>
-          </ConstantTimer>
-          <hashTree/>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Refresh Token" enabled="true">
+            <stringProp name="HTTPSampler.domain">${base_url}</stringProp>
+            <stringProp name="HTTPSampler.port">${port}</stringProp>
+            <stringProp name="HTTPSampler.protocol">http</stringProp>
+            <stringProp name="HTTPSampler.path">/auth/refresh</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments"/>
+            </elementProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Header Refresh" enabled="true">
+              <collectionProp name="HeaderManager.headers">
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Content-Type</stringProp>
+                  <stringProp name="Header.value">application/json</stringProp>
+                </elementProp>
+                <!-- На случай cookie-only схемы аутентификации -->
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Cookie</stringProp>
+                  <stringProp name="Header.value">refreshToken=${refreshToken}</stringProp>
+                </elementProp>
+                <!-- На случай схемы с Bearer refresh -->
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Authorization</stringProp>
+                  <stringProp name="Header.value">Bearer ${refreshToken}</stringProp>
+                </elementProp>
+              </collectionProp>
+            </HeaderManager>
+            <hashTree/>
+            <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="Extract AccessToken from Refresh" enabled="true">
+              <stringProp name="JSONPostProcessor.referenceNames">accessToken</stringProp>
+              <stringProp name="JSONPostProcessor.jsonPathExpressions">$.accessToken</stringProp>
+              <stringProp name="JSONPostProcessor.matchNumbers">1</stringProp>
+            </JSONPostProcessor>
+            <hashTree/>
+            <!-- Fallback: accessToken из Set-Cookie после refresh -->
+            <RegexExtractor guiclass="RegexExtractorGui" testclass="RegexExtractor" testname="Extract accessToken (cookie) after refresh" enabled="true">
+              <stringProp name="RegexExtractor.refname">accessTokenFromCookieAfterRefresh</stringProp>
+              <stringProp name="RegexExtractor.regex">(?i)(accessToken|access_token)=([^;]+)</stringProp>
+              <stringProp name="RegexExtractor.template">$2$</stringProp>
+              <stringProp name="RegexExtractor.default">NOT_FOUND</stringProp>
+              <stringProp name="RegexExtractor.matcher">1</stringProp>
+              <stringProp name="RegexExtractor.useHeaders">true</stringProp>
+            </RegexExtractor>
+            <hashTree/>
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Coalesce AccessToken from refresh" enabled="true">
+              <stringProp name="script">
+                def at = vars.get('accessToken')
+                if (!at || at == '') { at = vars.get('accessTokenFromCookieAfterRefresh') }
+                if (at &amp;&amp; at != 'NOT_FOUND') { vars.put('accessToken', at) }
+              </stringProp>
+            </JSR223PostProcessor>
+            <hashTree/>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Wait after Refresh" enabled="true">
+              <stringProp name="ConstantTimer.delay">500</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+          </hashTree>
         </hashTree>
 
         <!-- Get Projects -->
         <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Get Projects" enabled="true">
-          <stringProp name="HTTPSampler.domain">${base_url}</stringProp>
-          <stringProp name="HTTPSampler.port">${port}</stringProp>
-          <stringProp name="HTTPSampler.protocol">http</stringProp>
-          <stringProp name="HTTPSampler.path">/projects</stringProp>
-          <stringProp name="HTTPSampler.method">GET</stringProp>
-          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
-        </HTTPSamplerProxy>
-        <hashTree>
-          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Header Get Projects" enabled="true">
-            <collectionProp name="HeaderManager.headers">
+           <stringProp name="HTTPSampler.domain">${base_url}</stringProp>
+           <stringProp name="HTTPSampler.port">${port}</stringProp>
+           <stringProp name="HTTPSampler.protocol">http</stringProp>
+           <stringProp name="HTTPSampler.path">/projects</stringProp>
+           <stringProp name="HTTPSampler.method">GET</stringProp>
+           <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+         </HTTPSamplerProxy>
+         <hashTree>
+           <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Header Get Projects" enabled="true">
+             <collectionProp name="HeaderManager.headers">
+               <elementProp name="" elementType="Header">
+                 <stringProp name="Header.name">Content-Type</stringProp>
+                 <stringProp name="Header.value">application/json</stringProp>
+               </elementProp>
+               <elementProp name="" elementType="Header">
+                 <stringProp name="Header.name">Authorization</stringProp>
+                 <stringProp name="Header.value">Bearer ${accessToken}</stringProp>
+               </elementProp>
+              <!-- На случай cookie-only проверки accessToken на backend -->
               <elementProp name="" elementType="Header">
-                <stringProp name="Header.name">Content-Type</stringProp>
-                <stringProp name="Header.value">application/json</stringProp>
+                <stringProp name="Header.name">Cookie</stringProp>
+                <stringProp name="Header.value">accessToken=${accessToken}</stringProp>
               </elementProp>
-              <elementProp name="" elementType="Header">
-                <stringProp name="Header.name">Authorization</stringProp>
-                <stringProp name="Header.value">Bearer ${accessToken}</stringProp>
-              </elementProp>
-            </collectionProp>
-          </HeaderManager>
-          <hashTree/>
-          <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="Extract Project Id" enabled="true">
-            <stringProp name="JSONPostProcessor.referenceNames">projectId</stringProp>
-            <stringProp name="JSONPostProcessor.jsonPathExpressions">$.id</stringProp>
-            <stringProp name="JSONPostProcessor.matchNumbers">1</stringProp>
-          </JSONPostProcessor>
-          <hashTree/>
-        </hashTree>
+             </collectionProp>
+           </HeaderManager>
+           <hashTree/>
+           <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="Extract Project Id" enabled="true">
+             <stringProp name="JSONPostProcessor.referenceNames">projectId</stringProp>
+             <!-- предполагаем, что /projects возвращает массив -->
+             <stringProp name="JSONPostProcessor.jsonPathExpressions">$[0].id</stringProp>
+             <stringProp name="JSONPostProcessor.matchNumbers">1</stringProp>
+             <stringProp name="JSONPostProcessor.defaultValues"></stringProp>
+           </JSONPostProcessor>
+           <hashTree/>
+         </hashTree>
 
-        <!-- Delete Project только если projectId есть -->
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Delete Project" enabled="true">
-          <stringProp name="HTTPSampler.domain">${base_url}</stringProp>
-          <stringProp name="HTTPSampler.port">${port}</stringProp>
-          <stringProp name="HTTPSampler.protocol">http</stringProp>
-          <stringProp name="HTTPSampler.path">/projects/${projectId}</stringProp>
-          <stringProp name="HTTPSampler.method">DELETE</stringProp>
-          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
-        </HTTPSamplerProxy>
+        <!-- Delete Project: только если projectId получен -->
+        <IfController guiclass="IfControllerPanel" testclass="IfController" testname="If projectId present" enabled="true">
+          <stringProp name="IfController.condition">${__groovy(vars.get('projectId') != null &amp;&amp; !vars.get('projectId').isEmpty())}</stringProp>
+          <boolProp name="IfController.evaluateAll">false</boolProp>
+        </IfController>
         <hashTree>
-          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Header Delete Project" enabled="true">
-            <collectionProp name="HeaderManager.headers">
-              <elementProp name="" elementType="Header">
-                <stringProp name="Header.name">Content-Type</stringProp>
-                <stringProp name="Header.value">application/json</stringProp>
-              </elementProp>
-              <elementProp name="" elementType="Header">
-                <stringProp name="Header.name">Authorization</stringProp>
-                <stringProp name="Header.value">Bearer ${accessToken}</stringProp>
-              </elementProp>
-            </collectionProp>
-          </HeaderManager>
-          <hashTree/>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Delete Project" enabled="true">
+            <stringProp name="HTTPSampler.domain">${base_url}</stringProp>
+            <stringProp name="HTTPSampler.port">${port}</stringProp>
+            <stringProp name="HTTPSampler.protocol">http</stringProp>
+            <stringProp name="HTTPSampler.path">/projects/${projectId}</stringProp>
+            <stringProp name="HTTPSampler.method">DELETE</stringProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Header Delete Project" enabled="true">
+              <collectionProp name="HeaderManager.headers">
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Content-Type</stringProp>
+                  <stringProp name="Header.value">application/json</stringProp>
+                </elementProp>
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Authorization</stringProp>
+                  <stringProp name="Header.value">Bearer ${accessToken}</stringProp>
+                </elementProp>
+              </collectionProp>
+            </HeaderManager>
+            <hashTree/>
+          </hashTree>
         </hashTree>
 
         <!-- View Results -->
