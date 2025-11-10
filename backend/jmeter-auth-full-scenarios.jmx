@@ -2,7 +2,7 @@
 <jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
   <hashTree>
     <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Full Auth &amp; Project Scenarios" enabled="true">
-      <stringProp name="TestPlan.comments">Signup → Login → Get Projects (Bearer only)</stringProp>
+      <stringProp name="TestPlan.comments">Signup → Login → Create Project → Get Projects → Update Project → Delete Project (Bearer only)</stringProp>
       <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
       <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments">
         <collectionProp name="Arguments.arguments">
@@ -37,11 +37,20 @@
           <boolProp name="LoopController.continue_forever">false</boolProp>
           <stringProp name="LoopController.loops">${__P(loops,10)}</stringProp>
         </elementProp>
-        <stringProp name="ThreadGroup.num_threads">${__P(threads,5)}</stringProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,100)}</stringProp>
         <stringProp name="ThreadGroup.ramp_time">${__P(ramp,3)}</stringProp>
         <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
       </ThreadGroup>
       <hashTree>
+
+        <!-- Cookies изолированы по потоку (на всякий случай), но не используются -->
+        <CookieManager guiclass="CookiePanel" testclass="CookieManager" testname="HTTP Cookie Manager" enabled="true">
+          <collectionProp name="CookieManager.cookies"/>
+          <boolProp name="CookieManager.clearEachIteration">false</boolProp>
+          <stringProp name="CookieManager.policy">standard</stringProp>
+          <boolProp name="CookieManager.controlledByThread">true</boolProp>
+        </CookieManager>
+        <hashTree/>
 
         <!-- HTTP Defaults -->
         <ConfigTestElement guiclass="HttpDefaultsGui" testclass="ConfigTestElement" testname="HTTP Request Defaults" enabled="true">
@@ -74,9 +83,9 @@
         <hashTree>
           <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Gen Unique User Vars" enabled="true">
             <stringProp name="script">
-              long t = System.nanoTime();
-              vars.put("email", "user_"+ t +"@local");
-              vars.put("username", "u"+ java.util.UUID.randomUUID().toString().replaceAll("-", "").substring(0,8));
+              long t = System.nanoTime()
+              vars.put("email", "user_"+ t +"@local")
+              vars.put("username", "u"+ java.util.UUID.randomUUID().toString().replaceAll("-", "").substring(0,8))
             </stringProp>
           </JSR223PreProcessor>
           <hashTree/>
@@ -117,8 +126,7 @@
             </collectionProp>
           </HeaderManager>
           <hashTree/>
-
-          <!-- EXTRACT: Groovy без плагинов -->
+          <!-- Извлечение accessToken без плагинов -->
           <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Extract accessToken (Groovy)" enabled="true">
             <stringProp name="script">
               import groovy.json.JsonSlurper
@@ -126,35 +134,103 @@
               def at = null
               try {
                 def json = new JsonSlurper().parseText(body)
-                def keys = ['accessToken','access_token','token','jwt']
-                for (k in keys) {
+                for (k in ['accessToken','access_token','token','jwt']) {
                   if (json[k]) { at = json[k].toString(); break }
                 }
                 if (!at &amp;&amp; json instanceof Map &amp;&amp; json.data instanceof Map) {
-                  for (k in keys) {
+                  for (k in ['accessToken','access_token','token','jwt']) {
                     if (json.data[k]) { at = json.data[k].toString(); break }
                   }
                 }
               } catch (ignored) {}
               if (!at) {
                 def m = (body =~ /"(?:accessToken|access_token|token|jwt)"\s*:\s*"([^"]+)"/)
-                if (m.find()) { at = m.group(1) }
+                if (m.find()) at = m.group(1)
               }
               if (at) {
                 vars.put('accessToken', at)
                 vars.put('authHeaderValue', 'Bearer ' + at)
               } else {
-                log.warn('accessToken not found. Body: ' + body)
+                SampleResult.setSuccessful(false)
+                SampleResult.setResponseMessage('accessToken is empty')
+              }
+            </stringProp>
+          </JSR223PostProcessor>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Create Project -->
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Create Project" enabled="true">
+          <stringProp name="HTTPSampler.path">/projects</stringProp>
+          <stringProp name="HTTPSampler.method">POST</stringProp>
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value">{&quot;name&quot;:&quot;proj_${__time()}_${__threadNum()}&quot;,&quot;description&quot;:&quot;load&quot;}</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Create Project Headers" enabled="true">
+            <collectionProp name="HeaderManager.headers">
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Content-Type</stringProp>
+                <stringProp name="Header.value">application/json</stringProp>
+              </elementProp>
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Authorization</stringProp>
+                <stringProp name="Header.value">${authHeaderValue}</stringProp>
+              </elementProp>
+            </collectionProp>
+          </HeaderManager>
+          <hashTree/>
+
+          <!-- Extract createdProjectId from body or Location header -->
+          <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Extract createdProjectId (Groovy)" enabled="true">
+            <stringProp name="script">
+              import groovy.json.JsonSlurper
+              def body = prev.getResponseDataAsString()
+              def id = null
+              try {
+                def json = new JsonSlurper().parseText(body)
+                def candidates = [
+                  (json instanceof Map ? json.id : null),
+                  (json instanceof Map ? json.projectId : null),
+                  (json instanceof Map ? json._id : null),
+                  (json instanceof Map ? json?.data?.id : null),
+                  (json instanceof Map ? json?.data?.projectId : null),
+                  (json instanceof Map ? json?.result?.id : null),
+                  (json instanceof Map ? json?.project?.id : null)
+                ]
+                id = candidates.find { it != null &amp;&amp; it.toString().trim() }
+              } catch (ignored) {}
+              if (!id) {
+                def hdr = prev.getResponseHeaders()
+                def m = (hdr =~ /(?im)^Location:\s?.*\/projects\/([^\/\s]+)\s*$/)
+                if (m.find()) id = m.group(1)
+              }
+              if (!id) {
+                def m2 = (body =~ /"id"\s*:\s*"([^"]+)"/)
+                if (m2.find()) id = m2.group(1)
+              }
+              if (id) {
+                vars.put('createdProjectId', id.toString())
+              } else {
+                log.warn('createdProjectId not found. Body: ' + body + ' | Headers: ' + prev.getResponseHeaders())
               }
             </stringProp>
           </JSR223PostProcessor>
           <hashTree/>
 
-          <!-- ASSERT: токен обязателен -->
-          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Assert Token Present" enabled="true">
+          <!-- Assert id is present to avoid 404 on next steps -->
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Assert createdProjectId present" enabled="true">
             <stringProp name="script">
-              def at = vars.get('accessToken')
-              if (at == null || at.trim().isEmpty()) { Failure = true; FailureMessage = 'accessToken is empty' }
+              def id = vars.get('createdProjectId')
+              if (!id || id.trim().isEmpty()) { Failure = true; FailureMessage = 'createdProjectId is empty' }
             </stringProp>
           </JSR223Assertion>
           <hashTree/>
@@ -167,12 +243,63 @@
           <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
         </HTTPSamplerProxy>
         <hashTree>
-          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Projects Headers" enabled="true">
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Get Projects Headers" enabled="true">
             <collectionProp name="HeaderManager.headers">
               <elementProp name="" elementType="Header">
                 <stringProp name="Header.name">Accept</stringProp>
                 <stringProp name="Header.value">application/json</stringProp>
               </elementProp>
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Authorization</stringProp>
+                <stringProp name="Header.value">${authHeaderValue}</stringProp>
+              </elementProp>
+            </collectionProp>
+          </HeaderManager>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Update Project -->
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Update Project" enabled="true">
+          <stringProp name="HTTPSampler.path">/projects/${createdProjectId}</stringProp>
+          <stringProp name="HTTPSampler.method">PUT</stringProp>
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value">
+                  {&quot;name&quot;:&quot;proj_${__time()}_${__threadNum()}_upd&quot;,&quot;description&quot;:&quot;updated ${__threadNum()}&quot;}
+                </stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Update Project Headers" enabled="true">
+            <collectionProp name="HeaderManager.headers">
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Content-Type</stringProp>
+                <stringProp name="Header.value">application/json</stringProp>
+              </elementProp>
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Authorization</stringProp>
+                <stringProp name="Header.value">${authHeaderValue}</stringProp>
+              </elementProp>
+            </collectionProp>
+          </HeaderManager>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Delete Project -->
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Delete Project" enabled="true">
+          <stringProp name="HTTPSampler.path">/projects/${createdProjectId}</stringProp>
+          <stringProp name="HTTPSampler.method">DELETE</stringProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Delete Project Headers" enabled="true">
+            <collectionProp name="HeaderManager.headers">
               <elementProp name="" elementType="Header">
                 <stringProp name="Header.name">Authorization</stringProp>
                 <stringProp name="Header.value">${authHeaderValue}</stringProp>
