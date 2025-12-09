@@ -433,3 +433,7 @@ export async function executePipeline(
   // Not implemented on backend; stubbed for now
   return { results: [], finalOutput: undefined };
 }
+
+export async function judgeChat(message: string): Promise<{ reply: string }> {
+  return postJson<{ reply: string }>("/judge/chat", { message });
+}

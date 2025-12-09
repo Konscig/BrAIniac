@@ -11,13 +11,16 @@ export class JudgeAgent {
         apiKey: process.env.MISTRAL_API_KEY || "",
     });
 
-    async chat(userMessage: string, history = []) {
+    private history: Array<{ role: "user" | "assistant" | "system" | "tool"; content: string; name?: string }> = [];
+
+    async chat(userMessage: string) {
+        this.history.push({ role: "user", content: userMessage });
+
         const response = await this.client.chat.complete({
             model: "ministral-3b-2410",
             messages: [
                 { role: "system", content: judgeSystemPrompt },
-                ...history,
-                { role: "user", content: userMessage },
+                ...this.history,
             ],
             tools: tools,
         });
@@ -32,8 +35,11 @@ export class JudgeAgent {
                     model: "ministral-3b-2410",
                     messages: [
                         { role: "system", content: judgeSystemPrompt },
-                        ...history,
-                        { ...msg, role: "assistant" },
+                        ...this.history,
+                        { 
+                            role: "assistant", 
+                            content: msg.content || "" ,
+                        },
                         { 
                             role: "tool",
                             name: toolCall.function.name,
@@ -45,5 +51,9 @@ export class JudgeAgent {
         }
     }
     return msg?.content;
+  }
+
+  getHistory() {
+    return this.history;
   }
 }

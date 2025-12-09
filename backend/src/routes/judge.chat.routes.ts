@@ -5,7 +5,7 @@ import { judgeToolHandlers } from '../services/judge/judge.toolsHandlers';
 const router = getExpress.Router();
 const agent = new JudgeAgent();
 
-router.post("/api/judge/chat", async (req, res) => {
+router.post("/judge/chat", async (req, res) => {
   try {
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: "message required" });
@@ -20,3 +20,13 @@ router.post("/api/judge/chat", async (req, res) => {
 });
 
 export default router;
+
+router.get("/judge/history", (req, res) => {
+  try {
+    const history = agent.getHistory();
+    res.json({ history });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "internal error" });
+  }
+});

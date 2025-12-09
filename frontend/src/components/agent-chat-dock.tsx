@@ -1,5 +1,6 @@
 import React from "react";
 import { MessageCircle } from "lucide-react";
+import { judgeChat } from "../lib/api";
 
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
@@ -30,49 +31,43 @@ export function AgentChatDock(): React.ReactElement {
   }, [messages]);
 
   async function handleSend() {
-    const userMessage = input.trim();
-    if (!userMessage) return;
+  const userMessage = input.trim();
+  if (!userMessage) return;
 
-    const newUserMsg: Message = {
+  const newUserMsg: Message = {
+    id: crypto.randomUUID(),
+    role: "user",
+    content: userMessage,
+  };
+
+  setMessages((prev) => [...prev, newUserMsg]);
+  setInput("");
+  setLoading(true);
+
+  try {
+    const answer = await judgeChat(userMessage);
+
+    const judgeMsg: Message = {
       id: crypto.randomUUID(),
-      role: "user",
-      content: userMessage,
+      role: "judge",
+      content: answer.reply ?? "(пустой ответ)",
     };
 
-    // добавляем сообщение пользователя на экран сразу
-    setMessages((prev) => [...prev, newUserMsg]);
-    setInput("");
-
-    setLoading(true);
-    try {
-      // отправляем на backend — маршрут определён в `judge.chat.routes.ts` as POST /chat
-      const res = await fetch("/api/judge/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage }),
-      });
-
-      const answer = await res.json();
-      const judgeMsg: Message = {
-        id: crypto.randomUUID(),
-        role: "judge",
-        content: answer.reply ?? answer ?? "(пустой ответ)",
-      };
-
-      // добавляем ответ судьи
-      setMessages((prev) => [...prev, judgeMsg]);
-    } catch (err) {
-      const errMsg: Message = {
+    setMessages((prev) => [...prev, judgeMsg]);
+  } catch (err) {
+    console.error(err);
+    setMessages((prev) => [
+      ...prev,
+      {
         id: crypto.randomUUID(),
         role: "judge",
         content: "Ошибка при обращении к серверу",
-      };
-      setMessages((prev) => [...prev, errMsg]);
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+      },
+    ]);
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <Card className="w-80 border-border/60 bg-background/85 text-sm">
@@ -126,7 +121,7 @@ export function AgentChatDock(): React.ReactElement {
             className="flex-1 rounded-md border px-3 py-2 text-sm bg-background/80"
           />
           <Button
-            className="w-28"
+            className="w-20"
             variant="secondary"
             onClick={() => void handleSend()}
             disabled={loading || !input.trim()}
