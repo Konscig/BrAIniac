@@ -1,5 +1,5 @@
 import express from 'express';
-import { createNode, updateNode, getNodeById, listNodesByVersion, updateNodeFields } from '../services/node.service.js';
+import { createNode, updateNode, getNodeById, listNodesByVersion, updateNodeFields, deleteNode } from '../services/node.service.js';
 import { getPipelineVersionById } from '../services/pipeline_version.service.js';
 import { getPipelineById } from '../services/pipeline.service.js';
 import { getProjectById } from '../services/project.service.js';
@@ -102,6 +102,26 @@ router.post('/:id/fields', async (req, res) => {
 
     const n = await updateNodeFields(req.params.id, req.body);
     res.json(n);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'internal error' });
+  }
+});
+
+router.delete('/:id', async (req, res) => {
+  try {
+    const existing = await getNodeById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'not found' });
+    const version = await getPipelineVersionById(existing.versionId);
+    if (!version) return res.status(404).json({ error: 'version not found' });
+    const pipeline = await getPipelineById(version.pipelineId);
+    if (!pipeline) return res.status(404).json({ error: 'pipeline not found' });
+    const project = await getProjectById(pipeline.projectId);
+    if (!project) return res.status(404).json({ error: 'project not found' });
+    if (project.ownerId !== (req as any).user.id) return res.status(403).json({ error: 'forbidden' });
+
+    await deleteNode(req.params.id);
+    res.status(204).end();
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'internal error' });

@@ -73,11 +73,14 @@ export async function apiRequest<TResponse = unknown>(
   if (!response.ok) {
     const error: ApiError = new Error("Не удалось выполнить запрос");
     error.status = response.status;
+
+    const raw = await response.text().catch(() => "");
     try {
-      error.details = await response.json();
+      error.details = raw ? JSON.parse(raw) : undefined;
     } catch {
-      error.details = await response.text();
+      error.details = raw;
     }
+
     throw error;
   }
 
@@ -362,7 +365,7 @@ export async function updatePipelineNode(
     positionY: rest.positionY,
     configJson: rest.configJson ? JSON.parse(rest.configJson) : undefined
   };
-  const n = await patchJson<any>(`/nodes/${nodeId}`, body);
+  const n = await putJson<any>(`/nodes/${nodeId}`, body); // <-- был patchJson
   return {
     id: n.id,
     key: n.key,

@@ -31,3 +31,7 @@ export async function listNodesByVersion(versionId?: string) {
   if (!versionId) return prisma.node.findMany();
   return prisma.node.findMany({ where: { versionId } });
 }
+
+export async function deleteNode(id: string) {
+  return prisma.node.delete({ where: { id } });
+}
