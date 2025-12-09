@@ -27,16 +27,16 @@ const NODE_LIBRARY: LibraryGroup[] = [
   {
     id: "bdi-demo",
     category: "Services",
-    name: "BDI (Кризисный менеджер)",
+    name: "Кризисный менеджер (BDI)",
     items: [
-      { id: "bdi-input", label: "Input", type: "input", tagline: "Заказ/контекст" },
-      { id: "bdi-priority", label: "Priority Scoring", type: "priority_scoring", tagline: "SLA/VIP/штраф" },
-      { id: "bdi-supply", label: "Supply", type: "supply", tagline: "Альтернативные поставщики" },
-      { id: "bdi-logistics", label: "Logistics", type: "logistics", tagline: "ETA / доставка" },
-      { id: "bdi-finance", label: "Finance", type: "finance", tagline: "Маржа/ROI" },
-      { id: "bdi-customer", label: "Customer Service", type: "customer_service", tagline: "Компенсация/уведомление" },
-      { id: "bdi-consensus", label: "Consensus", type: "consensus", tagline: "Голоса агентов" },
-      { id: "bdi-action", label: "Action", type: "action", tagline: "Финальное решение" }
+      { id: "bdi-input", label: "Кейс: заказ", type: "input", tagline: "Заказ и ограничения" },
+      { id: "bdi-manager", label: "BDI кризисный менеджер", type: "bdi_crisis_manager", tagline: "Оркестратор агентов" },
+      { id: "bdi-priority", label: "Приоритизация задач", type: "priority_scheduler", tagline: "SLA / VIP / штраф" },
+      { id: "bdi-supply", label: "Агент поставок", type: "supply_agent", tagline: "Альтернативные поставщики" },
+      { id: "bdi-logistics", label: "Агент логистики", type: "logistics_agent", tagline: "ETA и маршруты" },
+      { id: "bdi-finance", label: "Финансовый агент", type: "finance_agent", tagline: "Маржа и бюджет" },
+      { id: "bdi-customer", label: "Агент клиентского сервиса", type: "customer_service_agent", tagline: "Компенсации и коммуникации" },
+      { id: "bdi-action", label: "Финальный план", type: "action", tagline: "Что делаем в итоге" }
     ]
   },
   {

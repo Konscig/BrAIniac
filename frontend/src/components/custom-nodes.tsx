@@ -86,6 +86,40 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
   const statusToken = normalizedStatus ? statusTokens[normalizedStatus] : undefined;
   const [expanded, setExpanded] = React.useState(false);
 
+  const roleBadge = React.useMemo(() => {
+    if (!data.nodeType) return null;
+    switch (data.nodeType) {
+      case "bdi_crisis_manager":
+        return "Кризисный менеджер";
+      case "priority_scheduler":
+        return "Приоритизация";
+      case "supply_agent":
+        return "Агент поставок";
+      case "logistics_agent":
+        return "Агент логистики";
+      case "finance_agent":
+        return "Финансовый агент";
+      case "customer_service_agent":
+        return "Клиентский сервис";
+      case "consensus":
+        return "Консенсус";
+      case "action":
+        return "Действие";
+      default:
+        return null;
+    }
+  }, [data.nodeType]);
+
+  const isBdiManager = data.nodeType === "bdi_crisis_manager";
+  const isBdiChild = [
+    "priority_scheduler",
+    "supply_agent",
+    "logistics_agent",
+    "finance_agent",
+    "customer_service_agent",
+    "consensus"
+  ].includes(data.nodeType ?? "");
+
   return (
     <div
       className={cn(
@@ -105,8 +139,13 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
         </div>
         <div>
           <div className="text-sm font-semibold text-foreground">{label}</div>
-          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">
-            {tokens.subtitle}
+          <div className="flex flex-wrap items-center gap-1 text-xs uppercase tracking-wide text-muted-foreground/80">
+            <span>{tokens.subtitle}</span>
+            {roleBadge && (
+              <span className="rounded-full bg-background/60 px-2 py-0.5 text-[10px] font-medium text-foreground/80">
+                {roleBadge}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -139,22 +178,87 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
         </div>
       )}
 
-      <Handle
-        type="target"
-        position={Position.Left}
-        className={cn(
-          "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
-          tokens.handleClass
-        )}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className={cn(
-          "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
-          tokens.handleClass
-        )}
-      />
+      {/* Базовые вход/выход слева/справа для всех, кроме подчинённых BDI */}
+      {!isBdiChild && (
+        <>
+          <Handle
+            type="target"
+            position={Position.Left}
+            className={cn(
+              "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
+              tokens.handleClass
+            )}
+          />
+          <Handle
+            type="source"
+            position={Position.Right}
+            className={cn(
+              "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
+              tokens.handleClass
+            )}
+          />
+        </>
+      )}
+
+      {/* Подчинённые BDI: только вход сверху и выход снизу (визуально двунаправленные связи с оркестратором) */}
+      {isBdiChild && (
+        <>
+          <Handle
+            type="target"
+            position={Position.Top}
+            className={cn(
+              "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
+              tokens.handleClass
+            )}
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            className={cn(
+              "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
+              tokens.handleClass
+            )}
+          />
+        </>
+      )}
+
+      {/* Сам BDI-менеджер: классический вход слева, выход справа, плюс доп. верх/низ по желанию */}
+      {isBdiManager && (
+        <>
+          <Handle
+            type="target"
+            position={Position.Left}
+            className={cn(
+              "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
+              tokens.handleClass
+            )}
+          />
+          <Handle
+            type="source"
+            position={Position.Right}
+            className={cn(
+              "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
+              tokens.handleClass
+            )}
+          />
+          <Handle
+            type="target"
+            position={Position.Top}
+            className={cn(
+              "!h-2.5 !w-2.5 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
+              tokens.handleClass
+            )}
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            className={cn(
+              "!h-2.5 !w-2.5 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
+              tokens.handleClass
+            )}
+          />
+        </>
+      )}
     </div>
   );
 };
