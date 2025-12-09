@@ -84,6 +84,7 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
   const Icon = tokens.icon;
   const normalizedStatus = status && status in statusTokens ? (status as CanvasNodeStatus) : undefined;
   const statusToken = normalizedStatus ? statusTokens[normalizedStatus] : undefined;
+  const [expanded, setExpanded] = React.useState(false);
 
   return (
     <div
@@ -118,8 +119,23 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
       )}
 
       {data.outputPreview && (
-        <div className="rounded-md bg-background/50 px-2 py-1 text-[11px] text-muted-foreground line-clamp-2">
-          {data.outputPreview}
+        <div className="rounded-md bg-background/50 px-2 py-1 text-[11px] text-muted-foreground">
+          <div className={cn(
+            "whitespace-pre-wrap break-words",
+            expanded ? "max-h-48 overflow-auto" : "line-clamp-2"
+          )}>
+            {data.outputPreview}
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded((prev) => !prev);
+            }}
+            className="mt-1 text-[10px] font-medium text-primary hover:underline"
+          >
+            {expanded ? "Свернуть" : "Развернуть"}
+          </button>
         </div>
       )}
 
