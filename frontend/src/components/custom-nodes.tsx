@@ -13,6 +13,7 @@ type CanvasNodeData = {
   status?: CanvasNodeStatus | string;
   nodeType?: string;
   configJson?: string;
+  outputPreview?: string;
 };
 
 const statusTokens: Record<CanvasNodeStatus, { label: string; dot: string; text: string }> = {
@@ -116,9 +117,15 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
         </div>
       )}
 
+      {data.outputPreview && (
+        <div className="rounded-md bg-background/50 px-2 py-1 text-[11px] text-muted-foreground line-clamp-2">
+          {data.outputPreview}
+        </div>
+      )}
+
       <Handle
         type="target"
-        position={Position.Top}
+        position={Position.Left}
         className={cn(
           "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
           tokens.handleClass
@@ -126,7 +133,7 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
       />
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         className={cn(
           "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
           tokens.handleClass

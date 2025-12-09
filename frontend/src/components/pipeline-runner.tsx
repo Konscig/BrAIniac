@@ -35,10 +35,12 @@ const ResultRow: React.FC<{ result: NodeExecutionResultDto }> = ({ result }) => 
       <span className="text-sm font-semibold text-foreground">Узел {result.nodeId}</span>
       <span className="text-xs text-muted-foreground">{formatStatus(result.status)}</span>
     </div>
-    {result.output && (
-      <p className="text-xs leading-snug text-muted-foreground break-words whitespace-pre-wrap">
-        {result.output}
-      </p>
+    {result.output !== undefined && result.output !== null && (
+      <pre className="text-xs leading-snug text-muted-foreground break-words whitespace-pre-wrap">
+        {typeof result.output === "string"
+          ? result.output
+          : JSON.stringify(result.output, null, 2)}
+      </pre>
     )}
   </div>
 );

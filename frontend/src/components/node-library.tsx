@@ -25,6 +25,21 @@ const NODE_LIBRARY: LibraryGroup[] = [
     ]
   },
   {
+    id: "bdi-demo",
+    category: "Services",
+    name: "BDI (Кризисный менеджер)",
+    items: [
+      { id: "bdi-input", label: "Input", type: "input", tagline: "Заказ/контекст" },
+      { id: "bdi-priority", label: "Priority Scoring", type: "priority_scoring", tagline: "SLA/VIP/штраф" },
+      { id: "bdi-supply", label: "Supply", type: "supply", tagline: "Альтернативные поставщики" },
+      { id: "bdi-logistics", label: "Logistics", type: "logistics", tagline: "ETA / доставка" },
+      { id: "bdi-finance", label: "Finance", type: "finance", tagline: "Маржа/ROI" },
+      { id: "bdi-customer", label: "Customer Service", type: "customer_service", tagline: "Компенсация/уведомление" },
+      { id: "bdi-consensus", label: "Consensus", type: "consensus", tagline: "Голоса агентов" },
+      { id: "bdi-action", label: "Action", type: "action", tagline: "Финальное решение" }
+    ]
+  },
+  {
     id: "LLM",
     category: "LLM",
     name: "LLM узлы",

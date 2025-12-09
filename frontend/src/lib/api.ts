@@ -430,6 +430,8 @@ export async function executePipeline(
   mode: EnvironmentModeApi,
   triggerInput?: string
 ): Promise<ExecutePipelineResponse> {
-  // Not implemented on backend; stubbed for now
-  return { results: [], finalOutput: undefined };
+  return postJson<ExecutePipelineResponse>(`/pipelines/${pipelineId}/execute`, {
+    mode,
+    triggerInput
+  });
 }

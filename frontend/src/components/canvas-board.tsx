@@ -33,7 +33,8 @@ import {
 	type EnvironmentModeApi,
 	type PipelineEdgeDto,
 	type PipelineNodeCategory,
-	type PipelineNodeDto
+	type PipelineNodeDto,
+	type ExecutePipelineResponse
 } from "../lib/api";
 import { cn } from "../lib/utils";
 
@@ -104,7 +105,8 @@ const createLocalNode = (
 		category: payload.category,
 		status: DEFAULT_NODE_STATUS,
 		nodeType: payload.type,
-		configJson: FALLBACK_CONFIG
+		configJson: FALLBACK_CONFIG,
+		outputPreview: undefined
 	}
 });
 
@@ -120,7 +122,8 @@ const toFlowNode = (node: PipelineNodeDto): Node<VkNodeData> => ({
 		category: node.category,
 		status: node.status || DEFAULT_NODE_STATUS,
 		nodeType: node.type,
-		configJson: node.configJson || FALLBACK_CONFIG
+		configJson: node.configJson || FALLBACK_CONFIG,
+		outputPreview: undefined
 	}
 });
 
@@ -147,6 +150,7 @@ export interface CanvasBoardProps {
 		hasUnsavedChanges: boolean;
 		lastError?: string | null;
 	}) => void;
+	runResult?: ExecutePipelineResponse | null;
 }
 
 export function CanvasBoard({
@@ -157,7 +161,8 @@ export function CanvasBoard({
 	className,
 	onGraphLoaded,
 	onGraphError,
-	onStatusChange
+	onStatusChange,
+	runResult
 }: CanvasBoardProps): React.ReactElement {
 	const [nodes, setNodes] = React.useState<Array<Node<VkNodeData>>>([]);
 	const [edges, setEdges] = React.useState<Edge[]>([]);
@@ -244,6 +249,37 @@ export function CanvasBoard({
 			lastError: fetchError
 		});
 	}, [fetchError, isOfflineMode, localUnsaved, onStatusChange]);
+
+	React.useEffect(() => {
+		if (!runResult) return;
+
+		setNodes((prev) =>
+			prev.map((n) => {
+				const hit = runResult.results.find((r) => r.nodeId === n.id);
+				let data = { ...n.data };
+				if (hit) {
+					const status = hit.status === "succeeded" ? "completed" : hit.status === "failed" ? "error" : hit.status;
+					data = { ...data, status };
+					if (hit.output !== undefined && hit.output !== null) {
+						data.outputPreview =
+							typeof hit.output === "string"
+								? hit.output
+								: JSON.stringify(hit.output, null, 2);
+					}
+				}
+
+				if (runResult.finalOutput && (data.nodeType === "action" || data.nodeType === "output-response")) {
+					data = {
+						...data,
+						status: "completed",
+						outputPreview: runResult.finalOutput
+					};
+				}
+
+				return { ...n, data };
+			})
+		);
+	}, [runResult]);
 
 	const loadGraph = React.useCallback(async () => {
 		if (!hasContext) {

@@ -23,3 +23,10 @@ export async function getPipelineVersionById(id: string) {
 export async function updatePipelineVersion(id: string, data: { state?: string; metadataJson?: any }) {
   return prisma.pipelineVersion.update({ where: { id }, data });
 }
+
+export async function getLatestPipelineVersion(pipelineId: string) {
+  return prisma.pipelineVersion.findFirst({
+    where: { pipelineId },
+    orderBy: { number: 'desc' },
+  });
+}

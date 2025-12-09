@@ -1,5 +1,6 @@
 import express from 'express';
 import { createPipeline, getPipelineById, listPipelines, listPipelinesByOwner, updatePipeline, deletePipeline } from '../services/pipeline.service.js';
+import { executePipelineGraph } from '../services/pipeline_executor.js';
 import { getProjectById } from '../services/project.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 
@@ -86,6 +87,23 @@ router.delete('/:id', async (req, res) => {
 
     await deletePipeline(req.params.id);
     res.status(204).end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'internal error' });
+  }
+});
+
+router.post('/:id/execute', async (req, res) => {
+  try {
+    const { mode, triggerInput } = req.body ?? {};
+    const pipeline = await getPipelineById(req.params.id);
+    if (!pipeline) return res.status(404).json({ error: 'not found' });
+    const project = await getProjectById(pipeline.projectId);
+    if (!project) return res.status(404).json({ error: 'project not found' });
+    if (project.ownerId !== (req as any).user.id) return res.status(403).json({ error: 'forbidden' });
+
+    const payload = await executePipelineGraph(req.params.id, mode ?? 'test', triggerInput);
+    res.json(payload);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'internal error' });

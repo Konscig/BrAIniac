@@ -266,10 +266,6 @@ function MainPage(): React.ReactElement {
     }
 
     const prompt = triggerInput.trim();
-    if (!prompt) {
-      setRunError("Введите запрос для запуска пайплайна");
-      return;
-    }
 
     if (boardStatus.isOffline) {
       setRunError("Пайплайн работает в офлайн-режиме. Синхронизируйте изменения");
@@ -283,7 +279,7 @@ function MainPage(): React.ReactElement {
         activeProjectId,
         activePipelineId,
         MODE_API_MAP[environmentMode],
-        prompt
+        prompt || undefined
       );
       setRunResult(response);
     } catch (error) {
@@ -335,7 +331,6 @@ function MainPage(): React.ReactElement {
               className="rounded-full"
               disabled={
                 !activePipelineId ||
-                !triggerInput.trim() ||
                 boardStatus.isOffline ||
                 isLoadingProjects ||
                 isLoadingPipelines ||
@@ -397,6 +392,7 @@ function MainPage(): React.ReactElement {
               mode={environmentMode}
               refreshToken={refreshToken}
               onStatusChange={handleBoardStatusChange}
+              runResult={runResult}
             />
             <div className="flex w-[340px] flex-col gap-4">
               <NodeLibrary />
@@ -409,8 +405,7 @@ function MainPage(): React.ReactElement {
                   !activePipelineId ||
                   boardStatus.isOffline ||
                   isLoadingProjects ||
-                  isLoadingPipelines ||
-                  !triggerInput.trim()
+                  isLoadingPipelines
                 }
                 result={runResult}
                 error={runError}
