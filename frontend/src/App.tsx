@@ -11,6 +11,7 @@ import {
 } from "./components/environment-mode-switch";
 import { ModeToggle } from "./components/mode-toggle";
 import { NodeLibrary } from "./components/node-library";
+import { AgentChatDock } from "./components/agent-chat-dock";
 import { SidebarProjects } from "./components/sidebar-projects";
 import { PipelineRunner } from "./components/pipeline-runner";
 import { Button } from "./components/ui/button";
@@ -415,6 +416,7 @@ function MainPage(): React.ReactElement {
                 result={runResult}
                 error={runError}
               />
+              <AgentChatDock />
             </div>
           </div>
 

@@ -25,18 +25,19 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@mistralai/mistralai": "^1.10.0",
     "@prisma/client": "^6.18.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
     "express": "^5.1.0",
-    "cors": "^2.8.5"
-    ,"bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.5",
-    "@types/cors": "^2.8.17",
-    "@types/node": "^24.9.2",
-    "@types/jsonwebtoken": "^9.0.2",
     "@types/bcryptjs": "^2.4.2",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.5",
+    "@types/jsonwebtoken": "^9.0.2",
+    "@types/node": "^24.9.2",
     "prisma": "^6.18.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
