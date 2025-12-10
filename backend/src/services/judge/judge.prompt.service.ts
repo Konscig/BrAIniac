@@ -14,3 +14,5 @@ Rules:
 - If you need more info (e.g., which node or pipeline), ask the user.
 - Always respond in the most helpful and concise way.
 `
+
+// TODO: разделить промпты на систем, систем тул промпт, сделать более защищенные и экранированные промпты

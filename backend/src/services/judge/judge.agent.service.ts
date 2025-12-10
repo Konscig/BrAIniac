@@ -6,7 +6,7 @@ import { judgeToolHandlers } from "./judge.toolsHandlers.js";
 export class JudgeAgent {
    
     private client = new Mistral({
-        apiKey: process.env.MISTRAL_API_KEY || "",
+        apiKey: process.env.JUDGE_API_KEY || "",
     });
 
     private history: Array<{ role: "user" | "assistant" | "system" | "tool"; content: string; name?: string }> = [];
@@ -25,7 +25,7 @@ export class JudgeAgent {
 
         const msg = response.choices[0]?.message;
         if (msg?.toolCalls && msg.toolCalls.length > 0) {
-            for (const toolCall of msg.toolCalls) {
+            for (const toolCall of msg.toolCalls) { // Зарефакторить, сделать так, чтобы при имении тулзов проходило только посылание тулов, а не отправка каждый раз систем промпта и асистент промпта - его вообще удалить
                 const handler = judgeToolHandlers[toolCall.function.name as keyof typeof judgeToolHandlers];
                 if (!handler) continue;
                 const toolResult = await handler({ id: toolCall.function.name });
