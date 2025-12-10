@@ -7,6 +7,7 @@ import projectRouter from './routes/project.routes.js';
 import refreshTokenRouter from './routes/refresh_token.routes.js';
 import authRouter from './routes/auth.routes.js';
 import agentRouter from './routes/agent.routes.js';
+import judgeChatRouter from './routes/judge.chat.routes.js';
 import datasetRouter from './routes/dataset.routes.js';
 import documentRouter from './routes/document.routes.js';
 import nodeRouter from './routes/node.routes.js';
@@ -60,6 +61,7 @@ function createApp() {
   app.use('/projects', projectRouter);
   app.use('/refresh-tokens', refreshTokenRouter);
   app.use('/agents', agentRouter);
+  app.use('/', judgeChatRouter);
   app.use('/datasets', datasetRouter);
   app.use('/documents', documentRouter);
   app.use('/nodes', nodeRouter);

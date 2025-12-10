@@ -1,6 +1,6 @@
 import getExpress from 'express';
-import { JudgeAgent } from '../services/judge/judge.agent.service';
-import { judgeToolHandlers } from '../services/judge/judge.toolsHandlers';
+import { JudgeAgent } from '../services/judge/judge.agent.service.js';
+import { judgeToolHandlers } from '../services/judge/judge.toolsHandlers.js';
 
 const router = getExpress.Router();
 const agent = new JudgeAgent();

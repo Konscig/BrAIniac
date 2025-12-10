@@ -1,9 +1,7 @@
 import { Mistral } from "@mistralai/mistralai";
-import { judgeSystemPrompt } from "./judge.prompt.service";
-import { tools } from "./judge.tools.service";
-import { judgeToolHandlers } from "./judge.toolsHandlers";
-
-const env = process.loadEnvFile(".env");
+import { judgeSystemPrompt } from "./judge.prompt.service.js";
+import { tools } from "./judge.tools.service.js";
+import { judgeToolHandlers } from "./judge.toolsHandlers.js";
 
 export class JudgeAgent {
    
