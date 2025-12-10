@@ -76,9 +76,6 @@ export function AgentChatDock(): React.ReactElement {
           <div className="text-xs uppercase text-muted-foreground">ИИ судья</div>
           <div className="text-lg font-semibold">Наблюдатель</div>
         </div>
-        <Button size="icon" variant="ghost" className="rounded-full">
-          <MessageCircle className="h-4 w-4" />
-        </Button>
       </CardHeader>
       <Separator className="mb-3" />
       <CardContent className="space-y-3">
@@ -121,12 +118,13 @@ export function AgentChatDock(): React.ReactElement {
             className="flex-1 rounded-md border px-3 py-2 text-sm bg-background/80"
           />
           <Button
-            className="w-20"
-            variant="secondary"
+            size="icon" 
+            variant="ghost" 
+            className="rounded-full"
             onClick={() => void handleSend()}
             disabled={loading || !input.trim()}
           >
-            {loading ? "Отправка..." : "Отправить"}
+            <MessageCircle className="h-4 w-4" />
           </Button>
         </div>
       </CardContent>
