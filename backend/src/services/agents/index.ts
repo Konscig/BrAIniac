@@ -89,3 +89,166 @@ export async function crisisManagerLLM(summary: string): Promise<string | null> 
     return null;
   }
 }
+
+// Планировщик инструментов для BDI-агента: описывает подключённые к нему ноды-инструменты
+// и просит LLM вернуть, какие из них и в каком порядке использовать.
+
+export interface BdiToolDescription {
+  id: string;
+  key: string;
+  type: string;
+  label?: string;
+  category?: string;
+  description?: string;
+  toolId?: string;
+  configJson: any;
+  toolMetadata?: {
+    id: string;
+    kind: string;
+    name: string;
+    version: string;
+    config: any;
+  };
+}
+
+export interface BdiToolPlanStep {
+  id: string;
+  key: string;
+  type: string;
+}
+
+export interface BdiToolPlanFinal {
+  outputNodeId?: string;
+}
+
+export interface BdiToolPlan {
+  tools?: BdiToolPlanStep[];
+  final?: BdiToolPlanFinal;
+}
+
+function extractJsonPayload(raw: string): string | null {
+  if (!raw) return null;
+  let trimmed = raw.trim();
+  if (trimmed.startsWith("```")) {
+    const firstLineBreak = trimmed.indexOf("\n");
+    if (firstLineBreak !== -1) {
+      const closingFence = trimmed.lastIndexOf("```");
+      if (closingFence > firstLineBreak) {
+        trimmed = trimmed.slice(firstLineBreak + 1, closingFence).trim();
+      }
+    }
+  }
+
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return trimmed;
+  }
+
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  return jsonMatch ? jsonMatch[0] : trimmed;
+}
+
+const BDI_PLANNER_SYSTEM_PROMPT = `Ты — планировщик инструментов для BDI-кризисного менеджера.
+
+Тебе дают один JSON с:
+- полем "orderCtx" — описание кризисного заказа и контекста;
+- массивом "tools" — ноды-инструменты, реально подключённые к BDI (id, key, type, label, category, configJson);
+- массивом "outputs" — выходные ноды (куда в итоге надо прийти, например финальный ответ пользователю).
+
+Каждый инструмент в списке tools уже содержит своё текстовое описание и конфигурацию в полях
+label, category и configJson — используй их, чтобы понять роль и смысл инструмента.
+
+Твоя задача:
+- выбрать, какие инструменты из списка tools нужно вызвать и в каком порядке;
+- опираться на их описания и типы, НЕ придумывая новых инструментов;
+- при необходимости можешь пропустить любые инструменты из списка, если они не нужны для решения кейса;
+- указать, к какому выходному узлу из списка outputs ты в итоге ведёшь план (если это имеет смысл).
+
+Формат ответа — строго JSON без комментариев:
+{
+  "tools": [
+    { "id": "<id ноды>", "key": "<key ноды>", "type": "<type ноды>" },
+    ...
+  ],
+  "final": {
+    "outputNodeId": "<id выходной ноды, если хочешь явно указать>"
+  }
+}
+
+Не добавляй ничего, кроме этого объекта JSON.`;
+
+export async function planBdiToolsLLM(orderCtx: any, tools: BdiToolDescription[], outputs: { id: string; key: string; type: string; label?: string; }[] = []): Promise<BdiToolPlan> {
+  const apiKey = process.env.MISTRAL_API_KEY;
+  const apiUrl =
+    process.env.MISTRAL_API_URL?.trim() ||
+    "https://api.mistral.ai/v1/chat/completions";
+
+  if (!apiKey || tools.length === 0) {
+    return { tools: [] };
+  }
+
+  const payload = {
+    orderCtx,
+    tools: tools.map((t) => ({
+      id: t.id,
+      key: t.key,
+      type: t.type,
+      label: t.label,
+      category: t.category,
+      description: t.description,
+      toolId: t.toolId,
+      configJson: t.configJson,
+      toolMetadata: t.toolMetadata
+    })),
+    outputs
+  };
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: process.env.MISTRAL_MODEL || "mistral-small-latest",
+        messages: [
+          { role: "system", content: BDI_PLANNER_SYSTEM_PROMPT },
+          { role: "user", content: JSON.stringify(payload) }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      console.error("Mistral API error (BDI planner)", await response.text());
+      return { tools: [] };
+    }
+
+    const data = (await response.json()) as any;
+    const text = data.choices?.[0]?.message?.content;
+    if (typeof text !== "string" || !text.trim()) return { tools: [] };
+
+    const cleaned = extractJsonPayload(text);
+    if (!cleaned) {
+      return { tools: [] };
+    }
+
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (parsed && Array.isArray(parsed.tools)) {
+        const result: BdiToolPlan = { tools: parsed.tools as BdiToolPlanStep[] };
+        if (parsed.final) {
+          result.final = parsed.final as BdiToolPlanFinal;
+        }
+        return result;
+      }
+    } catch (e) {
+      console.error("Failed to parse BDI planner JSON", e, text);
+    }
+
+    return { tools: [] };
+  } catch (err) {
+    console.error("Failed to call Mistral API (BDI planner)", err);
+    return { tools: [] };
+  }
+}
+

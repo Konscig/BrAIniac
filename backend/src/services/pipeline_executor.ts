@@ -9,12 +9,15 @@ import {
   customerServiceDecision,
   consensusScore,
   crisisManagerLLM,
+  planBdiToolsLLM,
+  type BdiToolDescription,
   OrderContext,
   SupplyOption,
   LogisticsAssessment,
   FinanceAssessment,
   CustomerServiceDecision
 } from "./agents/index.js";
+import { getToolById } from "./tool.service.js";
 
 export interface ExecutionResult {
   nodeId: string;
@@ -27,6 +30,8 @@ export interface ExecutionResult {
 interface NodeLike {
   id: string;
   key: string;
+  label: string;
+  category: string;
   type: string;
   configJson: any;
 }
@@ -53,6 +58,87 @@ function topoSort(nodes: NodeLike[], edges: EdgeLike[]): string[] {
     }
   }
   return order.length === nodes.length ? order : order; // if cycle, partially ordered
+}
+
+// BDI tooling helpers
+const BDI_TOOL_TYPES = new Set<string>([
+  "priority_scheduler",
+  "supply_agent",
+  "logistics_agent",
+  "finance_agent",
+  "customer_service_agent",
+  "consensus"
+]);
+const OUTPUT_NODE_TYPES = new Set<string>(["action", "output-response"]);
+
+function parseNodeConfigJson(config: any): Record<string, any> {
+  if (!config) return {};
+  if (typeof config === "string") {
+    try {
+      return JSON.parse(config);
+    } catch {
+      return {};
+    }
+  }
+  return config;
+}
+
+function isBdiToolNode(node: NodeLike | undefined): node is NodeLike {
+  return !!node && BDI_TOOL_TYPES.has(node.type);
+}
+
+async function describeBdiToolNode(node: NodeLike): Promise<BdiToolDescription> {
+  const config = parseNodeConfigJson(node.configJson);
+  const directId = config?.toolId ?? config?.tool_id ?? config?.tool?.id;
+  let toolRecord: any = null;
+
+  if (typeof directId === "string" && directId.trim().length > 0) {
+    try {
+      toolRecord = await getToolById(directId);
+    } catch (err) {
+      console.error("Failed to fetch tool metadata", directId, err);
+    }
+  }
+
+  const metadata = toolRecord
+    ? {
+        id: toolRecord.id,
+        kind: toolRecord.kind,
+        name: toolRecord.name,
+        version: toolRecord.version,
+        config: toolRecord.configJson ?? {}
+      }
+    : undefined;
+
+  const description =
+    config?.description ??
+    config?.summary ??
+    metadata?.config?.description ??
+    metadata?.config?.summary ??
+    toolRecord?.name ??
+    node.label;
+
+  const base: BdiToolDescription = {
+    id: node.id,
+    key: node.key,
+    type: node.type,
+    label: node.label,
+    category: node.category,
+    description,
+    toolId: metadata?.id ?? (typeof directId === "string" ? directId : undefined),
+    configJson: config
+  };
+
+  if (metadata) {
+    base.toolMetadata = metadata;
+  }
+
+  return base;
+}
+
+async function resolveBdiToolDescriptions(nodes: NodeLike[]): Promise<BdiToolDescription[]> {
+  if (!nodes.length) return [];
+  return Promise.all(nodes.map(describeBdiToolNode));
 }
 
 // Вспомогательные чистые функции для вызова подчинённых агентов.
@@ -112,12 +198,15 @@ export async function executePipelineGraph(pipelineId: string, mode: string, tri
   const nodeMap = new Map(nodes.map((n: any) => [n.id, n as NodeLike]));
   const order = topoSort(nodes as any, edges as any);
 
-  // Реестр доступных подчинённых агентов для BDI-ноды.
-  const hasPriorityNode = nodes.some((n: any) => n.type === "priority_scheduler");
-  const hasSupplyNode = nodes.some((n: any) => n.type === "supply_agent");
-  const hasLogisticsNode = nodes.some((n: any) => n.type === "logistics_agent");
-  const hasFinanceNode = nodes.some((n: any) => n.type === "finance_agent");
-  const hasCustomerServiceNode = nodes.some((n: any) => n.type === "customer_service_agent");
+  // Карты входящих и исходящих рёбер для реального взаимодействия нод.
+  const incomingByNode = new Map<string, EdgeLike[]>();
+  const outgoingByNode = new Map<string, EdgeLike[]>();
+  (edges as any as EdgeLike[]).forEach((e) => {
+	if (!incomingByNode.has(e.toNode)) incomingByNode.set(e.toNode, []);
+	incomingByNode.get(e.toNode)!.push(e);
+	if (!outgoingByNode.has(e.fromNode)) outgoingByNode.set(e.fromNode, []);
+	outgoingByNode.get(e.fromNode)!.push(e);
+  });
 
   const results: ExecutionResult[] = [];
   // shared context для BDI-агента кризисного менеджера
@@ -148,11 +237,18 @@ export async function executePipelineGraph(pipelineId: string, mode: string, tri
   let finalOutput: string | undefined;
   // текстовый план, сформированный BDI-агентом (без LLM или с LLM)
   let bdiPlanText: string | undefined;
+  let bdiPreferredOutputNodeId: string | undefined;
 
   for (const nodeId of order) {
     const node = nodeMap.get(nodeId);
     if (!node) continue;
     const type = node.type;
+    // Собираем входы ноды на основе рёбер: выходы всех родительских нод.
+    const parentEdges = incomingByNode.get(nodeId) ?? [];
+    const parentIds = parentEdges.map((e) => e.fromNode);
+    const inputsForNode = results
+      .filter((r) => parentIds.includes(r.nodeId) && r.status === "succeeded")
+      .map((r) => r.output);
     try {
       switch (type) {
         case "input": {
@@ -164,70 +260,100 @@ export async function executePipelineGraph(pipelineId: string, mode: string, tri
       break;
     }
     case "bdi_crisis_manager": {
-      // BDI-агент сам оркестрирует вызовы доступных подчинённых агентов.
+      // BDI-агент: сначала LLM планирует, какими инструментами пользоваться, затем мы их исполняем.
+
+      const outgoingEdgesFromBdi = outgoingByNode.get(nodeId) ?? [];
+      const candidateToolIds = new Set<string>();
+
+      // Инструменты, подключённые по исходящим рёбрам (BDI -> подчинённые).
+      for (const edge of outgoingEdgesFromBdi) {
+        const maybeTool = nodeMap.get(edge.toNode);
+        if (isBdiToolNode(maybeTool)) {
+          candidateToolIds.add(maybeTool.id);
+        }
+      }
+
+      // Инструменты, которые соединены входящими рёбрами (подчинённые -> BDI).
+      for (const edge of parentEdges) {
+        const maybeTool = nodeMap.get(edge.fromNode);
+        if (isBdiToolNode(maybeTool)) {
+          candidateToolIds.add(maybeTool.id);
+        }
+      }
+
+      const connectedToolNodes = Array.from(candidateToolIds)
+        .map((id) => nodeMap.get(id))
+        .filter((n): n is NodeLike => !!n);
+
+      const availableTools = await resolveBdiToolDescriptions(connectedToolNodes);
+      const toolById = new Map(availableTools.map((tool) => [tool.id, tool]));
+      const toolByKey = new Map(availableTools.map((tool) => [tool.key, tool]));
+
+      const outputNodes = outgoingEdgesFromBdi
+        .map((e) => nodeMap.get(e.toNode))
+        .filter((n): n is NodeLike => !!n && OUTPUT_NODE_TYPES.has(n.type))
+        .map((n) => ({ id: n.id, key: n.key, type: n.type, label: n.label }));
+
+      const bdiPlan = await planBdiToolsLLM(orderCtx, availableTools, outputNodes);
+      if (bdiPlan.final?.outputNodeId) {
+        bdiPreferredOutputNodeId = bdiPlan.final.outputNodeId;
+      }
+
+      // Исполняем шаги плана по инструментам.
+      let priorityScore = 0;
+      let priorityQueue: Array<{ taskId: string; priority: number }> | undefined;
+
+      for (const step of bdiPlan.tools ?? []) {
+		const toolInfo = toolById.get(step.id) ?? toolByKey.get(step.key);
+		const toolType = toolInfo?.type ?? step.type;
+		try {
+		  switch (toolType) {
+			case "priority_scheduler": {
+			  const { basePriority, queue } = runPriority(orderCtx);
+			  priorityScore = basePriority;
+			  priorityQueue = queue;
+			  break;
+			}
+			case "supply_agent": {
+			  supplyOptions = runSupply(orderCtx);
+			  break;
+			}
+			case "logistics_agent": {
+			  const option = supplyOptions[0];
+			  logistics = runLogistics(orderCtx, option);
+			  break;
+			}
+			case "finance_agent": {
+			  const option = supplyOptions[0];
+			  finance = runFinance(orderCtx, option, logistics);
+			  break;
+			}
+			case "customer_service_agent": {
+			  cs = runCustomerService(orderCtx, finance);
+			  break;
+			}
+			default:
+			  // неизвестный инструмент — пропускаем, чтобы не падать
+			  break;
+		  }
+		} catch (e) {
+		  console.error("BDI tool step failed", toolType, e);
+		}
+	  }
+
+      // Если планировщик не проставил приоритет — используем эвристику.
+      if (!priorityScore) {
+		priorityScore =
+		  (orderCtx.isVip ? 0.3 : 0) +
+		  Math.max(0, 1 - orderCtx.slaHours / 72) +
+		  (orderCtx.penaltyCost > 0 ? 0.2 : 0);
+	  }
+
       const desires = {
         minimizeDelay: true,
         minimizePenalty: orderCtx.penaltyCost > 0,
         protectVip: orderCtx.isVip
       };
-
-      let priorityScore = 0;
-      let priorityQueue: Array<{ taskId: string; priority: number }> | undefined;
-
-      // Приоритизация (если в графе есть нода priority_scheduler).
-      if (hasPriorityNode) {
-        try {
-          const { basePriority, queue } = runPriority(orderCtx);
-          priorityScore = basePriority;
-          priorityQueue = queue;
-        } catch (e) {
-          console.error("priority scheduler failed in BDI", e);
-        }
-      } else {
-        // Фолбэк: минимальная встроенная эвристика, если отдельной ноды нет.
-        priorityScore =
-          (orderCtx.isVip ? 0.3 : 0) +
-          Math.max(0, 1 - orderCtx.slaHours / 72) +
-          (orderCtx.penaltyCost > 0 ? 0.2 : 0);
-      }
-
-      // Supply
-      if (hasSupplyNode) {
-        try {
-          supplyOptions = runSupply(orderCtx);
-        } catch (e) {
-          console.error("supply agent failed in BDI", e);
-        }
-      }
-
-      // Logistics
-      if (hasLogisticsNode) {
-        try {
-          const option = supplyOptions[0];
-          logistics = runLogistics(orderCtx, option);
-        } catch (e) {
-          console.error("logistics agent failed in BDI", e);
-        }
-      }
-
-      // Finance
-      if (hasFinanceNode) {
-        try {
-          const option = supplyOptions[0];
-          finance = runFinance(orderCtx, option, logistics);
-        } catch (e) {
-          console.error("finance agent failed in BDI", e);
-        }
-      }
-
-      // Customer service
-      if (hasCustomerServiceNode) {
-        try {
-          cs = runCustomerService(orderCtx, finance);
-        } catch (e) {
-          console.error("customer service agent failed in BDI", e);
-        }
-      }
 
       const votes = [finance?.vote ?? 0, cs?.vote ?? 0].filter((v) => typeof v === "number");
       const consensus = votes.length ? consensusScore(votes as number[]) : null;
@@ -284,7 +410,10 @@ export async function executePipelineGraph(pipelineId: string, mode: string, tri
           finance,
           customerService: cs,
           consensus,
-          planText: bdiPlanText
+          planText: bdiPlanText,
+          toolsPlanned: bdiPlan.tools ?? [],
+          availableTools,
+          preferredOutputNodeId: bdiPreferredOutputNodeId
         }
       });
       break;
@@ -301,6 +430,19 @@ export async function executePipelineGraph(pipelineId: string, mode: string, tri
       break;
     }
     case "logistics_agent": {
+      if (!supplyOptions.length) {
+        for (const input of inputsForNode) {
+          if (input?.agent === "SupplyAgent" && Array.isArray(input.options)) {
+            supplyOptions = input.options as SupplyOption[];
+            break;
+          }
+          if (Array.isArray(input?.supply)) {
+            supplyOptions = input.supply as SupplyOption[];
+            break;
+          }
+        }
+      }
+
       const option = supplyOptions[0];
       if (!option) throw new Error("нет альтернативных поставщиков");
       logistics = runLogistics(orderCtx, option);
@@ -308,13 +450,56 @@ export async function executePipelineGraph(pipelineId: string, mode: string, tri
       break;
     }
     case "finance_agent": {
+      if (!supplyOptions.length) {
+        for (const input of inputsForNode) {
+          if (input?.agent === "SupplyAgent" && Array.isArray(input.options)) {
+            supplyOptions = input.options as SupplyOption[];
+            break;
+          }
+          if (Array.isArray(input?.supply)) {
+            supplyOptions = input.supply as SupplyOption[];
+            break;
+          }
+        }
+      }
+
+      if (!logistics) {
+        for (const input of inputsForNode) {
+          if (input?.agent === "LogisticsAgent" && input.assessment) {
+            logistics = input.assessment as LogisticsAssessment;
+            break;
+          }
+          if (input?.logistics) {
+            logistics = input.logistics as LogisticsAssessment;
+            break;
+          }
+        }
+      }
+
       const option = supplyOptions[0];
+      if (!logistics && option) {
+        logistics = runLogistics(orderCtx, option);
+      }
+
       if (!option || !logistics) throw new Error("нет данных о поставщике/логистике");
       finance = runFinance(orderCtx, option, logistics);
       results.push({ nodeId, type, status: "succeeded", output: { agent: "FinanceAgent", assessment: finance } });
       break;
     }
     case "customer_service_agent": {
+      if (!finance) {
+        for (const input of inputsForNode) {
+          if (input?.agent === "FinanceAgent" && input.assessment) {
+            finance = input.assessment as FinanceAssessment;
+            break;
+          }
+          if (input?.finance) {
+            finance = input.finance as FinanceAssessment;
+            break;
+          }
+        }
+      }
+
       if (!finance) throw new Error("нет финансовой оценки");
       cs = runCustomerService(orderCtx, finance);
       results.push({ nodeId, type, status: "succeeded", output: { agent: "CustomerServiceAgent", decision: cs } });
@@ -329,7 +514,12 @@ export async function executePipelineGraph(pipelineId: string, mode: string, tri
     case "output-response": {
       // Специальная нода "Ответ": просто показывает финальный план.
       // Предпочитает результат BDI-менеджера, но умеет работать и с legacy finalOutput.
-      const effective = bdiPlanText ?? finalOutput;
+      const shouldUseBdiPlan =
+        !!bdiPlanText && (!bdiPreferredOutputNodeId || bdiPreferredOutputNodeId === nodeId);
+      const effective = shouldUseBdiPlan ? bdiPlanText : finalOutput;
+      if (shouldUseBdiPlan && bdiPlanText) {
+        finalOutput = bdiPlanText;
+      }
       if (effective) {
         results.push({ nodeId, type, status: "succeeded", output: effective });
       } else {
@@ -344,7 +534,9 @@ export async function executePipelineGraph(pipelineId: string, mode: string, tri
     }
     case "action": {
       // Для демо BDI: если есть план от кризисного менеджера — используем его как финальный ответ.
-      if (bdiPlanText) {
+      const shouldUseBdiPlan =
+        !!bdiPlanText && (!bdiPreferredOutputNodeId || bdiPreferredOutputNodeId === nodeId);
+      if (shouldUseBdiPlan && bdiPlanText) {
         finalOutput = bdiPlanText;
       } else {
         const option = supplyOptions[0];

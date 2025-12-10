@@ -2,15 +2,20 @@ import React from "react";
 import ReactFlow, {
 	Background,
 	BackgroundVariant,
+	BaseEdge,
 	ConnectionLineType,
 	Controls,
 	MarkerType,
+	Position,
 	addEdge,
 	applyEdgeChanges,
 	applyNodeChanges,
+	getSmoothStepPath,
+	useStore,
 	type Connection,
 	type Edge,
 	type EdgeChange,
+	type EdgeProps,
 	type Node,
 	type NodeChange,
 	type NodePositionChange,
@@ -41,6 +46,99 @@ import { cn } from "../lib/utils";
 const DEFAULT_NODE_STATUS = "idle";
 const FALLBACK_CONFIG = "{}";
 
+const QUESTION_NODE_TYPES = new Set(["input", "input-trigger"]);
+const BDI_MANAGER_TYPE = "bdi_crisis_manager";
+const BDI_CHILD_NODE_TYPES = new Set([
+	"priority_scheduler",
+	"supply_agent",
+	"logistics_agent",
+	"finance_agent",
+	"customer_service_agent",
+	"consensus"
+]);
+
+const DEFAULT_ORDER_CONTEXT = {
+	order: {
+		id: "order-crisis-1",
+		sku: "server-rack-42u-premium",
+		quantity: 12,
+		slaHours: 18,
+		isVip: true,
+		penaltyCost: 25000,
+		basePrice: 4800,
+		notes: "Срыв поставки грозит штрафами и потерей клиента"
+	}
+};
+
+const DEFAULT_QUESTION_CONFIG = JSON.stringify(DEFAULT_ORDER_CONTEXT, null, 2);
+
+const getDefaultConfigForType = (type?: string): string =>
+	(type && QUESTION_NODE_TYPES.has(type) ? DEFAULT_QUESTION_CONFIG : FALLBACK_CONFIG);
+
+const stringifyConfig = (value?: unknown): string => {
+	if (typeof value === "string" && value.trim().length > 0) {
+		return value;
+	}
+	if (value && typeof value === "object") {
+		try {
+			return JSON.stringify(value, null, 2);
+		} catch (error) {
+			console.warn("Failed to stringify node config", error);
+		}
+	}
+	return FALLBACK_CONFIG;
+};
+
+const buildNodeLookup = (nodeList: Array<Node<VkNodeData>>): Map<string, Node<VkNodeData>> =>
+	new Map(nodeList.map((node) => [node.id, node]));
+
+const isBdiChildType = (type?: string | null): boolean =>
+	Boolean(type && BDI_CHILD_NODE_TYPES.has(type));
+
+const isBidirectionalBdiEdge = (
+	sourceNode?: Node<VkNodeData>,
+	targetNode?: Node<VkNodeData>
+): boolean => {
+	const sourceType = sourceNode?.data?.nodeType;
+	const targetType = targetNode?.data?.nodeType;
+	return (
+		(sourceType === BDI_MANAGER_TYPE && isBdiChildType(targetType)) ||
+		(targetType === BDI_MANAGER_TYPE && isBdiChildType(sourceType))
+	);
+};
+
+const decorateEdge = (edge: Edge, lookup: Map<string, Node<VkNodeData>>): Edge => {
+	const sourceNode = lookup.get(edge.source);
+	const targetNode = lookup.get(edge.target);
+	const mergedStyle = { ...defaultEdgeStyle, ...(edge.style ?? {}) };
+
+	if (isBidirectionalBdiEdge(sourceNode, targetNode)) {
+		return {
+			...edge,
+			type: "bdiEdge",
+			animated: false,
+			markerStart: { ...bdiEdgeMarker },
+			markerEnd: { ...bdiEdgeMarker },
+			style: {
+				...mergedStyle,
+				strokeDasharray: "6 4",
+				stroke: "rgba(39, 135, 245, 0.9)"
+			},
+			data: {
+				...(edge.data ?? {}),
+				relation: "bdi-link"
+			}
+		};
+	}
+
+	return {
+		...edge,
+		animated: edge.animated ?? true,
+		markerEnd: edge.markerEnd ?? { ...defaultMarker },
+		style: mergedStyle
+	};
+};
+
 const defaultEdgeStyle = {
 	stroke: "rgba(39, 135, 245, 0.75)",
 	strokeWidth: 2
@@ -52,6 +150,89 @@ const defaultMarker = {
 	height: 18,
 	color: "rgba(39, 135, 245, 0.85)"
 } as const;
+
+const bdiEdgeMarker = {
+	type: MarkerType.ArrowClosed,
+	width: 18,
+	height: 18,
+	color: "rgba(39, 135, 245, 0.95)"
+} as const;
+
+const BdiEdge: React.FC<EdgeProps> = ({
+	id,
+	source,
+	target,
+	sourceX,
+	sourceY,
+	targetX,
+	targetY,
+	markerStart,
+	markerEnd,
+	selected,
+	style
+}) => {
+	const sourceNode = useStore(
+		React.useCallback(
+			(state) => (source ? (state.nodeInternals.get(source) as Node<VkNodeData> | undefined) : undefined),
+			[source]
+		)
+	);
+	const targetNode = useStore(
+		React.useCallback(
+			(state) => (target ? (state.nodeInternals.get(target) as Node<VkNodeData> | undefined) : undefined),
+			[target]
+		)
+	);
+	const managerNode = sourceNode?.data?.nodeType === BDI_MANAGER_TYPE
+		? sourceNode
+		: targetNode?.data?.nodeType === BDI_MANAGER_TYPE
+			? targetNode
+			: undefined;
+	const childNode = managerNode
+		? managerNode.id === sourceNode?.id
+			? targetNode
+			: sourceNode
+		: undefined;
+
+	const managerPos = managerNode?.positionAbsolute;
+	const childPos = childNode?.positionAbsolute;
+
+	const startX = managerPos ? managerPos.x + (managerNode?.width ?? 0) / 2 : sourceX;
+	const startY = managerPos ? managerPos.y + (managerNode?.height ?? 0) + 8 : sourceY;
+	const endX = childPos ? childPos.x + (childNode?.width ?? 0) / 2 : targetX;
+	const endY = childPos ? childPos.y - 8 : targetY;
+
+	const [path] = getSmoothStepPath({
+		sourceX: startX,
+		sourceY: startY,
+		targetX: endX,
+		targetY: endY,
+		sourcePosition: Position.Bottom,
+		targetPosition: Position.Top,
+		borderRadius: 48
+	});
+
+	return (
+		<BaseEdge
+			id={id}
+			path={path}
+			markerStart={markerStart}
+			markerEnd={markerEnd}
+			style={{
+				stroke: selected ? "rgba(63, 194, 255, 1)" : "rgba(39, 135, 245, 0.95)",
+				strokeWidth: 2.6,
+				strokeDasharray: "10 6",
+				fill: "none",
+				pointerEvents: "visibleStroke",
+				...(style ?? {})
+			}}
+		/>
+	);
+};
+
+const edgeTypes = {
+	bdiEdge: BdiEdge
+};
 
 const MODE_MAP: Record<EnvironmentMode, EnvironmentModeApi> = {
 	test: "ENVIRONMENT_MODE_TEST",
@@ -79,7 +260,6 @@ const cloneNodes = (nodes: Array<Node<VkNodeData>>): Array<Node<VkNodeData>> =>
 		position: { ...node.position },
 		data: { ...node.data }
 	}));
-
 const cloneEdges = (edges: Edge[]): Edge[] =>
 	edges.map((edge) => ({
 		...edge,
@@ -105,7 +285,7 @@ const createLocalNode = (
 		category: payload.category,
 		status: DEFAULT_NODE_STATUS,
 		nodeType: payload.type,
-		configJson: FALLBACK_CONFIG,
+		configJson: getDefaultConfigForType(payload.type),
 		outputPreview: undefined
 	}
 });
@@ -122,7 +302,7 @@ const toFlowNode = (node: PipelineNodeDto): Node<VkNodeData> => ({
 		category: node.category,
 		status: node.status || DEFAULT_NODE_STATUS,
 		nodeType: node.type,
-		configJson: node.configJson || FALLBACK_CONFIG,
+		configJson: stringifyConfig(node.configJson),
 		outputPreview: undefined
 	}
 });
@@ -181,12 +361,6 @@ export function CanvasBoard({
 	// closing over stale values
 	const nodesRef = React.useRef<Array<Node<VkNodeData>>>(nodes);
 	const edgesRef = React.useRef<Edge[]>(edges);
-	React.useEffect(() => {
-		nodesRef.current = nodes;
-	}, [nodes]);
-	React.useEffect(() => {
-		edgesRef.current = edges;
-	}, [edges]);
 
 	const modeParam = MODE_MAP[mode];
 	const hasContext = Boolean(projectId && pipelineId);
@@ -224,10 +398,71 @@ export function CanvasBoard({
 		[isOfflineMode, pipelineKey]
 	);
 
+	const handleNodeConfigChange = React.useCallback(
+		(nodeId: string, nextConfig: string) => {
+			if (!nodeId) {
+				return;
+			}
+			const snapshot = nodesRef.current.find((node) => node.id === nodeId);
+			setNodes((current) => {
+				const nextNodes = current.map((node) =>
+					node.id === nodeId
+						? {
+							...node,
+							data: { ...node.data, configJson: nextConfig }
+						}
+						: node
+				);
+				if (isOfflineMode) {
+					persistLocalGraph(nextNodes, edgesRef.current);
+					setLocalUnsaved(true);
+				}
+				return nextNodes;
+			});
+
+			if (isOfflineMode || !projectId || !pipelineId || !snapshot) {
+				return;
+			}
+
+			void updatePipelineNode(projectId, pipelineId, {
+				nodeId,
+				label: snapshot.data.label,
+				category: snapshot.data.category,
+				type: snapshot.data.nodeType ?? snapshot.data.category.toLowerCase(),
+				status: snapshot.data.status ?? DEFAULT_NODE_STATUS,
+				positionX: snapshot.position.x,
+				positionY: snapshot.position.y,
+				configJson: nextConfig
+			})
+				.catch((error) => {
+					console.error("Failed to update node config", error);
+					onGraphError?.("Не удалось сохранить конфигурацию узла");
+				});
+		},
+		[edgesRef, isOfflineMode, nodesRef, onGraphError, persistLocalGraph, pipelineId, projectId]
+	);
+
+	const enhanceNode = React.useCallback(
+		(node: Node<VkNodeData>): Node<VkNodeData> => ({
+			...node,
+			data: {
+				...node.data,
+				nodeId: node.id,
+				onConfigChange: handleNodeConfigChange
+			}
+		}),
+		[handleNodeConfigChange]
+	);
+
+	const enhanceNodes = React.useCallback(
+		(list: Array<Node<VkNodeData>>) => list.map(enhanceNode),
+		[enhanceNode]
+	);
+
 	const restoreLocalGraph = React.useCallback(() => {
 		const snapshot = localGraphsRef.current[pipelineKey];
 		if (snapshot) {
-			const nodesClone = cloneNodes(snapshot.nodes);
+			const nodesClone = enhanceNodes(cloneNodes(snapshot.nodes));
 			const edgesClone = cloneEdges(snapshot.edges);
 			setNodes(nodesClone);
 			setEdges(edgesClone);
@@ -240,7 +475,14 @@ export function CanvasBoard({
 		setLocalUnsaved(false);
 		updateEmptyState(0, 0);
 		return true;
-	}, [pipelineKey, updateEmptyState]);
+	}, [enhanceNodes, pipelineKey, updateEmptyState]);
+
+	React.useEffect(() => {
+		nodesRef.current = nodes;
+	}, [nodes]);
+	React.useEffect(() => {
+		edgesRef.current = edges;
+	}, [edges]);
 
 	React.useEffect(() => {
 		onStatusChange?.({
@@ -309,8 +551,9 @@ export function CanvasBoard({
 		setFetchError(null);
 		try {
 			const graph = await getPipelineGraph(projectId, pipelineId, modeParam);
-			const apiNodes = graph.nodes.map(toFlowNode);
-			const apiEdges = graph.edges.map(toFlowEdge);
+			const apiNodes = enhanceNodes(graph.nodes.map(toFlowNode));
+			const nodeLookup = buildNodeLookup(apiNodes);
+			const apiEdges = graph.edges.map(toFlowEdge).map((edge) => decorateEdge(edge, nodeLookup));
 			setNodes(apiNodes);
 			setEdges(apiEdges);
 			updateEmptyState(apiNodes.length, apiEdges.length);
@@ -324,8 +567,9 @@ export function CanvasBoard({
 			if (apiError?.status === 404 && mode === "real") {
 				try {
 					const draftGraph = await getPipelineGraph(projectId, pipelineId, MODE_MAP.test);
-					const draftNodes = draftGraph.nodes.map(toFlowNode);
-					const draftEdges = draftGraph.edges.map(toFlowEdge);
+					const draftNodes = enhanceNodes(draftGraph.nodes.map(toFlowNode));
+					const draftLookup = buildNodeLookup(draftNodes);
+					const draftEdges = draftGraph.edges.map(toFlowEdge).map((edge) => decorateEdge(edge, draftLookup));
 					setNodes(draftNodes);
 					setEdges(draftEdges);
 					updateEmptyState(draftNodes.length, draftEdges.length);
@@ -374,6 +618,7 @@ export function CanvasBoard({
 		}
 	}, [
 		canAttemptApi,
+		enhanceNodes,
 		hasContext,
 		modeParam,
 		onGraphError,
@@ -399,9 +644,9 @@ export function CanvasBoard({
 					);
 					if (moved) {
 						setLocalUnsaved(true);
-						persistLocalGraph(next, edges);
+						persistLocalGraph(next, edgesRef.current);
 					}
-					updateEmptyState(next.length, edges.length);
+					updateEmptyState(next.length, edgesRef.current.length);
 					return next;
 				}
 
@@ -430,11 +675,11 @@ export function CanvasBoard({
 					});
 				});
 
-				updateEmptyState(next.length, edges.length);
+				updateEmptyState(next.length, edgesRef.current.length);
 				return next;
 			});
 		},
-		[edges, isOfflineMode, onGraphError, persistLocalGraph, pipelineId, projectId, updateEmptyState]
+		[edgesRef, isOfflineMode, onGraphError, persistLocalGraph, pipelineId, projectId, updateEmptyState]
 	);
 
 	const handleEdgesChange = React.useCallback(
@@ -442,13 +687,13 @@ export function CanvasBoard({
 			setEdges((current) => {
 				const next = applyEdgeChanges(changes, current);
 				if (isOfflineMode) {
-					persistLocalGraph(nodes, next);
+					persistLocalGraph(nodesRef.current, next);
 					setLocalUnsaved(true);
 				}
 				return next;
 			});
 		},
-		[isOfflineMode, nodes, persistLocalGraph]
+		[isOfflineMode, nodesRef, persistLocalGraph]
 	);
 
 	const handleConnect = React.useCallback(
@@ -467,11 +712,12 @@ export function CanvasBoard({
 					style: { ...defaultEdgeStyle },
 					type: "smoothstep"
 				};
+				const decoratedLocalEdge = decorateEdge(localEdge, buildNodeLookup(nodesRef.current));
 				setEdges((current) => {
-					const next = addEdge(localEdge, current);
-					persistLocalGraph(nodes, next);
+					const next = addEdge(decoratedLocalEdge, current);
+					persistLocalGraph(nodesRef.current, next);
 					setLocalUnsaved(true);
-					updateEmptyState(nodes.length, next.length);
+					updateEmptyState(nodesRef.current.length, next.length);
 					return next;
 				});
 				setFetchError(null);
@@ -484,7 +730,8 @@ export function CanvasBoard({
 				label: ""
 			})
 				.then((edge) => {
-					setEdges((current) => addEdge(toFlowEdge(edge), current));
+					const decorated = decorateEdge(toFlowEdge(edge), buildNodeLookup(nodesRef.current));
+					setEdges((current) => addEdge(decorated, current));
 				})
 				.catch((error) => {
 					console.error("Failed to create edge", error);
@@ -492,7 +739,7 @@ export function CanvasBoard({
 					onGraphError?.("Не удалось соединить узлы");
 				});
 		},
-		[isOfflineMode, nodes, onGraphError, pipelineId, projectId, updateEmptyState, persistLocalGraph]
+		[isOfflineMode, nodesRef, onGraphError, pipelineId, projectId, updateEmptyState, persistLocalGraph]
 	);
 
 	const handleNodesDelete = React.useCallback(
@@ -522,7 +769,7 @@ export function CanvasBoard({
 				});
 			});
 		},
-		[edges, hasContext, isOfflineMode, nodes, onGraphError, persistLocalGraph, pipelineId, projectId, updateEmptyState]
+		[edges, hasContext, isOfflineMode, nodesRef, onGraphError, persistLocalGraph, pipelineId, projectId, updateEmptyState]
 	);
 
 	const handleEdgesDelete = React.useCallback(
@@ -532,8 +779,8 @@ export function CanvasBoard({
 				const nextEdges = edges.filter((edge) => !removedIds.has(edge.id));
 				setEdges(nextEdges);
 				setLocalUnsaved(true);
-				persistLocalGraph(nodes, nextEdges);
-				updateEmptyState(nodes.length, nextEdges.length);
+				persistLocalGraph(nodesRef.current, nextEdges);
+				updateEmptyState(nodesRef.current.length, nextEdges.length);
 				return;
 			}
 
@@ -586,13 +833,15 @@ export function CanvasBoard({
 				y: event.clientY
 			});
 
+			const initialConfig = getDefaultConfigForType(payload.type);
+
 			if (isOfflineMode || !projectId || !pipelineId) {
-				const node = createLocalNode(payload, position);
+				const node = enhanceNode(createLocalNode(payload, position));
 				setNodes((current) => {
 					const next = current.concat(node);
-					persistLocalGraph(next, edges);
+					persistLocalGraph(next, edgesRef.current);
 					setLocalUnsaved(true);
-					updateEmptyState(next.length, edges.length);
+					updateEmptyState(next.length, edgesRef.current.length);
 					return next;
 				});
 				setEmptyStateMessage(null);
@@ -607,12 +856,13 @@ export function CanvasBoard({
 				status: DEFAULT_NODE_STATUS,
 				positionX: position.x,
 				positionY: position.y,
-				configJson: FALLBACK_CONFIG
+				configJson: initialConfig
 			})
 				.then((node) => {
+					const nextNode = enhanceNode(toFlowNode(node));
 					setNodes((current) => {
-						const next = current.concat(toFlowNode(node));
-						updateEmptyState(next.length, edges.length);
+						const next = current.concat(nextNode);
+						updateEmptyState(next.length, edgesRef.current.length);
 						return next;
 					});
 					setEmptyStateMessage(null);
@@ -624,7 +874,7 @@ export function CanvasBoard({
 					onGraphError?.("Не удалось создать узел");
 				});
 		},
-		[edges, isOfflineMode, onGraphError, persistLocalGraph, pipelineId, projectId, updateEmptyState]
+		[edgesRef, enhanceNode, isOfflineMode, onGraphError, persistLocalGraph, pipelineId, projectId, updateEmptyState]
 	);
 
 	const handleDragOver = React.useCallback((event: React.DragEvent) => {
@@ -658,6 +908,7 @@ export function CanvasBoard({
 					nodes={nodes}
 					edges={edges}
 					nodeTypes={nodeTypes}
+					edgeTypes={edgeTypes}
 					onNodesChange={handleNodesChange}
 					onEdgesChange={handleEdgesChange}
 					onNodesDelete={handleNodesDelete}
@@ -717,8 +968,9 @@ export function CanvasBoard({
 			)}
 
 			<div className="pointer-events-none absolute left-4 bottom-4 max-w-sm rounded-lg bg-background/80 px-3 py-2 text-xs text-muted-foreground shadow-sm">
-				Подсказка: выделите узел или ребро и нажмите Delete, чтобы удалить. Перетащите нижний
-				или верхний круглый хэндл для соединения. Двойной клик по узлу откроет настройки (скоро).
+				Подсказка: удаляйте узлы/рёбра клавишей Delete. Вопрос подключается к BDI слева, выходы справа,
+				для BDI просто соедините менеджера с агентом — линия сама прорисует нижний/верхний двунаправленный маршрут.
+				Двойной клик по вопросу открывает JSON.
 			</div>
 		</Card>
 	);

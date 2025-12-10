@@ -7,6 +7,18 @@ import type { PipelineNodeCategory } from "../lib/api";
 
 type CanvasNodeStatus = "idle" | "running" | "error" | "completed";
 
+const BDI_CHILD_TYPES = [
+  "priority_scheduler",
+  "supply_agent",
+  "logistics_agent",
+  "finance_agent",
+  "customer_service_agent",
+  "consensus"
+];
+
+const QUESTION_NODE_TYPES = ["input", "input-trigger"];
+const ANSWER_NODE_TYPES = ["output-response", "action"];
+
 type CanvasNodeData = {
   label: string;
   category: PipelineNodeCategory;
@@ -14,6 +26,8 @@ type CanvasNodeData = {
   nodeType?: string;
   configJson?: string;
   outputPreview?: string;
+  nodeId?: string;
+  onConfigChange?: (nodeId: string, configJson: string) => void;
 };
 
 const statusTokens: Record<CanvasNodeStatus, { label: string; dot: string; text: string }> = {
@@ -85,6 +99,15 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
   const normalizedStatus = status && status in statusTokens ? (status as CanvasNodeStatus) : undefined;
   const statusToken = normalizedStatus ? statusTokens[normalizedStatus] : undefined;
   const [expanded, setExpanded] = React.useState(false);
+  const [questionConfig, setQuestionConfig] = React.useState(data.configJson ?? "{}");
+  const [configDirty, setConfigDirty] = React.useState(false);
+  const [configError, setConfigError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setQuestionConfig(data.configJson ?? "{}");
+    setConfigDirty(false);
+    setConfigError(null);
+  }, [data.configJson]);
 
   const roleBadge = React.useMemo(() => {
     if (!data.nodeType) return null;
@@ -111,14 +134,34 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
   }, [data.nodeType]);
 
   const isBdiManager = data.nodeType === "bdi_crisis_manager";
-  const isBdiChild = [
-    "priority_scheduler",
-    "supply_agent",
-    "logistics_agent",
-    "finance_agent",
-    "customer_service_agent",
-    "consensus"
-  ].includes(data.nodeType ?? "");
+  const isBdiChild = BDI_CHILD_TYPES.includes(data.nodeType ?? "");
+  const isQuestionNode = QUESTION_NODE_TYPES.includes(data.nodeType ?? "");
+  const isAnswerNode = ANSWER_NODE_TYPES.includes(data.nodeType ?? "");
+  const showDefaultHandles = !isBdiManager && !isQuestionNode && !isAnswerNode;
+
+  const handleQuestionConfigChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const nextValue = event.target.value;
+    setQuestionConfig(nextValue);
+    setConfigDirty(nextValue !== (data.configJson ?? ""));
+    if (configError) {
+      setConfigError(null);
+    }
+  };
+
+  const handleQuestionConfigSave = () => {
+    const normalized = questionConfig?.trim() ? questionConfig : "{}";
+    try {
+      JSON.parse(normalized);
+      if (data.nodeId && data.onConfigChange) {
+        data.onConfigChange(data.nodeId, normalized);
+      }
+      setConfigDirty(false);
+      setConfigError(null);
+    } catch (error) {
+      console.warn("Invalid JSON in question node config", error);
+      setConfigError("Некорректный JSON");
+    }
+  };
 
   return (
     <div
@@ -178,10 +221,11 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
         </div>
       )}
 
-      {/* Базовые вход/выход слева/справа для всех, кроме подчинённых BDI */}
-      {!isBdiChild && (
+      {/* Базовые вход/выход для универсальных узлов */}
+      {showDefaultHandles && (
         <>
           <Handle
+            id="default-target"
             type="target"
             position={Position.Left}
             className={cn(
@@ -190,6 +234,7 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
             )}
           />
           <Handle
+            id="default-source"
             type="source"
             position={Position.Right}
             className={cn(
@@ -200,32 +245,45 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
         </>
       )}
 
-      {/* Подчинённые BDI: только вход сверху и выход снизу (визуально двунаправленные связи с оркестратором) */}
-      {isBdiChild && (
-        <>
-          <Handle
-            type="target"
-            position={Position.Top}
-            className={cn(
-              "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
-              tokens.handleClass
-            )}
-          />
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            className={cn(
-              "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
-              tokens.handleClass
-            )}
-          />
-        </>
+      {/* Узел "вопрос": единственный исходящий поток */}
+      {isQuestionNode && (
+        <Handle
+          id="question-output"
+          type="source"
+          position={Position.Right}
+          className={cn(
+            "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
+            tokens.handleClass
+          )}
+        />
       )}
 
-      {/* Сам BDI-менеджер: классический вход слева, выход справа, плюс доп. верх/низ по желанию */}
+      {/* Узел "ответ": только вход */}
+      {isAnswerNode && (
+        <Handle
+          id="answer-input"
+          type="target"
+          position={Position.Left}
+          className={cn(
+            "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
+            tokens.handleClass
+          )}
+        />
+      )}
+
+      {/* Декоративные подсказки для BDI-потомков */}
+      {isBdiChild && (
+        <div className="pointer-events-none absolute -top-1 left-1/2 flex -translate-x-1/2 gap-2">
+          <span className="h-2 w-2 rounded-full border border-dashed border-foreground/50 bg-background/80" />
+          <span className="h-2 w-2 rounded-full border border-dashed border-foreground/50 bg-background/80" />
+        </div>
+      )}
+
+      {/* Сам BDI-менеджер: вход вопроса слева, выход ответа справа */}
       {isBdiManager && (
         <>
           <Handle
+            id="bdi-question-input"
             type="target"
             position={Position.Left}
             className={cn(
@@ -234,6 +292,7 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
             )}
           />
           <Handle
+            id="bdi-answer-output"
             type="source"
             position={Position.Right}
             className={cn(
@@ -241,23 +300,48 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
               tokens.handleClass
             )}
           />
-          <Handle
-            type="target"
-            position={Position.Top}
-            className={cn(
-              "!h-2.5 !w-2.5 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
-              tokens.handleClass
-            )}
-          />
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            className={cn(
-              "!h-2.5 !w-2.5 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
-              tokens.handleClass
-            )}
-          />
+          <div className="pointer-events-none absolute left-1/2 bottom-1 flex -translate-x-1/2 gap-2">
+            <span className="h-2.5 w-2.5 rounded-full border border-dashed border-foreground/50 bg-background/80" />
+            <span className="h-2.5 w-2.5 rounded-full border border-dashed border-foreground/50 bg-background/80" />
+          </div>
         </>
+      )}
+
+      {isQuestionNode && (
+        <div className="rounded-lg border border-dashed border-border/60 bg-background/50 px-2 py-2">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+            JSON вопроса
+          </div>
+          <textarea
+            value={questionConfig}
+            onChange={handleQuestionConfigChange}
+            spellCheck={false}
+            className="min-h-[96px] w-full resize-none rounded-md border border-border/70 bg-background/80 p-2 font-mono text-[11px] text-foreground"
+          />
+          <div className="mt-1 flex items-center justify-between gap-2">
+            {configError ? (
+              <span className="text-[10px] font-medium text-red-400">{configError}</span>
+            ) : (
+              <span className="text-[10px] text-muted-foreground/80">
+                {configDirty ? "Есть несохранённые изменения" : "Синхронизировано"}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleQuestionConfigSave();
+              }}
+              disabled={!configDirty}
+              className={cn(
+                "rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
+                configDirty ? "bg-primary/80 text-primary-foreground" : "bg-muted text-muted-foreground"
+              )}
+            >
+              Сохранить
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
