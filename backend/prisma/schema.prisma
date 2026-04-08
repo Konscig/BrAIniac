@@ -1,6 +1,3 @@
-// Prisma schema for graph models migrated from Go
-// Place this file as backend/prisma/schema.prisma
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -11,179 +8,90 @@ generator client {
 }
 
 model User {
-  id               String      @id @default(uuid())
-  email            String     @unique
-  username         String     @unique
-  passwordHash     String
-  role             String     @default("user")
-  tokenValidAfter  DateTime   @default(now())
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  deletedAt        DateTime?
-  refreshTokens    RefreshToken[]
-}
-
-model RefreshToken {
-  id         Int      @id @default(autoincrement())
-  userId     String
-  tokenHash  String
-  userAgent  String?
-  ipAddress  String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  expired    Boolean  @default(false)
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user_id       Int       @id @default(autoincrement())
+  email         String    @unique @db.Citext
+  password_hash String    @unique @db.Char(256)
+  projects      Project[]
 }
 
 model Project {
-  id          String   @id @default(uuid())
-  ownerId     String
-  name        String   @unique
-  description String   @default("")
-  config      Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?
-}
-
-model Agent {
-  id          String   @id @default(uuid())
-  projectId   String
-  name        String   @unique
-  description String
-  configJson  Json
-  image       String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?
-}
-
-model Dataset {
-  id         String   @id @default(uuid())
-  projectId  String
-  name       String   @unique
-  uri        String
-  configJson Json
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  deletedAt  DateTime?
-}
-
-model Document {
-  id         String   @id @default(uuid())
-  projectId  String
-  datasetId  String?
-  content    String
-  metadata   Json    @default("{}")
-  embedding  Bytes?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  deletedAt  DateTime?
-}
-
-model Edge {
-  id        String   @id @default(uuid())
-  versionId String
-  fromNode  String
-  toNode    String
-  label     String   @default("")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
-}
-
-model Export {
-  id         String   @id @default(uuid())
-  projectId  String
-  type       String
-  uri        String
-  configJson Json
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  deletedAt  DateTime?
-}
-
-model Metric {
-  id        String   @id @default(uuid())
-  name      String
-  value     Float
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
-}
-
-model Node {
-  id         String   @id @default(uuid())
-  versionId  String
-  key        String
-  label      String
-  category   String
-  type       String
-  status     String   @default("idle")
-  positionX  Float    @default(0)
-  positionY  Float    @default(0)
-  configJson Json     @default("{}")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  deletedAt  DateTime?
+  project_id   Int        @id @default(autoincrement())
+  fk_user_id   Int
+  name         String     @unique @db.Char(256)
+  user         User       @relation(fields: [fk_user_id], references: [user_id], onDelete: Cascade)
+  pipelines    Pipeline[]
 }
 
 model Pipeline {
-  id                     String   @id @default(uuid())
-  projectId              String
-  name                   String
-  description            String   @default("")
-  lastPublishedVersionId String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-  deletedAt              DateTime?
+  pipeline_id   Int       @id @default(autoincrement())
+  fk_project_id Int
+  name          String    @db.Char(256)
+  max_time      Int
+  max_cost      Int
+  max_reject    Decimal   @db.Decimal(5, 2)
+  score         Decimal?  @db.Decimal(3, 2)
+  report_json   Json?
+  project       Project   @relation(fields: [fk_project_id], references: [project_id], onDelete: Cascade)
+  dataset       Dataset?
+  nodes         Node[]
+  nested_nodes  Node[]    @relation("NestedPipeline")
+
+  @@index([fk_project_id])
 }
 
-model PipelineVersion {
-  id           String   @id @default(uuid())
-  pipelineId   String
-  number       Int
-  authorId     String?
-  state        String   @default("draft")
-  metadataJson Json     @default("{}")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  deletedAt    DateTime?
-}
-
-model Run {
-  id                String   @id @default(uuid())
-  pipelineVersionId String
-  authorId          String?
-  mode              String
-  status            String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  deletedAt         DateTime?
-}
-
-model RunTask {
-  id         String   @id @default(uuid())
-  runId      String
-  nodeId     String
-  worker     String
-  status     String
-  attempt    Int     @default(1)
-  metric     String?
-  logsUri    String
-  outputJson Json
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  deletedAt  DateTime?
+model Dataset {
+  dataset_id      Int       @id @default(autoincrement())
+  fk_pipeline_id  Int       @unique
+  desc            String?   @db.Char(512)
+  uri             String    @unique
+  pipeline        Pipeline  @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
 }
 
 model Tool {
-  id         String   @id @default(uuid())
-  kind       String
-  name       String
-  version    String
-  configJson Json
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  deletedAt  DateTime?
+  tool_id      Int        @id @default(autoincrement())
+  name         String     @unique @db.Char(64)
+  config_json  Json
+  node_types   NodeType[]
+}
+
+model NodeType {
+  type_id      Int       @id @default(autoincrement())
+  fk_tool_id   Int
+  name         String    @db.Char(64)
+  desc         String    @db.Char(512)
+  tool         Tool      @relation(fields: [fk_tool_id], references: [tool_id], onDelete: Cascade)
+  nodes        Node[]
+
+  @@index([fk_tool_id])
+}
+
+model Node {
+  node_id           Int        @id @default(autoincrement())
+  fk_pipeline_id    Int
+  fk_type_id        Int
+  fk_sub_pipeline   Int?
+  top_k             Int
+  output_json       Json?
+  ui_json           Json
+  pipeline          Pipeline   @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
+  node_type         NodeType   @relation(fields: [fk_type_id], references: [type_id], onDelete: Cascade)
+  sub_pipeline      Pipeline?  @relation("NestedPipeline", fields: [fk_sub_pipeline], references: [pipeline_id], onDelete: Cascade)
+  incoming_edges    Edge[]     @relation("EdgeToNode")
+  outgoing_edges    Edge[]     @relation("EdgeFromNode")
+
+  @@index([fk_pipeline_id])
+  @@index([fk_type_id])
+  @@index([fk_sub_pipeline])
+}
+
+model Edge {
+  edge_id           Int      @id @default(autoincrement())
+  fk_from_node      Int
+  fk_to_node        Int
+  from_node         Node     @relation("EdgeFromNode", fields: [fk_from_node], references: [node_id], onDelete: Cascade)
+  to_node           Node     @relation("EdgeToNode", fields: [fk_to_node], references: [node_id], onDelete: Cascade)
+
+  @@unique([fk_from_node, fk_to_node])
+  @@index([fk_from_node])
+  @@index([fk_to_node])
 }

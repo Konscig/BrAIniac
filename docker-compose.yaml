@@ -26,13 +26,14 @@ services:
   backend:
     build: ./backend
     container_name: api
+    profiles: ["app"]
     restart: unless-stopped
     env_file:
       - .env.docker
     environment:
       - PORT=3000
       - DATABASE_URL=${DATABASE_URL}
-      - PRISMA_MIGRATE=push
+      - PRISMA_MIGRATE=${PRISMA_MIGRATE:-deploy}
       - PRISMA_DB_PUSH_ACCEPT_DATA_LOSS=1
     depends_on:
       db:
@@ -49,18 +50,40 @@ services:
       start_period: 10s
     command: >
       sh -c "
-      if [ \"$PRISMA_MIGRATE\" = \"deploy\" ]; then
-        npx prisma migrate deploy --skip-generate;
+      if [ "$$PRISMA_MIGRATE" = "deploy" ]; then
+        npx prisma migrate deploy;
       else
         # Dev default: always accept data loss to ensure schema sync
-        npx prisma db push --accept-data-loss --skip-generate;
+        npx prisma db push --accept-data-loss;
       fi &&
       node dist/index.js
+      "
+
+  db-tests:
+    image: node:20-alpine
+    container_name: db-tests
+    restart: "no"
+    working_dir: /app/backend
+    volumes:
+      - ./backend:/app/backend
+    env_file:
+      - .env.docker
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - brainiac-network
+    command: >
+      sh -c "
+      npm install &&
+      npm run prisma:reset &&
+      npm run test:db
       "
 
   frontend:
     build: ./frontend
     container_name: frontend
+    profiles: ["app"]
     restart: unless-stopped
     ports:
       - 3000:80
