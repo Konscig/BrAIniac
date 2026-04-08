@@ -1,13 +1,17 @@
 import express from 'express';
-import { createTool, listTools, getToolById, deleteTool } from '../services/tool.service.js';
+import { createTool, listTools, getToolById, updateTool, deleteTool } from '../services/tool.service.js';
+import { requireAuth } from '../middleware/auth.middleware.js';
+import { parseId } from './id.utils.js';
 
 const router = express.Router();
 
+router.use(requireAuth);
+
 router.post('/', async (req, res) => {
   try {
-    const { kind, name, version, configJson } = req.body;
-    if (!kind || !name || !version) return res.status(400).json({ error: 'kind, name and version required' });
-    const t = await createTool({ kind, name, version, configJson });
+    const { name, config_json } = req.body;
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const t = await createTool({ name, config_json });
     res.status(201).json(t);
   } catch (err) {
     console.error(err);
@@ -27,7 +31,10 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const item = await getToolById(req.params.id);
+    const toolId = parseId(req.params.id);
+    if (!toolId) return res.status(400).json({ error: 'invalid id' });
+
+    const item = await getToolById(toolId);
     if (!item) return res.status(404).json({ error: 'not found' });
     res.json(item);
   } catch (err) {
@@ -36,9 +43,30 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+router.put('/:id', async (req, res) => {
+  try {
+    const toolId = parseId(req.params.id);
+    if (!toolId) return res.status(400).json({ error: 'invalid id' });
+
+    const item = await getToolById(toolId);
+    if (!item) return res.status(404).json({ error: 'not found' });
+
+    const patch: any = {};
+    if (req.body.name !== undefined) patch.name = req.body.name;
+    if (req.body.config_json !== undefined) patch.config_json = req.body.config_json;
+    const updated = await updateTool(toolId, patch);
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'internal error' });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
-    await deleteTool(req.params.id);
+    const toolId = parseId(req.params.id);
+    if (!toolId) return res.status(400).json({ error: 'invalid id' });
+    await deleteTool(toolId);
     res.status(204).end();
   } catch (err) {
     console.error(err);

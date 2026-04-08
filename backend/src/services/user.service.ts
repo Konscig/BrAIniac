@@ -1,18 +1,24 @@
 import prisma from '../db.js';
 
-export async function createUser(data: { email: string; username: string; passwordHash: string; }): Promise<any> {
-  const user = await prisma.user.create({ data: {
-    email: data.email,
-    username: data.username,
-    passwordHash: data.passwordHash,
-  }});
-  return user;
+const userPublicSelect = {
+  user_id: true,
+  email: true,
+} as const;
+
+export async function createUser(data: { email: string; password_hash: string }) {
+  return prisma.user.create({
+    data: {
+      email: data.email,
+      password_hash: data.password_hash,
+    },
+    select: userPublicSelect,
+  });
 }
 
-export async function findUserById(id: string): Promise<any | null> {
-  return prisma.user.findUnique({ where: { id } });
+export async function findUserById(user_id: number) {
+  return prisma.user.findUnique({ where: { user_id }, select: userPublicSelect });
 }
 
-export async function findUserByEmail(email: string): Promise<any | null> {
+export async function findUserByEmail(email: string) {
   return prisma.user.findUnique({ where: { email } });
 }

@@ -1,20 +1,14 @@
 import express from 'express';
-import { signup, login, refresh, logout } from '../services/auth.service.js';
+import { signup, login } from '../services/auth.service.js';
 
 const router = express.Router();
 
 router.post('/signup', async (req, res) => {
   try {
-    const { email, username, password } = req.body;
-    if (!email || !username || !password) return res.status(400).json({ error: 'missing fields' });
-    await signup({ email, username, password });
-    // Issue tokens immediately after signup for better UX
-    const tokens = await login({
-      email,
-      password,
-      userAgent: req.headers['user-agent'] as string | undefined,
-      ipAddress: req.ip
-    });
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+    await signup({ email, password });
+    const tokens = await login({ email, password });
     res.status(201).json(tokens);
   } catch (err: any) {
     console.error(err);
@@ -26,36 +20,12 @@ router.post('/signup', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'missing fields' });
-    const tokens = await login({ email, password, userAgent: req.headers['user-agent'] as string | undefined, ipAddress: req.ip });
+    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+    const tokens = await login({ email, password });
     res.json(tokens);
   } catch (err: any) {
     console.error(err);
     res.status(401).json({ error: 'invalid credentials' });
-  }
-});
-
-router.post('/refresh', async (req, res) => {
-  try {
-    const { refreshToken } = req.body;
-    if (!refreshToken) return res.status(400).json({ error: 'missing refreshToken' });
-    const t = await refresh(refreshToken);
-    res.json(t);
-  } catch (err: any) {
-    console.error(err);
-    res.status(401).json({ error: 'invalid refresh token' });
-  }
-});
-
-router.post('/logout', async (req, res) => {
-  try {
-    const { refreshId } = req.body;
-    if (!refreshId) return res.status(400).json({ error: 'missing refreshId' });
-    await logout(refreshId);
-    res.status(200).json({ ok: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
   }
 });
 

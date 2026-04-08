@@ -1,15 +1,17 @@
 import express from 'express';
 import { createProject, updateProject, deleteProject, getProjectById, listProjectsByOwner } from '../services/project.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
+import { parseId } from './id.utils.js';
 
 const router = express.Router();
 
-router.post('/', requireAuth, async (req: any, res) => {
+router.use(requireAuth);
+
+router.post('/', async (req: any, res) => {
   try {
-    const { name, description, config } = req.body;
+    const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'name required' });
-    const ownerId = req.user.id;
-    const project = await createProject({ ownerId, name, description, config });
+    const project = await createProject({ fk_user_id: req.user.user_id, name });
     res.status(201).json(project);
   } catch (err) {
     console.error(err);
@@ -17,10 +19,9 @@ router.post('/', requireAuth, async (req: any, res) => {
   }
 });
 
-router.get('/', requireAuth, async (req: any, res) => {
+router.get('/', async (req: any, res) => {
   try {
-    const ownerId = req.user.id;
-    const projects = await listProjectsByOwner(ownerId);
+    const projects = await listProjectsByOwner(req.user.user_id);
     res.json(projects);
   } catch (err) {
     console.error(err);
@@ -28,11 +29,14 @@ router.get('/', requireAuth, async (req: any, res) => {
   }
 });
 
-router.get('/:id', requireAuth, async (req: any, res) => {
+router.get('/:id', async (req: any, res) => {
   try {
-    const project = await getProjectById(req.params.id);
+    const projectId = parseId(req.params.id);
+    if (!projectId) return res.status(400).json({ error: 'invalid id' });
+
+    const project = await getProjectById(projectId);
     if (!project) return res.status(404).json({ error: 'not found' });
-    if (project.ownerId !== req.user.id) return res.status(403).json({ error: 'forbidden' });
+    if (project.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
     res.json(project);
   } catch (err) {
     console.error(err);
@@ -40,12 +44,15 @@ router.get('/:id', requireAuth, async (req: any, res) => {
   }
 });
 
-router.put('/:id', requireAuth, async (req: any, res) => {
+router.put('/:id', async (req: any, res) => {
   try {
-    const existing = await getProjectById(req.params.id);
+    const projectId = parseId(req.params.id);
+    if (!projectId) return res.status(400).json({ error: 'invalid id' });
+
+    const existing = await getProjectById(projectId);
     if (!existing) return res.status(404).json({ error: 'not found' });
-    if (existing.ownerId !== req.user.id) return res.status(403).json({ error: 'forbidden' });
-    const project = await updateProject(req.params.id, req.body);
+    if (existing.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
+    const project = await updateProject(projectId, req.body);
     res.json(project);
   } catch (err) {
     console.error(err);
@@ -53,12 +60,15 @@ router.put('/:id', requireAuth, async (req: any, res) => {
   }
 });
 
-router.delete('/:id', requireAuth, async (req: any, res) => {
+router.delete('/:id', async (req: any, res) => {
   try {
-    const existing = await getProjectById(req.params.id);
+    const projectId = parseId(req.params.id);
+    if (!projectId) return res.status(400).json({ error: 'invalid id' });
+
+    const existing = await getProjectById(projectId);
     if (!existing) return res.status(404).json({ error: 'not found' });
-    if (existing.ownerId !== req.user.id) return res.status(403).json({ error: 'forbidden' });
-    await deleteProject(req.params.id);
+    if (existing.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
+    await deleteProject(projectId);
     res.status(204).end();
   } catch (err) {
     console.error(err);

@@ -1,6 +1,15 @@
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+function resolveDatabaseUrl() {
+  const url = process.env.DATABASE_URL;
+  if (!url) return undefined;
+  return url.replace('@db:', '@localhost:');
+}
+
+const resolvedDatabaseUrl = resolveDatabaseUrl();
+const prisma = resolvedDatabaseUrl
+  ? new PrismaClient({ datasources: { db: { url: resolvedDatabaseUrl } } })
+  : new PrismaClient();
 
 async function scalar(sql) {
   const rows = await prisma.$queryRawUnsafe(sql);

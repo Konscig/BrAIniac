@@ -1,24 +1,35 @@
 import prisma from '../db.js';
 
-export async function createEdge(data: { versionId: string; fromNode: string; toNode: string; label?: string }) {
-  const e = await prisma.edge.create({ data: {
-    versionId: data.versionId,
-    fromNode: data.fromNode,
-    toNode: data.toNode,
-    label: data.label ?? '',
-  }});
-  return e;
+export async function createEdge(data: { fk_from_node: number; fk_to_node: number }) {
+  return prisma.edge.create({
+    data: {
+      fk_from_node: data.fk_from_node,
+      fk_to_node: data.fk_to_node,
+    },
+  });
 }
 
-export async function listEdgesByVersion(versionId?: string) {
-  if (!versionId) return prisma.edge.findMany();
-  return prisma.edge.findMany({ where: { versionId } });
+export async function listEdgesByPipeline(fk_pipeline_id?: number) {
+  if (!fk_pipeline_id) return prisma.edge.findMany();
+  return prisma.edge.findMany({
+    where: {
+      from_node: {
+        fk_pipeline_id,
+      },
+    },
+  });
 }
 
-export async function getEdgeById(id: string) {
-  return prisma.edge.findUnique({ where: { id } });
+export async function getEdgeById(edge_id: number) {
+  return prisma.edge.findUnique({
+    where: { edge_id },
+    include: {
+      from_node: true,
+      to_node: true,
+    },
+  });
 }
 
-export async function deleteEdge(id: string) {
-  return prisma.edge.delete({ where: { id } });
+export async function deleteEdge(edge_id: number) {
+  return prisma.edge.delete({ where: { edge_id } });
 }
