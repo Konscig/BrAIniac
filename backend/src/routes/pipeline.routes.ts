@@ -3,7 +3,7 @@ import { createPipeline, listPipelines, listPipelinesByOwner, updatePipeline, de
 import { validatePipelineGraph } from '../services/graph_validation.service.js';
 import { ensurePipelineOwnedByUser, ensureProjectOwnedByUser } from '../services/ownership.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
-import { parseId } from './id.utils.js';
+import { optionalFiniteNumber, optionalId, requiredFiniteNumber, requiredId, requiredNonEmptyString } from './req-parse.js';
 import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
@@ -12,26 +12,18 @@ router.use(requireAuth);
 
 router.post('/', async (req: any, res: any) => {
   try {
-    const fk_project_id = parseId(req.body.fk_project_id);
-    const max_time = Number(req.body.max_time);
-    const max_cost = Number(req.body.max_cost);
-    const max_reject = Number(req.body.max_reject);
-    const score = req.body.score === undefined || req.body.score === null ? undefined : Number(req.body.score);
-
-    if (!fk_project_id) return res.status(400).json({ error: 'fk_project_id required' });
-    if (!req.body.name) return res.status(400).json({ error: 'name required' });
-    if (!Number.isFinite(max_time) || !Number.isFinite(max_cost) || !Number.isFinite(max_reject)) {
-      return res.status(400).json({ error: 'max_time, max_cost and max_reject must be numbers' });
-    }
-    if (score !== undefined && !Number.isFinite(score)) {
-      return res.status(400).json({ error: 'score must be a number' });
-    }
+    const fk_project_id = requiredId(req.body.fk_project_id, 'fk_project_id required');
+    const max_time = requiredFiniteNumber(req.body.max_time, 'max_time, max_cost and max_reject must be numbers');
+    const max_cost = requiredFiniteNumber(req.body.max_cost, 'max_time, max_cost and max_reject must be numbers');
+    const max_reject = requiredFiniteNumber(req.body.max_reject, 'max_time, max_cost and max_reject must be numbers');
+    const score = optionalFiniteNumber(req.body.score, 'score must be a number');
+    const name = requiredNonEmptyString(req.body.name, 'name required');
 
     await ensureProjectOwnedByUser(fk_project_id, req.user.user_id);
 
     const p = await createPipeline({
       fk_project_id,
-      name: req.body.name,
+      name,
       max_time,
       max_cost,
       max_reject,
@@ -46,10 +38,8 @@ router.post('/', async (req: any, res: any) => {
 
 router.get('/', async (req, res) => {
   try {
-    const projectIdRaw = req.query.fk_project_id as string | undefined;
-    if (projectIdRaw !== undefined) {
-      const projectId = parseId(projectIdRaw);
-      if (!projectId) return res.status(400).json({ error: 'invalid fk_project_id' });
+    const projectId = optionalId(req.query.fk_project_id, 'invalid fk_project_id');
+    if (projectId !== undefined) {
 
       await ensureProjectOwnedByUser(projectId, (req as any).user.user_id);
       const list = await listPipelines(projectId);
@@ -65,8 +55,7 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const pipelineId = parseId(req.params.id);
-    if (!pipelineId) return res.status(400).json({ error: 'invalid id' });
+    const pipelineId = requiredId(req.params.id, 'invalid id');
 
     const p = await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
     res.json(p);
@@ -77,8 +66,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/:id/validate-graph', async (req, res) => {
   try {
-    const pipelineId = parseId(req.params.id);
-    if (!pipelineId) return res.status(400).json({ error: 'invalid id' });
+    const pipelineId = requiredId(req.params.id, 'invalid id');
 
     await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
 
@@ -100,35 +88,24 @@ router.post('/:id/validate-graph', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const pipelineId = parseId(req.params.id);
-    if (!pipelineId) return res.status(400).json({ error: 'invalid id' });
+    const pipelineId = requiredId(req.params.id, 'invalid id');
 
     await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
 
     const patch: any = {};
     if (req.body.name !== undefined) patch.name = req.body.name;
     if (req.body.max_time !== undefined) {
-      const value = Number(req.body.max_time);
-      if (!Number.isFinite(value)) return res.status(400).json({ error: 'invalid max_time' });
-      patch.max_time = value;
+      patch.max_time = optionalFiniteNumber(req.body.max_time, 'invalid max_time');
     }
     if (req.body.max_cost !== undefined) {
-      const value = Number(req.body.max_cost);
-      if (!Number.isFinite(value)) return res.status(400).json({ error: 'invalid max_cost' });
-      patch.max_cost = value;
+      patch.max_cost = optionalFiniteNumber(req.body.max_cost, 'invalid max_cost');
     }
     if (req.body.max_reject !== undefined) {
-      const value = Number(req.body.max_reject);
-      if (!Number.isFinite(value)) return res.status(400).json({ error: 'invalid max_reject' });
-      patch.max_reject = value;
+      patch.max_reject = optionalFiniteNumber(req.body.max_reject, 'invalid max_reject');
     }
     if (req.body.score !== undefined) {
       if (req.body.score === null) patch.score = null;
-      else {
-        const value = Number(req.body.score);
-        if (!Number.isFinite(value)) return res.status(400).json({ error: 'invalid score' });
-        patch.score = value;
-      }
+      else patch.score = optionalFiniteNumber(req.body.score, 'invalid score');
     }
     if (req.body.report_json !== undefined) patch.report_json = req.body.report_json;
 
@@ -141,8 +118,7 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    const pipelineId = parseId(req.params.id);
-    if (!pipelineId) return res.status(400).json({ error: 'invalid id' });
+    const pipelineId = requiredId(req.params.id, 'invalid id');
 
     await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
 
