@@ -1,4 +1,4 @@
-import prisma from '../db.js';
+import prisma from '../../db.js';
 
 export async function createTool(data: { name: string; config_json?: any }) {
   if (!data.name) throw new Error('name is required');

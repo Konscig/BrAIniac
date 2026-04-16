@@ -1,6 +1,6 @@
-import { HttpError } from '../common/http-error.js';
-import { getPipelineById } from './pipeline.service.js';
-import { getProjectById } from './project.service.js';
+import { HttpError } from '../../common/http-error.js';
+import { getPipelineById } from '../data/pipeline.service.js';
+import { getProjectById } from '../data/project.service.js';
 
 export async function ensureProjectOwnedByUser(
   projectId: number,

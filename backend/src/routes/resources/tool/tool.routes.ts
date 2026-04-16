@@ -5,11 +5,12 @@ import {
   getToolEntryById,
   listToolEntries,
   updateToolEntryById,
-} from '../services/tool.application.service.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
-import { requiredId } from './req-parse.js';
-import { mapToolPatchDTO } from './patch-dto.mappers.js';
-import { sendRouteError } from './route-error.js';
+} from '../../../services/application/tool/tool.application.service.js';
+import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { requiredId } from '../../shared/req-parse.js';
+import { mapToolCreateDTO } from '../../shared/create-dto.mappers.js';
+import { mapToolPatchDTO } from '../../shared/patch-dto.mappers.js';
+import { sendRouteError } from '../../shared/route-error.js';
 
 const router = express.Router();
 
@@ -17,7 +18,8 @@ router.use(requireAuth);
 
 router.post('/', async (req, res) => {
   try {
-    const t = await createToolEntry({ name: req.body?.name, config_json: req.body?.config_json });
+    const dto = mapToolCreateDTO(req.body);
+    const t = await createToolEntry(dto);
     res.status(201).json(t);
   } catch (err) {
     return sendRouteError(res, err);

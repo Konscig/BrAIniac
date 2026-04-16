@@ -1,4 +1,4 @@
-import prisma from '../db.js';
+import prisma from '../../db.js';
 
 export async function createDataset(data: { fk_pipeline_id: number; desc?: string; uri: string }) {
   if (!data.uri) throw new Error('dataset uri is required');

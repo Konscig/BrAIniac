@@ -1,4 +1,4 @@
-import prisma from '../db.js';
+import prisma from '../../db.js';
 
 export async function createProject(data: { fk_user_id: number; name: string }) {
   return prisma.project.create({

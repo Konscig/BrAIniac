@@ -1,5 +1,5 @@
-import { HttpError } from '../common/http-error.js';
-import { createTool, deleteTool, getToolById, listTools, updateTool } from './tool.service.js';
+import { HttpError } from '../../../common/http-error.js';
+import { createTool, deleteTool, getToolById, listTools, updateTool } from '../../data/tool.service.js';
 
 function ensureToolName(name: unknown) {
   if (typeof name !== 'string' || name.trim().length === 0) {

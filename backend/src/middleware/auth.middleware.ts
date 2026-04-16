@@ -1,5 +1,5 @@
-import { verifyAccessToken } from '../services/jwt.service.js';
-import { findUserById } from '../services/user.service.js';
+import { verifyAccessToken } from '../services/core/jwt.service.js';
+import { findUserById } from '../services/data/user.service.js';
 
 export async function requireAuth(req: any, res: any, next: any) {
   const h = req.headers.authorization as string | undefined;

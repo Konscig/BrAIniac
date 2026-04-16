@@ -4,10 +4,11 @@ import {
   deleteEdgeByIdForUser,
   getEdgeByIdForUser,
   listEdgesForPipelineForUser,
-} from '../services/edge.application.service.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
-import { requiredId } from './req-parse.js';
-import { sendRouteError } from './route-error.js';
+} from '../../../services/application/edge/edge.application.service.js';
+import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { requiredId } from '../../shared/req-parse.js';
+import { mapEdgeCreateDTO } from '../../shared/create-dto.mappers.js';
+import { sendRouteError } from '../../shared/route-error.js';
 
 const router = express.Router();
 
@@ -15,8 +16,7 @@ router.use(requireAuth);
 
 router.post('/', async (req: any, res: any) => {
   try {
-    const fk_from_node = requiredId(req.body.fk_from_node, 'fk_from_node and fk_to_node required');
-    const fk_to_node = requiredId(req.body.fk_to_node, 'fk_from_node and fk_to_node required');
+    const { fk_from_node, fk_to_node } = mapEdgeCreateDTO(req.body);
 
     const e = await createEdgeForUser(fk_from_node, fk_to_node, req.user.user_id);
     res.status(201).json(e);

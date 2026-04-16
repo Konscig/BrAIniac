@@ -1,4 +1,7 @@
-import { optionalFiniteNumber, optionalId } from './req-parse.js';
+import {
+  optionalFiniteNumber,
+  optionalId,
+} from './req-parse.js';
 
 function toBodyRecord(body: unknown): Record<string, any> {
   if (!body || typeof body !== 'object') {

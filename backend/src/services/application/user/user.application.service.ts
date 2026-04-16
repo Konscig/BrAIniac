@@ -1,5 +1,5 @@
-import { HttpError } from '../common/http-error.js';
-import { findUserById } from './user.service.js';
+import { HttpError } from '../../../common/http-error.js';
+import { findUserById } from '../../data/user.service.js';
 
 export async function getUserByIdForSelf(userId: number, requesterUserId: number) {
   if (userId !== requesterUserId) {

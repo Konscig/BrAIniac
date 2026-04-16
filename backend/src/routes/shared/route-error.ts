@@ -1,5 +1,5 @@
 import type express from 'express';
-import { isHttpError } from '../common/http-error.js';
+import { isHttpError } from '../../common/http-error.js';
 
 export function sendRouteError(res: express.Response, err: unknown) {
   if (isHttpError(err)) {

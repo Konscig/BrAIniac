@@ -5,11 +5,12 @@ import {
   getProjectByIdForUser,
   listProjectsForUser,
   updateProjectByIdForUser,
-} from '../services/project.application.service.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
-import { requiredId, requiredNonEmptyString } from './req-parse.js';
-import { mapProjectPatchDTO } from './patch-dto.mappers.js';
-import { sendRouteError } from './route-error.js';
+} from '../../../services/application/project/project.application.service.js';
+import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { requiredId } from '../../shared/req-parse.js';
+import { mapProjectCreateDTO } from '../../shared/create-dto.mappers.js';
+import { mapProjectPatchDTO } from '../../shared/patch-dto.mappers.js';
+import { sendRouteError } from '../../shared/route-error.js';
 
 const router = express.Router();
 
@@ -17,8 +18,8 @@ router.use(requireAuth);
 
 router.post('/', async (req: any, res) => {
   try {
-    const name = requiredNonEmptyString(req.body?.name, 'name required');
-    const project = await createProjectForUser(name, req.user.user_id);
+    const dto = mapProjectCreateDTO(req.body);
+    const project = await createProjectForUser(dto.name, req.user.user_id);
     res.status(201).json(project);
   } catch (err) {
     return sendRouteError(res, err);

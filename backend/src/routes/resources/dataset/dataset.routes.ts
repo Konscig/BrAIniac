@@ -6,11 +6,12 @@ import {
   listDatasetsForOwner,
   listDatasetsForPipelineForUser,
   updateDatasetForUser,
-} from '../services/dataset.application.service.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
-import { optionalId, requiredId, requiredNonEmptyString } from './req-parse.js';
-import { mapDatasetPatchDTO } from './patch-dto.mappers.js';
-import { sendRouteError } from './route-error.js';
+} from '../../../services/application/dataset/dataset.application.service.js';
+import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { optionalId, requiredId } from '../../shared/req-parse.js';
+import { mapDatasetCreateDTO } from '../../shared/create-dto.mappers.js';
+import { mapDatasetPatchDTO } from '../../shared/patch-dto.mappers.js';
+import { sendRouteError } from '../../shared/route-error.js';
 
 const router = express.Router();
 
@@ -18,14 +19,9 @@ router.use(requireAuth);
 
 router.post('/', async (req: any, res) => {
   try {
-    const fk_pipeline_id = requiredId(req.body.fk_pipeline_id, 'fk_pipeline_id and uri required');
-    const uri = requiredNonEmptyString(req.body.uri, 'fk_pipeline_id and uri required');
+    const dto = mapDatasetCreateDTO(req.body);
 
-    const d = await createDatasetForUser({
-      fk_pipeline_id,
-      uri,
-      ...(req.body.desc !== undefined ? { desc: req.body.desc } : {}),
-    }, req.user.user_id);
+    const d = await createDatasetForUser(dto, req.user.user_id);
     res.status(201).json(d);
   } catch (err) {
     return sendRouteError(res, err);

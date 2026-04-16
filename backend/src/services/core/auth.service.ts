@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { signAccessToken } from './jwt.service.js';
-import { findUserByEmail, createUser } from './user.service.js';
+import { findUserByEmail, createUser } from '../data/user.service.js';
 
 const SCRYPT_KEYLEN = Number(process.env.PASSWORD_SCRYPT_KEYLEN ?? 64);
 const SCRYPT_OPTIONS = {

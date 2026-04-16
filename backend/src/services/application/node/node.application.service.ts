@@ -1,7 +1,14 @@
-import { HttpError } from '../common/http-error.js';
-import { createNode, deleteNode, getNodeById, listNodesByOwner, listNodesByPipeline, updateNode } from './node.service.js';
-import { getNodeTypeById } from './node_type.service.js';
-import { ensurePipelineOwnedByUser } from './ownership.service.js';
+import { HttpError } from '../../../common/http-error.js';
+import {
+  createNode,
+  deleteNode,
+  getNodeById,
+  listNodesByOwner,
+  listNodesByPipeline,
+  updateNode,
+} from '../../data/node.service.js';
+import { getNodeTypeById } from '../../data/node_type.service.js';
+import { ensurePipelineOwnedByUser } from '../../core/ownership.service.js';
 
 const PIPELINE_ACCESS_OPTIONS = {
   pipelineNotFoundMessage: 'pipeline not found',

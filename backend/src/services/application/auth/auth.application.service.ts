@@ -1,5 +1,5 @@
-import { HttpError } from '../common/http-error.js';
-import { login, signup } from './auth.service.js';
+import { HttpError } from '../../../common/http-error.js';
+import { login, signup } from '../../core/auth.service.js';
 
 type Credentials = { email: string; password: string };
 

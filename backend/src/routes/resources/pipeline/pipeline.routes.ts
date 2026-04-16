@@ -1,11 +1,12 @@
 import express from 'express';
-import { createPipeline, listPipelines, listPipelinesByOwner, updatePipeline, deletePipeline } from '../services/pipeline.service.js';
-import { validatePipelineGraph } from '../services/graph_validation.service.js';
-import { ensurePipelineOwnedByUser, ensureProjectOwnedByUser } from '../services/ownership.service.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
-import { optionalFiniteNumber, optionalId, requiredFiniteNumber, requiredId, requiredNonEmptyString } from './req-parse.js';
-import { mapPipelinePatchDTO } from './patch-dto.mappers.js';
-import { sendRouteError } from './route-error.js';
+import { createPipeline, listPipelines, listPipelinesByOwner, updatePipeline, deletePipeline } from '../../../services/data/pipeline.service.js';
+import { validatePipelineGraph } from '../../../services/core/graph_validation.service.js';
+import { ensurePipelineOwnedByUser, ensureProjectOwnedByUser } from '../../../services/core/ownership.service.js';
+import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { optionalId, requiredId } from '../../shared/req-parse.js';
+import { mapPipelineCreateDTO } from '../../shared/create-dto.mappers.js';
+import { mapPipelinePatchDTO } from '../../shared/patch-dto.mappers.js';
+import { sendRouteError } from '../../shared/route-error.js';
 
 const router = express.Router();
 
@@ -13,24 +14,11 @@ router.use(requireAuth);
 
 router.post('/', async (req: any, res: any) => {
   try {
-    const fk_project_id = requiredId(req.body.fk_project_id, 'fk_project_id required');
-    const max_time = requiredFiniteNumber(req.body.max_time, 'max_time, max_cost and max_reject must be numbers');
-    const max_cost = requiredFiniteNumber(req.body.max_cost, 'max_time, max_cost and max_reject must be numbers');
-    const max_reject = requiredFiniteNumber(req.body.max_reject, 'max_time, max_cost and max_reject must be numbers');
-    const score = optionalFiniteNumber(req.body.score, 'score must be a number');
-    const name = requiredNonEmptyString(req.body.name, 'name required');
+    const dto = mapPipelineCreateDTO(req.body);
 
-    await ensureProjectOwnedByUser(fk_project_id, req.user.user_id);
+    await ensureProjectOwnedByUser(dto.fk_project_id, req.user.user_id);
 
-    const p = await createPipeline({
-      fk_project_id,
-      name,
-      max_time,
-      max_cost,
-      max_reject,
-      ...(score !== undefined ? { score } : {}),
-      ...(req.body.report_json !== undefined ? { report_json: req.body.report_json } : {}),
-    });
+    const p = await createPipeline(dto);
     res.status(201).json(p);
   } catch (err) {
     return sendRouteError(res, err);

@@ -1,4 +1,4 @@
-import prisma from '../db.js';
+import prisma from '../../db.js';
 
 export async function createNode(data: {
   fk_pipeline_id: number;

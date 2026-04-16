@@ -1,5 +1,5 @@
-import { createProject, deleteProject, listProjectsByOwner, updateProject } from './project.service.js';
-import { ensureProjectOwnedByUser } from './ownership.service.js';
+import { createProject, deleteProject, listProjectsByOwner, updateProject } from '../../data/project.service.js';
+import { ensureProjectOwnedByUser } from '../../core/ownership.service.js';
 
 export async function createProjectForUser(name: string, userId: number) {
   return createProject({ fk_user_id: userId, name });

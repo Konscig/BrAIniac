@@ -1,4 +1,4 @@
-import prisma from '../db.js';
+import prisma from '../../db.js';
 
 export async function createEdge(data: { fk_from_node: number; fk_to_node: number }) {
   return prisma.edge.create({

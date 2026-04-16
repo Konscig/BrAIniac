@@ -6,11 +6,12 @@ import {
   listNodesForOwner,
   listNodesForPipelineForUser,
   updateNodeForUser,
-} from '../services/node.application.service.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
-import { optionalFiniteNumber, optionalId, requiredFiniteNumber, requiredId } from './req-parse.js';
-import { mapNodePatchDTO } from './patch-dto.mappers.js';
-import { sendRouteError } from './route-error.js';
+} from '../../../services/application/node/node.application.service.js';
+import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { optionalId, requiredId } from '../../shared/req-parse.js';
+import { mapNodeCreateDTO } from '../../shared/create-dto.mappers.js';
+import { mapNodePatchDTO } from '../../shared/patch-dto.mappers.js';
+import { sendRouteError } from '../../shared/route-error.js';
 
 const router = express.Router();
 
@@ -18,23 +19,9 @@ router.use(requireAuth);
 
 router.post('/', async (req: any, res: any) => {
   try {
-    const fk_pipeline_id = requiredId(req.body.fk_pipeline_id, 'fk_pipeline_id and fk_type_id required');
-    const fk_type_id = requiredId(req.body.fk_type_id, 'fk_pipeline_id and fk_type_id required');
-    const fk_sub_pipeline = optionalId(req.body.fk_sub_pipeline, 'invalid fk_sub_pipeline');
-    const top_k = requiredFiniteNumber(req.body.top_k, 'top_k must be a number');
+    const dto = mapNodeCreateDTO(req.body);
 
-    if (req.body.ui_json === undefined) {
-      return res.status(400).json({ error: 'ui_json required' });
-    }
-
-    const n = await createNodeForUser({
-      fk_pipeline_id,
-      fk_type_id,
-      ...(fk_sub_pipeline !== undefined ? { fk_sub_pipeline } : {}),
-      top_k,
-      ui_json: req.body.ui_json,
-      ...(req.body.output_json !== undefined ? { output_json: req.body.output_json } : {}),
-    }, req.user.user_id);
+    const n = await createNodeForUser(dto, req.user.user_id);
     res.status(201).json(n);
   } catch (err) {
     return sendRouteError(res, err);

@@ -1,6 +1,6 @@
-import { HttpError } from '../common/http-error.js';
-import { createNodeType, deleteNodeType, getNodeTypeById, listNodeTypes, updateNodeType } from './node_type.service.js';
-import { getToolById } from './tool.service.js';
+import { HttpError } from '../../../common/http-error.js';
+import { createNodeType, deleteNodeType, getNodeTypeById, listNodeTypes, updateNodeType } from '../../data/node_type.service.js';
+import { getToolById } from '../../data/tool.service.js';
 
 async function ensureToolExists(toolId: number) {
   const tool = await getToolById(toolId);

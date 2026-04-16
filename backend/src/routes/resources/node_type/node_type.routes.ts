@@ -5,11 +5,12 @@ import {
   getNodeTypeEntryById,
   listNodeTypeEntries,
   updateNodeTypeEntryById,
-} from '../services/node_type.application.service.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
-import { optionalId, requiredId } from './req-parse.js';
-import { mapNodeTypePatchDTO } from './patch-dto.mappers.js';
-import { sendRouteError } from './route-error.js';
+} from '../../../services/application/node_type/node_type.application.service.js';
+import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { optionalId, requiredId } from '../../shared/req-parse.js';
+import { mapNodeTypeCreateDTO } from '../../shared/create-dto.mappers.js';
+import { mapNodeTypePatchDTO } from '../../shared/patch-dto.mappers.js';
+import { sendRouteError } from '../../shared/route-error.js';
 
 const router = express.Router();
 
@@ -17,14 +18,8 @@ router.use(requireAuth);
 
 router.post('/', async (req, res) => {
   try {
-    const fk_tool_id = requiredId(req.body.fk_tool_id, 'fk_tool_id, name and desc required');
-
-    const item = await createNodeTypeEntry({
-      fk_tool_id,
-      name: req.body.name,
-      desc: req.body.desc,
-      ...(req.body.config_json !== undefined ? { config_json: req.body.config_json } : {}),
-    });
+    const dto = mapNodeTypeCreateDTO(req.body);
+    const item = await createNodeTypeEntry(dto);
     res.status(201).json(item);
   } catch (err) {
     return sendRouteError(res, err);

@@ -1,8 +1,8 @@
 import express from 'express';
-import { getUserByIdForSelf } from '../services/user.application.service.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
-import { requiredId } from './req-parse.js';
-import { sendRouteError } from './route-error.js';
+import { getUserByIdForSelf } from '../../../services/application/user/user.application.service.js';
+import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { requiredId } from '../../shared/req-parse.js';
+import { sendRouteError } from '../../shared/route-error.js';
 
 const router = express.Router();
 

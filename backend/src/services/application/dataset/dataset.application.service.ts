@@ -1,4 +1,4 @@
-import { HttpError } from '../common/http-error.js';
+import { HttpError } from '../../../common/http-error.js';
 import {
   createDataset,
   deleteDataset,
@@ -6,8 +6,8 @@ import {
   listDatasets,
   listDatasetsByOwner,
   updateDataset,
-} from './dataset.service.js';
-import { ensurePipelineOwnedByUser } from './ownership.service.js';
+} from '../../data/dataset.service.js';
+import { ensurePipelineOwnedByUser } from '../../core/ownership.service.js';
 
 const PIPELINE_ACCESS_OPTIONS = {
   pipelineNotFoundMessage: 'pipeline not found',

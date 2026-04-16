@@ -1,8 +1,8 @@
-import { HttpError } from '../common/http-error.js';
-import { createEdge, deleteEdge, getEdgeById, listEdgesByPipeline } from './edge.service.js';
-import { getNodeById, listNodesByPipeline } from './node.service.js';
-import { getNodeTypeById } from './node_type.service.js';
-import { ensurePipelineOwnedByUser } from './ownership.service.js';
+import { HttpError } from '../../../common/http-error.js';
+import { createEdge, deleteEdge, getEdgeById, listEdgesByPipeline } from '../../data/edge.service.js';
+import { getNodeById, listNodesByPipeline } from '../../data/node.service.js';
+import { getNodeTypeById } from '../../data/node_type.service.js';
+import { ensurePipelineOwnedByUser } from '../../core/ownership.service.js';
 
 type PipelineEdge = { fk_from_node: number; fk_to_node: number };
 

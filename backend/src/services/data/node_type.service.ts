@@ -1,4 +1,4 @@
-import prisma from '../db.js';
+import prisma from '../../db.js';
 
 export async function createNodeType(data: { fk_tool_id: number; name: string; desc: string; config_json?: any }) {
   return prisma.nodeType.create({

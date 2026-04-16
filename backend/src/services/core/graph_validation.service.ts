@@ -1,7 +1,7 @@
-import { listEdgesByPipeline } from './edge.service.js';
-import { listNodesByPipeline } from './node.service.js';
-import { getNodeTypeById } from './node_type.service.js';
-import { getPipelineById } from './pipeline.service.js';
+import { listEdgesByPipeline } from '../data/edge.service.js';
+import { listNodesByPipeline } from '../data/node.service.js';
+import { getNodeTypeById } from '../data/node_type.service.js';
+import { getPipelineById } from '../data/pipeline.service.js';
 
 export type ValidationMode = 'strict' | 'relaxed';
 export type ProfileFallbackMode = 'warn' | 'strict' | 'off';

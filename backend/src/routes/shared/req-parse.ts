@@ -1,4 +1,4 @@
-import { HttpError } from '../common/http-error.js';
+import { HttpError } from '../../common/http-error.js';
 import { parseId } from './id.utils.js';
 
 export function requiredId(raw: unknown, errorMessage: string): number {
