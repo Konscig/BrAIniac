@@ -53,8 +53,8 @@ async function run() {
   );
 
   await expectZero(
-    'self-loop edges',
-    'SELECT COUNT(*)::int AS count FROM "Edge" e WHERE e."fk_from_node" = e."fk_to_node"'
+    'orphan node types by tool',
+    'SELECT COUNT(*)::int AS count FROM "NodeType" nt LEFT JOIN "Tool" t ON nt."fk_tool_id" = t."tool_id" WHERE t."tool_id" IS NULL'
   );
 
   await expectZero(

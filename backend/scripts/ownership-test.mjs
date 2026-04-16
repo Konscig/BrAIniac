@@ -139,6 +139,14 @@ async function run() {
   console.log('attacker create edge ->', r.status);
   if (r.status !== 403) return fail('expected 403 when creating edge on other project', r);
 
+  r = await req(`/pipelines/${pipeline.pipeline_id}/validate-graph`, {
+    method: 'POST',
+    headers: attackerHeaders,
+    body: JSON.stringify({}),
+  });
+  console.log('attacker validate graph ->', r.status);
+  if (r.status !== 403) return fail('expected 403 when validating graph on other project', r);
+
   console.log('Ownership protections OK');
   process.exit(0);
 }

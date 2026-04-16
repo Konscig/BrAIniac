@@ -1,12 +1,23 @@
 import express from 'express';
 import { createPipeline, getPipelineById, listPipelines, listPipelinesByOwner, updatePipeline, deletePipeline } from '../services/pipeline.service.js';
-import { getProjectById } from '../services/project.service.js';
+import { isHttpError } from '../common/http-error.js';
+import { validatePipelineGraph } from '../services/graph_validation.service.js';
+import { ensurePipelineOwnedByUser, ensureProjectOwnedByUser } from '../services/ownership.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { parseId } from './id.utils.js';
 
 const router = express.Router();
 
 router.use(requireAuth);
+
+function sendError(res: express.Response, err: unknown) {
+  if (isHttpError(err)) {
+    return res.status(err.status).json(err.body);
+  }
+
+  console.error(err);
+  return res.status(500).json({ error: 'internal error' });
+}
 
 router.post('/', async (req: any, res: any) => {
   try {
@@ -25,9 +36,7 @@ router.post('/', async (req: any, res: any) => {
       return res.status(400).json({ error: 'score must be a number' });
     }
 
-    const project = await getProjectById(fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
+    await ensureProjectOwnedByUser(fk_project_id, req.user.user_id);
 
     const p = await createPipeline({
       fk_project_id,
@@ -40,8 +49,7 @@ router.post('/', async (req: any, res: any) => {
     });
     res.status(201).json(p);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendError(res, err);
   }
 });
 
@@ -52,9 +60,7 @@ router.get('/', async (req, res) => {
       const projectId = parseId(projectIdRaw);
       if (!projectId) return res.status(400).json({ error: 'invalid fk_project_id' });
 
-      const project = await getProjectById(projectId);
-      if (!project) return res.status(404).json({ error: 'project not found' });
-      if (project.fk_user_id !== (req as any).user.user_id) return res.status(403).json({ error: 'forbidden' });
+      await ensureProjectOwnedByUser(projectId, (req as any).user.user_id);
       const list = await listPipelines(projectId);
       return res.json(list);
     }
@@ -62,8 +68,7 @@ router.get('/', async (req, res) => {
     const list = await listPipelinesByOwner((req as any).user.user_id);
     res.json(list);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendError(res, err);
   }
 });
 
@@ -72,15 +77,33 @@ router.get('/:id', async (req, res) => {
     const pipelineId = parseId(req.params.id);
     if (!pipelineId) return res.status(400).json({ error: 'invalid id' });
 
-    const p = await getPipelineById(pipelineId);
-    if (!p) return res.status(404).json({ error: 'not found' });
-    const project = await getProjectById(p.fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== (req as any).user.user_id) return res.status(403).json({ error: 'forbidden' });
+    const p = await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
     res.json(p);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendError(res, err);
+  }
+});
+
+router.post('/:id/validate-graph', async (req, res) => {
+  try {
+    const pipelineId = parseId(req.params.id);
+    if (!pipelineId) return res.status(400).json({ error: 'invalid id' });
+
+    await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
+
+    const body = (req.body ?? {}) as Record<string, any>;
+    const result = await validatePipelineGraph(pipelineId, {
+      ...(body.mode !== undefined ? { mode: body.mode } : {}),
+      ...(body.includeWarnings !== undefined ? { includeWarnings: body.includeWarnings } : {}),
+      ...(body.profileFallback !== undefined ? { profileFallback: body.profileFallback } : {}),
+      ...(body.enforceLoopPolicies !== undefined ? { enforceLoopPolicies: body.enforceLoopPolicies } : {}),
+      ...(body.requireExecutionBudgets !== undefined ? { requireExecutionBudgets: body.requireExecutionBudgets } : {}),
+      ...(body.roleValidationMode !== undefined ? { roleValidationMode: body.roleValidationMode } : {}),
+    });
+
+    res.json(result);
+  } catch (err) {
+    return sendError(res, err);
   }
 });
 
@@ -89,11 +112,7 @@ router.put('/:id', async (req, res) => {
     const pipelineId = parseId(req.params.id);
     if (!pipelineId) return res.status(400).json({ error: 'invalid id' });
 
-    const existing = await getPipelineById(pipelineId);
-    if (!existing) return res.status(404).json({ error: 'not found' });
-    const project = await getProjectById(existing.fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== (req as any).user.user_id) return res.status(403).json({ error: 'forbidden' });
+    await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
 
     const patch: any = {};
     if (req.body.name !== undefined) patch.name = req.body.name;
@@ -125,8 +144,7 @@ router.put('/:id', async (req, res) => {
     const p = await updatePipeline(pipelineId, patch);
     res.json(p);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendError(res, err);
   }
 });
 
@@ -135,17 +153,12 @@ router.delete('/:id', async (req, res) => {
     const pipelineId = parseId(req.params.id);
     if (!pipelineId) return res.status(400).json({ error: 'invalid id' });
 
-    const existing = await getPipelineById(pipelineId);
-    if (!existing) return res.status(404).json({ error: 'not found' });
-    const project = await getProjectById(existing.fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== (req as any).user.user_id) return res.status(403).json({ error: 'forbidden' });
+    await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
 
     await deletePipeline(pipelineId);
     res.status(204).end();
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendError(res, err);
   }
 });
 

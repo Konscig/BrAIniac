@@ -11,6 +11,7 @@ async function req(path, opts) {
 }
 
 function ok(status) { return status >= 200 && status < 300; }
+function hasCode(body, code) { return !!body && typeof body === 'object' && body.code === code; }
 
 async function run() {
   console.log('Integration test started, base =', base);
@@ -114,6 +115,93 @@ async function run() {
   });
   console.log('POST /edges ->', r.status);
   if (!ok(r.status)) return fail('create edge failed', r);
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ fk_from_node: nodeB.node_id, fk_to_node: nodeA.node_id }),
+  });
+  console.log('POST /edges (unguarded cycle) ->', r.status);
+  if (r.status !== 400 || !hasCode(r.body, 'GRAPH_LOOP_POLICY_REQUIRED')) {
+    return fail('unguarded cycle should be rejected with GRAPH_LOOP_POLICY_REQUIRED', r);
+  }
+
+  r = await req(`/node-types/${nodeType.type_id}`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({ config_json: { loop: { maxIterations: 3 } } }),
+  });
+  console.log(`PUT /node-types/${nodeType.type_id} (set loop policy) ->`, r.status);
+  if (!ok(r.status)) return fail('update node type with loop policy failed', r);
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ fk_from_node: nodeB.node_id, fk_to_node: nodeA.node_id }),
+  });
+  console.log('POST /edges (guarded cycle) ->', r.status);
+  if (!ok(r.status)) return fail('guarded cycle edge should be allowed', r);
+
+  r = await req('/node-types', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_tool_id: tool.tool_id,
+      name: `it-type-invalid-loop-${suffix}`,
+      desc: 'invalid loop policy',
+      config_json: { loop: { maxIterations: 0 } },
+    }),
+  });
+  console.log('POST /node-types (invalid loop policy type) ->', r.status);
+  if (!ok(r.status)) return fail('create invalid loop node type failed', r);
+  const invalidLoopType = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: pipeline.pipeline_id,
+      fk_type_id: invalidLoopType.type_id,
+      top_k: 1,
+      ui_json: { x: 120, y: 140 },
+    }),
+  });
+  console.log('POST /nodes #3 ->', r.status);
+  if (!ok(r.status)) return fail('create third node failed', r);
+  const nodeC = r.body;
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ fk_from_node: nodeC.node_id, fk_to_node: nodeC.node_id }),
+  });
+  console.log('POST /edges (self-loop with invalid maxIterations) ->', r.status);
+  if (r.status !== 400 || !hasCode(r.body, 'GRAPH_LOOP_MAX_ITER_INVALID')) {
+    return fail('invalid loop maxIterations should be rejected with GRAPH_LOOP_MAX_ITER_INVALID', r);
+  }
+
+  r = await req(`/pipelines/${pipeline.pipeline_id}/validate-graph`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({}),
+  });
+  console.log(`POST /pipelines/${pipeline.pipeline_id}/validate-graph ->`, r.status);
+  if (!ok(r.status)) return fail('validate-graph failed', r);
+  if (!r.body || r.body.valid !== true) return fail('validate-graph should return valid=true for guarded cycle', r);
+  if (!r.body.metrics || Number(r.body.metrics.cycleCount) < 1 || Number(r.body.metrics.guardedCycleCount) < 1) {
+    return fail('validate-graph metrics should report guarded cycle', r);
+  }
+
+  r = await req(`/pipelines/${pipeline.pipeline_id}/validate-graph`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ includeWarnings: false }),
+  });
+  console.log(`POST /pipelines/${pipeline.pipeline_id}/validate-graph (includeWarnings=false) ->`, r.status);
+  if (!ok(r.status)) return fail('validate-graph (includeWarnings=false) failed', r);
+  if (!Array.isArray(r.body?.warnings) || r.body.warnings.length !== 0) {
+    return fail('validate-graph should suppress warnings when includeWarnings=false', r);
+  }
 
   r = await req('/datasets', {
     method: 'POST',
