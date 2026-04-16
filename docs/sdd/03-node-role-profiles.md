@@ -9,10 +9,12 @@
 ## Матрица Ролей (MVP)
 | role | input.min | input.max | output.min | output.max | allowed predecessors | allowed successors |
 |---|---:|---:|---:|---:|---|---|
-| source | 0 | 0 | 1 | 3 | none | transform, control, sink |
-| transform | 1 | 5 | 1 | 3 | source, transform, control | transform, control, sink |
-| control | 1 | 8 | 1 | 5 | source, transform, control | transform, control, sink |
-| sink | 1 | 10 | 0 | 0 | source, transform, control | none |
+| source | 0 | 2 | 1 | 5 | any | any |
+| transform | 0 | 8 | 0 | 8 | any | any |
+| control | 0 | 8 | 0 | 8 | any | any |
+| sink | 0 | 10 | 0 | 2 | any | any |
+
+Примечание: значения матрицы являются рекомендуемыми дефолтами (режим warn), а не обязательными hard-ограничениями.
 
 ## Профиль AgentCall (Специализированный Transform)
 - role: transform
@@ -34,6 +36,21 @@
   - toolCallsUsed
   - timing
 
+## Циклы И Loop-Политика
+- Циклы допускаются через любые loop-capable ноды (не только control).
+- Для любого циклического маршрута MUST быть задан loop-policy.
+- Рекомендуемые поля loop-policy:
+  - enabled: true
+  - maxIterations: целое >= 1
+  - stopCondition: строка или ссылка на условие (опционально)
+  - onLimit: break или fail (опционально, дефолт break)
+- Для production-режима рекомендуется включать глобальные бюджеты выполнения pipeline.
+
+## Политика Применения Ограничений
+- enforcementMode: off | warn | strict
+- Рекомендуемый дефолт для MVP: warn
+- В strict переводятся только подтвержденные проектом ограничения.
+
 ## Fallback-Политика
 Если NodeType.config_json отсутствует или неполный:
 - role по умолчанию: transform
@@ -47,8 +64,15 @@
   "role": "transform",
   "input": { "min": 1, "max": 3 },
   "output": { "min": 1, "max": 2 },
-  "allowedPredecessorRoles": ["source", "transform", "control"],
-  "allowedSuccessorRoles": ["transform", "control", "sink"],
+  "allowedPredecessorRoles": ["any"],
+  "allowedSuccessorRoles": ["any"],
+  "enforcementMode": "warn",
+  "loop": {
+    "enabled": true,
+    "maxIterations": 3,
+    "stopCondition": "quality >= 0.8",
+    "onLimit": "break"
+  },
   "agent": {
     "enabled": true,
     "maxAttempts": 3,
