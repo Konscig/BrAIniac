@@ -8,6 +8,7 @@ import {
 } from '../services/node_type.application.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { optionalId, requiredId } from './req-parse.js';
+import { mapNodeTypePatchDTO } from './patch-dto.mappers.js';
 import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
@@ -60,11 +61,7 @@ router.put('/:id', async (req, res) => {
   try {
     const typeId = requiredId(req.params.id, 'invalid id');
 
-    const item = await updateNodeTypeEntryById(typeId, {
-      ...(req.body.name !== undefined ? { name: req.body.name } : {}),
-      ...(req.body.desc !== undefined ? { desc: req.body.desc } : {}),
-      ...(req.body.config_json !== undefined ? { config_json: req.body.config_json } : {}),
-    });
+    const item = await updateNodeTypeEntryById(typeId, mapNodeTypePatchDTO(req.body));
     res.json(item);
   } catch (err) {
     return sendRouteError(res, err);

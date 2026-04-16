@@ -9,6 +9,7 @@ import {
 } from '../services/node.application.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { optionalFiniteNumber, optionalId, requiredFiniteNumber, requiredId } from './req-parse.js';
+import { mapNodePatchDTO } from './patch-dto.mappers.js';
 import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
@@ -72,22 +73,7 @@ router.put('/:id', async (req, res) => {
   try {
     const nodeId = requiredId(req.params.id, 'invalid id');
 
-    const patch: any = {};
-    if (req.body.fk_type_id !== undefined) {
-      patch.fk_type_id = requiredId(req.body.fk_type_id, 'invalid fk_type_id');
-    }
-    if (req.body.fk_sub_pipeline !== undefined) {
-      if (req.body.fk_sub_pipeline === null) {
-        patch.fk_sub_pipeline = null;
-      } else {
-        patch.fk_sub_pipeline = requiredId(req.body.fk_sub_pipeline, 'invalid fk_sub_pipeline');
-      }
-    }
-    if (req.body.top_k !== undefined) {
-      patch.top_k = optionalFiniteNumber(req.body.top_k, 'invalid top_k');
-    }
-    if (req.body.ui_json !== undefined) patch.ui_json = req.body.ui_json;
-    if (req.body.output_json !== undefined) patch.output_json = req.body.output_json;
+    const patch = mapNodePatchDTO(req.body);
 
     const n = await updateNodeForUser(nodeId, patch, (req as any).user.user_id);
     res.json(n);

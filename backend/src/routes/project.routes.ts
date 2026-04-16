@@ -1,7 +1,15 @@
 import express from 'express';
-import { createProject, updateProject, deleteProject, getProjectById, listProjectsByOwner } from '../services/project.service.js';
+import {
+  createProjectForUser,
+  deleteProjectByIdForUser,
+  getProjectByIdForUser,
+  listProjectsForUser,
+  updateProjectByIdForUser,
+} from '../services/project.application.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
-import { parseId } from './id.utils.js';
+import { requiredId, requiredNonEmptyString } from './req-parse.js';
+import { mapProjectPatchDTO } from './patch-dto.mappers.js';
+import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
 
@@ -9,70 +17,55 @@ router.use(requireAuth);
 
 router.post('/', async (req: any, res) => {
   try {
-    const { name } = req.body;
-    if (!name) return res.status(400).json({ error: 'name required' });
-    const project = await createProject({ fk_user_id: req.user.user_id, name });
+    const name = requiredNonEmptyString(req.body?.name, 'name required');
+    const project = await createProjectForUser(name, req.user.user_id);
     res.status(201).json(project);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
 router.get('/', async (req: any, res) => {
   try {
-    const projects = await listProjectsByOwner(req.user.user_id);
+    const projects = await listProjectsForUser(req.user.user_id);
     res.json(projects);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
 router.get('/:id', async (req: any, res) => {
   try {
-    const projectId = parseId(req.params.id);
-    if (!projectId) return res.status(400).json({ error: 'invalid id' });
+    const projectId = requiredId(req.params.id, 'invalid id');
 
-    const project = await getProjectById(projectId);
-    if (!project) return res.status(404).json({ error: 'not found' });
-    if (project.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
+    const project = await getProjectByIdForUser(projectId, req.user.user_id);
     res.json(project);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
 router.put('/:id', async (req: any, res) => {
   try {
-    const projectId = parseId(req.params.id);
-    if (!projectId) return res.status(400).json({ error: 'invalid id' });
+    const projectId = requiredId(req.params.id, 'invalid id');
 
-    const existing = await getProjectById(projectId);
-    if (!existing) return res.status(404).json({ error: 'not found' });
-    if (existing.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
-    const project = await updateProject(projectId, req.body);
+    const patch = mapProjectPatchDTO(req.body);
+
+    const project = await updateProjectByIdForUser(projectId, patch, req.user.user_id);
     res.json(project);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
 router.delete('/:id', async (req: any, res) => {
   try {
-    const projectId = parseId(req.params.id);
-    if (!projectId) return res.status(400).json({ error: 'invalid id' });
+    const projectId = requiredId(req.params.id, 'invalid id');
 
-    const existing = await getProjectById(projectId);
-    if (!existing) return res.status(404).json({ error: 'not found' });
-    if (existing.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
-    await deleteProject(projectId);
+    await deleteProjectByIdForUser(projectId, req.user.user_id);
     res.status(204).end();
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 

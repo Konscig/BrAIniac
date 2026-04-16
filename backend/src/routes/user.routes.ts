@@ -1,7 +1,8 @@
 import express from 'express';
-import { findUserById } from '../services/user.service.js';
+import { getUserByIdForSelf } from '../services/user.application.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
-import { parseId } from './id.utils.js';
+import { requiredId } from './req-parse.js';
+import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
 
@@ -13,16 +14,12 @@ router.get('/me', async (req: any, res) => {
 
 router.get('/:id', async (req: any, res) => {
   try {
-    const userId = parseId(req.params.id);
-    if (!userId) return res.status(400).json({ error: 'invalid id' });
-    if (userId !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
+    const userId = requiredId(req.params.id, 'invalid id');
 
-    const user = await findUserById(userId);
-    if (!user) return res.status(404).json({ error: 'not found' });
+    const user = await getUserByIdForSelf(userId, req.user.user_id);
     res.json(user);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 

@@ -4,6 +4,7 @@ import { validatePipelineGraph } from '../services/graph_validation.service.js';
 import { ensurePipelineOwnedByUser, ensureProjectOwnedByUser } from '../services/ownership.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { optionalFiniteNumber, optionalId, requiredFiniteNumber, requiredId, requiredNonEmptyString } from './req-parse.js';
+import { mapPipelinePatchDTO } from './patch-dto.mappers.js';
 import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
@@ -92,22 +93,7 @@ router.put('/:id', async (req, res) => {
 
     await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
 
-    const patch: any = {};
-    if (req.body.name !== undefined) patch.name = req.body.name;
-    if (req.body.max_time !== undefined) {
-      patch.max_time = optionalFiniteNumber(req.body.max_time, 'invalid max_time');
-    }
-    if (req.body.max_cost !== undefined) {
-      patch.max_cost = optionalFiniteNumber(req.body.max_cost, 'invalid max_cost');
-    }
-    if (req.body.max_reject !== undefined) {
-      patch.max_reject = optionalFiniteNumber(req.body.max_reject, 'invalid max_reject');
-    }
-    if (req.body.score !== undefined) {
-      if (req.body.score === null) patch.score = null;
-      else patch.score = optionalFiniteNumber(req.body.score, 'invalid score');
-    }
-    if (req.body.report_json !== undefined) patch.report_json = req.body.report_json;
+    const patch = mapPipelinePatchDTO(req.body);
 
     const p = await updatePipeline(pipelineId, patch);
     res.json(p);

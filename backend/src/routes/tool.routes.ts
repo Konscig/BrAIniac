@@ -8,6 +8,7 @@ import {
 } from '../services/tool.application.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { requiredId } from './req-parse.js';
+import { mapToolPatchDTO } from './patch-dto.mappers.js';
 import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
@@ -47,10 +48,7 @@ router.put('/:id', async (req, res) => {
   try {
     const toolId = requiredId(req.params.id, 'invalid id');
 
-    const updated = await updateToolEntryById(toolId, {
-      ...(req.body.name !== undefined ? { name: req.body.name } : {}),
-      ...(req.body.config_json !== undefined ? { config_json: req.body.config_json } : {}),
-    });
+    const updated = await updateToolEntryById(toolId, mapToolPatchDTO(req.body));
     res.json(updated);
   } catch (err) {
     return sendRouteError(res, err);

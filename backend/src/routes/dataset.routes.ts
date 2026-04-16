@@ -9,6 +9,7 @@ import {
 } from '../services/dataset.application.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { optionalId, requiredId, requiredNonEmptyString } from './req-parse.js';
+import { mapDatasetPatchDTO } from './patch-dto.mappers.js';
 import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
@@ -63,9 +64,7 @@ router.put('/:id', async (req: any, res) => {
   try {
     const datasetId = requiredId(req.params.id, 'invalid id');
 
-    const patch: any = {};
-    if (req.body.desc !== undefined) patch.desc = req.body.desc;
-    if (req.body.uri !== undefined) patch.uri = req.body.uri;
+    const patch = mapDatasetPatchDTO(req.body);
     const updated = await updateDatasetForUser(datasetId, patch, req.user.user_id);
     res.json(updated);
   } catch (err) {

@@ -1,31 +1,29 @@
 import express from 'express';
-import { signup, login } from '../services/auth.service.js';
+import { loginAndIssueTokens, signupAndIssueTokens } from '../services/auth.application.service.js';
+import { requiredNonEmptyString } from './req-parse.js';
+import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
 
 router.post('/signup', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-    await signup({ email, password });
-    const tokens = await login({ email, password });
+    const email = requiredNonEmptyString(req.body?.email, 'email and password required');
+    const password = requiredNonEmptyString(req.body?.password, 'email and password required');
+    const tokens = await signupAndIssueTokens({ email, password });
     res.status(201).json(tokens);
-  } catch (err: any) {
-    console.error(err);
-    if (err.message === 'user exists') return res.status(409).json({ error: 'user exists' });
-    res.status(500).json({ error: 'internal error' });
+  } catch (err) {
+    return sendRouteError(res, err);
   }
 });
 
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-    const tokens = await login({ email, password });
+    const email = requiredNonEmptyString(req.body?.email, 'email and password required');
+    const password = requiredNonEmptyString(req.body?.password, 'email and password required');
+    const tokens = await loginAndIssueTokens({ email, password });
     res.json(tokens);
-  } catch (err: any) {
-    console.error(err);
-    res.status(401).json({ error: 'invalid credentials' });
+  } catch (err) {
+    return sendRouteError(res, err);
   }
 });
 
