@@ -1,9 +1,15 @@
 import express from 'express';
-import { createDataset, listDatasets, listDatasetsByOwner, getDatasetById, updateDataset, deleteDataset } from '../services/dataset.service.js';
-import { getPipelineById } from '../services/pipeline.service.js';
-import { getProjectById } from '../services/project.service.js';
+import {
+  createDatasetForUser,
+  deleteDatasetByIdForUser,
+  getDatasetByIdForUser,
+  listDatasetsForOwner,
+  listDatasetsForPipelineForUser,
+  updateDatasetForUser,
+} from '../services/dataset.application.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { parseId } from './id.utils.js';
+import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
 
@@ -16,21 +22,14 @@ router.post('/', async (req: any, res) => {
       return res.status(400).json({ error: 'fk_pipeline_id and uri required' });
     }
 
-    const pipeline = await getPipelineById(fk_pipeline_id);
-    if (!pipeline) return res.status(404).json({ error: 'pipeline not found' });
-    const project = await getProjectById(pipeline.fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
-
-    const d = await createDataset({
+    const d = await createDatasetForUser({
       fk_pipeline_id,
       uri: req.body.uri,
       ...(req.body.desc !== undefined ? { desc: req.body.desc } : {}),
-    });
+    }, req.user.user_id);
     res.status(201).json(d);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
@@ -41,21 +40,14 @@ router.get('/', async (req: any, res) => {
       const pipelineId = parseId(pipelineRaw);
       if (!pipelineId) return res.status(400).json({ error: 'invalid fk_pipeline_id' });
 
-      const pipeline = await getPipelineById(pipelineId);
-      if (!pipeline) return res.status(404).json({ error: 'pipeline not found' });
-      const project = await getProjectById(pipeline.fk_project_id);
-      if (!project) return res.status(404).json({ error: 'project not found' });
-      if (project.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
-
-      const list = await listDatasets(pipelineId);
+      const list = await listDatasetsForPipelineForUser(pipelineId, req.user.user_id);
       return res.json(list);
     }
 
-    const r = await listDatasetsByOwner(req.user.user_id);
+    const r = await listDatasetsForOwner(req.user.user_id);
     res.json(r);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
@@ -64,19 +56,11 @@ router.get('/:id', async (req: any, res) => {
     const datasetId = parseId(req.params.id);
     if (!datasetId) return res.status(400).json({ error: 'invalid id' });
 
-    const d = await getDatasetById(datasetId);
-    if (!d) return res.status(404).json({ error: 'not found' });
-
-    const pipeline = await getPipelineById(d.fk_pipeline_id);
-    if (!pipeline) return res.status(404).json({ error: 'pipeline not found' });
-    const project = await getProjectById(pipeline.fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
+    const d = await getDatasetByIdForUser(datasetId, req.user.user_id);
 
     res.json(d);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
@@ -85,23 +69,13 @@ router.put('/:id', async (req: any, res) => {
     const datasetId = parseId(req.params.id);
     if (!datasetId) return res.status(400).json({ error: 'invalid id' });
 
-    const existing = await getDatasetById(datasetId);
-    if (!existing) return res.status(404).json({ error: 'not found' });
-
-    const pipeline = await getPipelineById(existing.fk_pipeline_id);
-    if (!pipeline) return res.status(404).json({ error: 'pipeline not found' });
-    const project = await getProjectById(pipeline.fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
-
     const patch: any = {};
     if (req.body.desc !== undefined) patch.desc = req.body.desc;
     if (req.body.uri !== undefined) patch.uri = req.body.uri;
-    const updated = await updateDataset(datasetId, patch);
+    const updated = await updateDatasetForUser(datasetId, patch, req.user.user_id);
     res.json(updated);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
@@ -110,20 +84,10 @@ router.delete('/:id', async (req: any, res) => {
     const datasetId = parseId(req.params.id);
     if (!datasetId) return res.status(400).json({ error: 'invalid id' });
 
-    const existing = await getDatasetById(datasetId);
-    if (!existing) return res.status(404).json({ error: 'not found' });
-
-    const pipeline = await getPipelineById(existing.fk_pipeline_id);
-    if (!pipeline) return res.status(404).json({ error: 'pipeline not found' });
-    const project = await getProjectById(pipeline.fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
-
-    await deleteDataset(datasetId);
+    await deleteDatasetByIdForUser(datasetId, req.user.user_id);
     res.status(204).end();
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 

@@ -1,23 +1,14 @@
 import express from 'express';
-import { createPipeline, getPipelineById, listPipelines, listPipelinesByOwner, updatePipeline, deletePipeline } from '../services/pipeline.service.js';
-import { isHttpError } from '../common/http-error.js';
+import { createPipeline, listPipelines, listPipelinesByOwner, updatePipeline, deletePipeline } from '../services/pipeline.service.js';
 import { validatePipelineGraph } from '../services/graph_validation.service.js';
 import { ensurePipelineOwnedByUser, ensureProjectOwnedByUser } from '../services/ownership.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { parseId } from './id.utils.js';
+import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
 
 router.use(requireAuth);
-
-function sendError(res: express.Response, err: unknown) {
-  if (isHttpError(err)) {
-    return res.status(err.status).json(err.body);
-  }
-
-  console.error(err);
-  return res.status(500).json({ error: 'internal error' });
-}
 
 router.post('/', async (req: any, res: any) => {
   try {
@@ -49,7 +40,7 @@ router.post('/', async (req: any, res: any) => {
     });
     res.status(201).json(p);
   } catch (err) {
-    return sendError(res, err);
+    return sendRouteError(res, err);
   }
 });
 
@@ -68,7 +59,7 @@ router.get('/', async (req, res) => {
     const list = await listPipelinesByOwner((req as any).user.user_id);
     res.json(list);
   } catch (err) {
-    return sendError(res, err);
+    return sendRouteError(res, err);
   }
 });
 
@@ -80,7 +71,7 @@ router.get('/:id', async (req, res) => {
     const p = await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
     res.json(p);
   } catch (err) {
-    return sendError(res, err);
+    return sendRouteError(res, err);
   }
 });
 
@@ -103,7 +94,7 @@ router.post('/:id/validate-graph', async (req, res) => {
 
     res.json(result);
   } catch (err) {
-    return sendError(res, err);
+    return sendRouteError(res, err);
   }
 });
 
@@ -144,7 +135,7 @@ router.put('/:id', async (req, res) => {
     const p = await updatePipeline(pipelineId, patch);
     res.json(p);
   } catch (err) {
-    return sendError(res, err);
+    return sendRouteError(res, err);
   }
 });
 
@@ -158,7 +149,7 @@ router.delete('/:id', async (req, res) => {
     await deletePipeline(pipelineId);
     res.status(204).end();
   } catch (err) {
-    return sendError(res, err);
+    return sendRouteError(res, err);
   }
 });
 

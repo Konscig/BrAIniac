@@ -1,10 +1,15 @@
 import express from 'express';
-import { createNode, updateNode, getNodeById, listNodesByPipeline, listNodesByOwner, deleteNode } from '../services/node.service.js';
-import { getPipelineById } from '../services/pipeline.service.js';
-import { getProjectById } from '../services/project.service.js';
-import { getNodeTypeById } from '../services/node_type.service.js';
+import {
+  createNodeForUser,
+  deleteNodeByIdForUser,
+  getNodeByIdForUser,
+  listNodesForOwner,
+  listNodesForPipelineForUser,
+  updateNodeForUser,
+} from '../services/node.application.service.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { parseId } from './id.utils.js';
+import { sendRouteError } from './route-error.js';
 
 const router = express.Router();
 
@@ -33,35 +38,18 @@ router.post('/', async (req: any, res: any) => {
     if (req.body.ui_json === undefined) {
       return res.status(400).json({ error: 'ui_json required' });
     }
-    const pipeline = await getPipelineById(fk_pipeline_id);
-    if (!pipeline) return res.status(404).json({ error: 'pipeline not found' });
-    const project = await getProjectById(pipeline.fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
 
-    const type = await getNodeTypeById(fk_type_id);
-    if (!type) return res.status(404).json({ error: 'node type not found' });
-
-    if (fk_sub_pipeline !== undefined) {
-      const subPipeline = await getPipelineById(fk_sub_pipeline);
-      if (!subPipeline) return res.status(404).json({ error: 'sub pipeline not found' });
-      const subProject = await getProjectById(subPipeline.fk_project_id);
-      if (!subProject) return res.status(404).json({ error: 'project not found' });
-      if (subProject.fk_user_id !== req.user.user_id) return res.status(403).json({ error: 'forbidden' });
-    }
-
-    const n = await createNode({
+    const n = await createNodeForUser({
       fk_pipeline_id,
       fk_type_id,
       ...(fk_sub_pipeline !== undefined ? { fk_sub_pipeline } : {}),
       top_k,
       ui_json: req.body.ui_json,
       ...(req.body.output_json !== undefined ? { output_json: req.body.output_json } : {}),
-    });
+    }, req.user.user_id);
     res.status(201).json(n);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
@@ -72,21 +60,14 @@ router.get('/', async (req, res) => {
       const pipelineId = parseId(pipelineRaw);
       if (!pipelineId) return res.status(400).json({ error: 'invalid fk_pipeline_id' });
 
-      const pipeline = await getPipelineById(pipelineId);
-      if (!pipeline) return res.status(404).json({ error: 'pipeline not found' });
-      const project = await getProjectById(pipeline.fk_project_id);
-      if (!project) return res.status(404).json({ error: 'project not found' });
-      if (project.fk_user_id !== (req as any).user.user_id) return res.status(403).json({ error: 'forbidden' });
-
-      const nodes = await listNodesByPipeline(pipelineId);
+      const nodes = await listNodesForPipelineForUser(pipelineId, (req as any).user.user_id);
       return res.json(nodes);
     }
 
-    const nodes = await listNodesByOwner((req as any).user.user_id);
+    const nodes = await listNodesForOwner((req as any).user.user_id);
     res.json(nodes);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
@@ -95,18 +76,11 @@ router.get('/:id', async (req, res) => {
     const nodeId = parseId(req.params.id);
     if (!nodeId) return res.status(400).json({ error: 'invalid id' });
 
-    const n = await getNodeById(nodeId);
-    if (!n) return res.status(404).json({ error: 'not found' });
-    const pipeline = await getPipelineById(n.fk_pipeline_id);
-    if (!pipeline) return res.status(404).json({ error: 'pipeline not found' });
-    const project = await getProjectById(pipeline.fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== (req as any).user.user_id) return res.status(403).json({ error: 'forbidden' });
+    const n = await getNodeByIdForUser(nodeId, (req as any).user.user_id);
 
     res.json(n);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
@@ -115,20 +89,10 @@ router.put('/:id', async (req, res) => {
     const nodeId = parseId(req.params.id);
     if (!nodeId) return res.status(400).json({ error: 'invalid id' });
 
-    const existing = await getNodeById(nodeId);
-    if (!existing) return res.status(404).json({ error: 'not found' });
-    const pipeline = await getPipelineById(existing.fk_pipeline_id);
-    if (!pipeline) return res.status(404).json({ error: 'pipeline not found' });
-    const project = await getProjectById(pipeline.fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== (req as any).user.user_id) return res.status(403).json({ error: 'forbidden' });
-
     const patch: any = {};
     if (req.body.fk_type_id !== undefined) {
       const fkType = parseId(req.body.fk_type_id);
       if (!fkType) return res.status(400).json({ error: 'invalid fk_type_id' });
-      const type = await getNodeTypeById(fkType);
-      if (!type) return res.status(404).json({ error: 'node type not found' });
       patch.fk_type_id = fkType;
     }
     if (req.body.fk_sub_pipeline !== undefined) {
@@ -137,11 +101,6 @@ router.put('/:id', async (req, res) => {
       } else {
         const fkSubPipeline = parseId(req.body.fk_sub_pipeline);
         if (!fkSubPipeline) return res.status(400).json({ error: 'invalid fk_sub_pipeline' });
-        const subPipeline = await getPipelineById(fkSubPipeline);
-        if (!subPipeline) return res.status(404).json({ error: 'sub pipeline not found' });
-        const subProject = await getProjectById(subPipeline.fk_project_id);
-        if (!subProject) return res.status(404).json({ error: 'project not found' });
-        if (subProject.fk_user_id !== (req as any).user.user_id) return res.status(403).json({ error: 'forbidden' });
         patch.fk_sub_pipeline = fkSubPipeline;
       }
     }
@@ -153,11 +112,10 @@ router.put('/:id', async (req, res) => {
     if (req.body.ui_json !== undefined) patch.ui_json = req.body.ui_json;
     if (req.body.output_json !== undefined) patch.output_json = req.body.output_json;
 
-    const n = await updateNode(nodeId, patch);
+    const n = await updateNodeForUser(nodeId, patch, (req as any).user.user_id);
     res.json(n);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
@@ -166,19 +124,10 @@ router.delete('/:id', async (req, res) => {
     const nodeId = parseId(req.params.id);
     if (!nodeId) return res.status(400).json({ error: 'invalid id' });
 
-    const existing = await getNodeById(nodeId);
-    if (!existing) return res.status(404).json({ error: 'not found' });
-    const pipeline = await getPipelineById(existing.fk_pipeline_id);
-    if (!pipeline) return res.status(404).json({ error: 'pipeline not found' });
-    const project = await getProjectById(pipeline.fk_project_id);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    if (project.fk_user_id !== (req as any).user.user_id) return res.status(403).json({ error: 'forbidden' });
-
-    await deleteNode(nodeId);
+    await deleteNodeByIdForUser(nodeId, (req as any).user.user_id);
     res.status(204).end();
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+    return sendRouteError(res, err);
   }
 });
 
