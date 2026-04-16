@@ -22,6 +22,7 @@ router.post('/', async (req, res) => {
       fk_tool_id,
       name: req.body.name,
       desc: req.body.desc,
+      ...(req.body.config_json !== undefined ? { config_json: req.body.config_json } : {}),
     });
     res.status(201).json(item);
   } catch (err) {
@@ -73,6 +74,7 @@ router.put('/:id', async (req, res) => {
     const patch: any = {};
     if (req.body.name !== undefined) patch.name = req.body.name;
     if (req.body.desc !== undefined) patch.desc = req.body.desc;
+    if (req.body.config_json !== undefined) patch.config_json = req.body.config_json;
 
     const item = await updateNodeType(typeId, patch);
     res.json(item);

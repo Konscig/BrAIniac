@@ -1,11 +1,12 @@
 import prisma from '../db.js';
 
-export async function createNodeType(data: { fk_tool_id: number; name: string; desc: string }) {
+export async function createNodeType(data: { fk_tool_id: number; name: string; desc: string; config_json?: any }) {
   return prisma.nodeType.create({
     data: {
       fk_tool_id: data.fk_tool_id,
       name: data.name,
       desc: data.desc,
+      ...(data.config_json !== undefined ? { config_json: data.config_json } : {}),
     },
   });
 }
@@ -19,12 +20,13 @@ export async function listNodeTypes(fk_tool_id?: number) {
   return prisma.nodeType.findMany({ where: { fk_tool_id } });
 }
 
-export async function updateNodeType(type_id: number, data: { name?: string; desc?: string }) {
+export async function updateNodeType(type_id: number, data: { name?: string; desc?: string; config_json?: any }) {
   return prisma.nodeType.update({
     where: { type_id },
     data: {
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.desc !== undefined ? { desc: data.desc } : {}),
+      ...(data.config_json !== undefined ? { config_json: data.config_json } : {}),
     },
   });
 }

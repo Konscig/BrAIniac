@@ -59,6 +59,7 @@ model NodeType {
   fk_tool_id   Int
   name         String    @db.Char(64)
   desc         String    @db.Char(512)
+  config_json  Json?
   tool         Tool      @relation(fields: [fk_tool_id], references: [tool_id], onDelete: Cascade)
   nodes        Node[]
 
