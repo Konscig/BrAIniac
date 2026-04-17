@@ -13,6 +13,10 @@ async function req(path, opts) {
 function ok(status) { return status >= 200 && status < 300; }
 function hasCode(body, code) { return !!body && typeof body === 'object' && body.code === code; }
 
+async function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function run() {
   console.log('Integration test started, base =', base);
 
@@ -79,6 +83,15 @@ async function run() {
   console.log('POST /node-types ->', r.status);
   if (!ok(r.status)) return fail('create node type failed', r);
   const nodeType = r.body;
+
+  r = await req('/node-types', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ fk_tool_id: tool.tool_id, name: `it-type-no-profile-${suffix}`, desc: 'no profile type' }),
+  });
+  console.log('POST /node-types (no profile) ->', r.status);
+  if (!ok(r.status)) return fail('create no-profile node type failed', r);
+  const noProfileType = r.body;
 
   r = await req('/nodes', {
     method: 'POST',
@@ -170,6 +183,19 @@ async function run() {
   if (!ok(r.status)) return fail('create third node failed', r);
   const nodeC = r.body;
 
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: pipeline.pipeline_id,
+      fk_type_id: noProfileType.type_id,
+      top_k: 1,
+      ui_json: { x: 220, y: 240 },
+    }),
+  });
+  console.log('POST /nodes #4 (no-profile type) ->', r.status);
+  if (!ok(r.status)) return fail('create fourth node failed', r);
+
   r = await req('/edges', {
     method: 'POST',
     headers: authHeaders,
@@ -192,6 +218,20 @@ async function run() {
     return fail('validate-graph metrics should report guarded cycle', r);
   }
 
+  r = await req(`/pipelines/${pipeline.pipeline_id}/validate-graph?preset=production`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({}),
+  });
+  console.log(`POST /pipelines/${pipeline.pipeline_id}/validate-graph?preset=production ->`, r.status);
+  if (!ok(r.status)) return fail('validate-graph with production preset failed', r);
+  if (!r.body || r.body.valid !== false) {
+    return fail('production preset should mark graph invalid for missing strict profile', r);
+  }
+  if (!Array.isArray(r.body?.errors) || !r.body.errors.some((e) => hasCode(e, 'GRAPH_NODETYPE_PROFILE_MISSING'))) {
+    return fail('production preset should return GRAPH_NODETYPE_PROFILE_MISSING', r);
+  }
+
   r = await req(`/pipelines/${pipeline.pipeline_id}/validate-graph`, {
     method: 'POST',
     headers: authHeaders,
@@ -201,6 +241,53 @@ async function run() {
   if (!ok(r.status)) return fail('validate-graph (includeWarnings=false) failed', r);
   if (!Array.isArray(r.body?.warnings) || r.body.warnings.length !== 0) {
     return fail('validate-graph should suppress warnings when includeWarnings=false', r);
+  }
+
+  const executionKey = `it-execution-${suffix}`;
+  r = await req(`/pipelines/${pipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'x-idempotency-key': executionKey },
+    body: JSON.stringify({ input_json: { prompt: 'health check' } }),
+  });
+  console.log(`POST /pipelines/${pipeline.pipeline_id}/execute ->`, r.status);
+  if (r.status !== 202 || !r.body?.execution_id) {
+    return fail('execute should return 202 with execution_id', r);
+  }
+
+  const firstExecutionId = r.body.execution_id;
+
+  r = await req(`/pipelines/${pipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'x-idempotency-key': executionKey },
+    body: JSON.stringify({ input_json: { prompt: 'health check' } }),
+  });
+  console.log(`POST /pipelines/${pipeline.pipeline_id}/execute (idempotent replay) ->`, r.status);
+  if (r.status !== 202 || r.body?.execution_id !== firstExecutionId) {
+    return fail('execute with same idempotency key should return same execution_id', r);
+  }
+
+  let finalExecution = null;
+  for (let i = 0; i < 30; i += 1) {
+    r = await req(`/pipelines/${pipeline.pipeline_id}/executions/${firstExecutionId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!ok(r.status)) return fail('execution status check failed', r);
+
+    if (r.body?.status === 'succeeded' || r.body?.status === 'failed') {
+      finalExecution = r.body;
+      break;
+    }
+
+    await wait(150);
+  }
+
+  if (!finalExecution) {
+    return fail('execution did not finish in time', r);
+  }
+  if (finalExecution.status !== 'succeeded') {
+    return fail('execution should succeed in integration flow', { status: 500, body: finalExecution });
   }
 
   r = await req('/datasets', {

@@ -6,6 +6,7 @@ import { getPipelineById } from '../data/pipeline.service.js';
 export type ValidationMode = 'strict' | 'relaxed';
 export type ProfileFallbackMode = 'warn' | 'strict' | 'off';
 export type RoleValidationMode = 'off' | 'warn' | 'strict';
+export type GraphValidationPreset = 'default' | 'production' | 'dev';
 
 export interface GraphValidationOptions {
   mode: ValidationMode;
@@ -60,6 +61,41 @@ const DEFAULT_OPTIONS: GraphValidationOptions = {
   requireExecutionBudgets: false,
   roleValidationMode: 'warn',
 };
+
+const PRESET_OPTIONS: Record<GraphValidationPreset, Partial<GraphValidationOptions>> = {
+  default: {
+    ...DEFAULT_OPTIONS,
+  },
+  dev: {
+    mode: 'strict',
+    includeWarnings: true,
+    profileFallback: 'warn',
+    enforceLoopPolicies: true,
+    requireExecutionBudgets: false,
+    roleValidationMode: 'warn',
+  },
+  production: {
+    mode: 'strict',
+    includeWarnings: true,
+    profileFallback: 'strict',
+    enforceLoopPolicies: true,
+    requireExecutionBudgets: true,
+    roleValidationMode: 'strict',
+  },
+};
+
+export function parseGraphValidationPreset(value: unknown): GraphValidationPreset | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'default' || normalized === 'dev' || normalized === 'production') {
+    return normalized;
+  }
+  return undefined;
+}
+
+export function getGraphValidationPresetOptions(preset: GraphValidationPreset): Partial<GraphValidationOptions> {
+  return { ...(PRESET_OPTIONS[preset] ?? PRESET_OPTIONS.default) };
+}
 
 function normalizeMode(value: any): ValidationMode | undefined {
   if (value === 'strict' || value === 'relaxed') return value;

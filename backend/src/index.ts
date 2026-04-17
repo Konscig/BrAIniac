@@ -11,6 +11,7 @@ import edgeRouter from './routes/resources/edge/edge.routes.js';
 import toolRouter from './routes/resources/tool/tool.routes.js';
 import pipelineRouter from './routes/resources/pipeline/pipeline.routes.js';
 import nodeTypeRouter from './routes/resources/node_type/node_type.routes.js';
+import { getOpenRouterConfig } from './services/core/openrouter/openrouter.config.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const DEFAULT_WORKERS = Math.max(1, os.cpus().length);
@@ -20,6 +21,11 @@ const SHOULD_FORK = ENABLE_CLUSTER && CONFIGURED_WORKERS > 1;
 
 function createApp() {
   const app = express();
+  const openRouterConfig = getOpenRouterConfig();
+
+  if (!openRouterConfig.enabled) {
+    console.warn('[config] OPENROUTER_API_KEY is not set: LLMCall nodes will fail until configured');
+  }
 
   app.use(express.json());
 

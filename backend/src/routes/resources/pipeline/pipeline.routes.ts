@@ -1,7 +1,16 @@
 import express from 'express';
 import { createPipeline, listPipelines, listPipelinesByOwner, updatePipeline, deletePipeline } from '../../../services/data/pipeline.service.js';
-import { validatePipelineGraph } from '../../../services/core/graph_validation.service.js';
+import {
+  getGraphValidationPresetOptions,
+  parseGraphValidationPreset,
+  validatePipelineGraph,
+} from '../../../services/core/graph_validation.service.js';
 import { ensurePipelineOwnedByUser, ensureProjectOwnedByUser } from '../../../services/core/ownership.service.js';
+import {
+  getPipelineExecutionForUser,
+  startPipelineExecutionForUser,
+} from '../../../services/application/pipeline/pipeline.executor.application.service.js';
+import { HttpError } from '../../../common/http-error.js';
 import { requireAuth } from '../../../middleware/auth.middleware.js';
 import { optionalId, requiredId } from '../../shared/req-parse.js';
 import { mapPipelineCreateDTO } from '../../shared/create-dto.mappers.js';
@@ -60,7 +69,14 @@ router.post('/:id/validate-graph', async (req, res) => {
     await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
 
     const body = (req.body ?? {}) as Record<string, any>;
+    const rawPreset = req.query.preset ?? body.preset;
+    const preset = parseGraphValidationPreset(rawPreset);
+    if (rawPreset !== undefined && rawPreset !== null && rawPreset !== '' && !preset) {
+      throw new HttpError(400, { error: 'invalid preset' });
+    }
+
     const result = await validatePipelineGraph(pipelineId, {
+      ...getGraphValidationPresetOptions(preset ?? 'default'),
       ...(body.mode !== undefined ? { mode: body.mode } : {}),
       ...(body.includeWarnings !== undefined ? { includeWarnings: body.includeWarnings } : {}),
       ...(body.profileFallback !== undefined ? { profileFallback: body.profileFallback } : {}),
@@ -70,6 +86,51 @@ router.post('/:id/validate-graph', async (req, res) => {
     });
 
     res.json(result);
+  } catch (err) {
+    return sendRouteError(res, err);
+  }
+});
+
+router.post('/:id/execute', async (req: any, res) => {
+  try {
+    const pipelineId = requiredId(req.params.id, 'invalid id');
+    const body = (req.body ?? {}) as Record<string, any>;
+    const rawPreset = body.preset ?? req.query.preset;
+    const preset = parseGraphValidationPreset(rawPreset);
+
+    if (rawPreset !== undefined && rawPreset !== null && rawPreset !== '' && !preset) {
+      throw new HttpError(400, { error: 'invalid preset' });
+    }
+
+    const datasetId = optionalId(body.dataset_id, 'invalid dataset_id');
+    const executionId = await startPipelineExecutionForUser(
+      pipelineId,
+      req.user.user_id,
+      {
+        preset: preset ?? 'default',
+        ...(datasetId !== undefined ? { dataset_id: datasetId } : {}),
+        ...(body.input_json !== undefined ? { input_json: body.input_json } : {}),
+        ...(body.validation !== undefined ? { validation: body.validation } : {}),
+      },
+      typeof req.headers['x-idempotency-key'] === 'string' ? req.headers['x-idempotency-key'] : undefined,
+    );
+
+    res.status(202).json(executionId);
+  } catch (err) {
+    return sendRouteError(res, err);
+  }
+});
+
+router.get('/:id/executions/:executionId', async (req: any, res) => {
+  try {
+    const pipelineId = requiredId(req.params.id, 'invalid id');
+    const executionId = String(req.params.executionId ?? '').trim();
+    if (!executionId) {
+      throw new HttpError(400, { error: 'invalid executionId' });
+    }
+
+    const snapshot = await getPipelineExecutionForUser(pipelineId, executionId, req.user.user_id);
+    res.json(snapshot);
   } catch (err) {
     return sendRouteError(res, err);
   }
