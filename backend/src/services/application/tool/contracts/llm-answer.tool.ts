@@ -260,6 +260,13 @@ function buildDeterministicAnswer(contextText: string, userQuery?: string): stri
   return userQuery ? `Answer to "${userQuery}": ${seed}` : `Answer: ${seed}`;
 }
 
+/**
+ * Формирует deterministic output для контракта LLMAnswer в ветке http-json.
+ * Здесь собирается prompt, служебные метрики и предсказуемый grounded answer.
+ *
+ * @param input Нормализованный вход контракта.
+ * @returns Детерминированный результат генерации ответа и метрики.
+ */
 function buildLlmAnswerContractOutput(input: Record<string, any>): Record<string, any> {
   const contextText = normalizeText(String(input.context_text ?? ''));
   const promptTemplate = readNonEmptyText(input.prompt_template) ?? DEFAULT_PROMPT_TEMPLATE;
@@ -288,6 +295,15 @@ function buildLlmAnswerContractOutput(input: Record<string, any>): Record<string
   };
 }
 
+/**
+ * Нормализует вход LLMAnswer: извлекает контекст, шаблон промпта,
+ * параметры модели и ограничения генерации.
+ *
+ * @param inputs Выходы предыдущих узлов пайплайна.
+ * @param context Контекст выполнения текущего узла.
+ * @returns Нормализованный вход для executor-а.
+ * @throws {HttpError} Если контекст для ответа отсутствует.
+ */
 export function resolveLlmAnswerContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const contextText = extractContextText(context.input_json) ?? findFirstFromInputs(inputs, extractContextText);
   if (!contextText) {
@@ -317,6 +333,9 @@ export function resolveLlmAnswerContractInput(inputs: any[], context: NodeExecut
   };
 }
 
+/**
+ * Определяет контракт LLMAnswer, его алиасы и допустимые executor-ы.
+ */
 export const llmAnswerToolContractDefinition: ToolContractDefinition = {
   name: 'LLMAnswer',
   aliases: ['llmanswer', 'llm-answer', 'llm_answer'],

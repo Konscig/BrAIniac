@@ -169,6 +169,12 @@ function dedupeVectors(items: VectorItem[]): VectorItem[] {
   return Array.from(out.values());
 }
 
+/**
+ * Формирует итог upsert-результат для контракта VectorUpsert.
+ *
+ * @param input Нормализованный вход контракта.
+ * @returns Детерминированный результат операции upsert.
+ */
 function buildVectorUpsertContractOutput(input: Record<string, any>): Record<string, any> {
   const vectors = dedupeVectors(normalizeInputVectors(input.vectors));
   const upsertIds = vectors.map((entry) => entry.vector_id);
@@ -183,6 +189,15 @@ function buildVectorUpsertContractOutput(input: Record<string, any>): Record<str
   };
 }
 
+/**
+ * Нормализует вход VectorUpsert, собирает векторы из разных оберток
+ * и проверяет, что после дедупликации есть хотя бы один валидный элемент.
+ *
+ * @param inputs Выходы предыдущих узлов пайплайна.
+ * @param context Контекст выполнения текущего узла.
+ * @returns Нормализованный вход для executor-а.
+ * @throws {HttpError} Если не найдено ни одного валидного вектора.
+ */
 export function resolveVectorUpsertContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? (context.input_json as Record<string, unknown>) : {};
 
@@ -221,6 +236,9 @@ export function resolveVectorUpsertContractInput(inputs: any[], context: NodeExe
   };
 }
 
+/**
+ * Определяет контракт VectorUpsert, его алиасы и допустимые executor-ы.
+ */
 export const vectorUpsertToolContractDefinition: ToolContractDefinition = {
   name: 'VectorUpsert',
   aliases: ['vectorupsert', 'vector-upsert', 'vector_upsert'],

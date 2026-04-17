@@ -170,6 +170,14 @@ function buildDeterministicVector(text: string, size: number): number[] {
   return vector.map((value) => Number((value / normalized.length).toFixed(6)));
 }
 
+/**
+ * Формирует deterministic output Embedder для ветки http-json.
+ * Вектора строятся локально, чтобы тесты не зависели от внешнего провайдера.
+ *
+ * @param input Нормализованный вход контракта.
+ * @param provider Идентификатор провайдера, который записывается в output.
+ * @returns Детерминированный набор векторов для contract_output.
+ */
 function buildEmbedderContractOutputFromInput(input: Record<string, any>, provider: string): Record<string, any> {
   const chunks = normalizeInputChunks(input.chunks);
   const requestedVectorSize = coercePositiveInt(input.vector_size) ?? DEFAULT_VECTOR_SIZE;
@@ -189,6 +197,15 @@ function buildEmbedderContractOutputFromInput(input: Record<string, any>, provid
   };
 }
 
+/**
+ * Нормализует вход Embedder: собирает чанки, валидирует наличие данных,
+ * ограничивает batch_size/vector_size и извлекает модель при наличии.
+ *
+ * @param inputs Выходы предыдущих узлов пайплайна.
+ * @param context Контекст выполнения текущего узла.
+ * @returns Нормализованный вход для executor-а.
+ * @throws {HttpError} Если не найдено ни одного чанка.
+ */
 export function resolveEmbedderContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const chunks: EmbedderChunk[] = [];
   collectChunks(context.input_json, chunks);
@@ -228,6 +245,9 @@ export function resolveEmbedderContractInput(inputs: any[], context: NodeExecuti
   };
 }
 
+/**
+ * Определяет контракт Embedder, его алиасы и допустимые executor-ы.
+ */
 export const embedderToolContractDefinition: ToolContractDefinition = {
   name: 'Embedder',
   aliases: ['embedder', 'text-embedder', 'text_embedder'],

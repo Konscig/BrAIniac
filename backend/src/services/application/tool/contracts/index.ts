@@ -23,6 +23,12 @@ const TOOL_CONTRACT_DEFINITIONS: ToolContractDefinition[] = [
 
 const TOOL_CONTRACT_ALIAS_MAP = buildToolContractAliasMap(TOOL_CONTRACT_DEFINITIONS);
 
+/**
+ * Строит карту алиасов для быстрого поиска определения контракта.
+ *
+ * @param definitions Список зарегистрированных определений контрактов.
+ * @returns Карта вида alias -> ToolContractDefinition.
+ */
 function buildToolContractAliasMap(definitions: ToolContractDefinition[]): Map<string, ToolContractDefinition> {
   const out = new Map<string, ToolContractDefinition>();
 
@@ -37,12 +43,23 @@ function buildToolContractAliasMap(definitions: ToolContractDefinition[]): Map<s
   return out;
 }
 
+/**
+ * Возвращает определение контракта по имени или алиасу.
+ *
+ * @param rawName Имя контракта или его алиас.
+ * @returns Найденное определение контракта или undefined.
+ */
 export function resolveToolContractDefinition(rawName: string): ToolContractDefinition | undefined {
   const name = rawName.trim().toLowerCase();
   if (!name) return undefined;
   return TOOL_CONTRACT_ALIAS_MAP.get(name);
 }
 
+/**
+ * Возвращает список поддерживаемых канонических имен контрактов.
+ *
+ * @returns Массив канонических имен контрактов из реестра.
+ */
 export function listSupportedToolContracts(): ToolContractName[] {
   return TOOL_CONTRACT_DEFINITIONS.map((definition) => definition.name);
 }

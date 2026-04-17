@@ -114,6 +114,12 @@ function resolveAlpha(raw: unknown): number {
   return Number(clampNumber(numeric, 0, 1).toFixed(3));
 }
 
+/**
+ * Формирует детерминированный набор кандидатов для HybridRetriever.
+ *
+ * @param input Нормализованный вход контракта.
+ * @returns Детерминированный список retrieval-кандидатов.
+ */
 function buildHybridRetrieverContractOutput(input: Record<string, any>): Record<string, any> {
   const retrievalQuery = normalizeText(String(input.retrieval_query ?? ''));
   const topK = resolveTopK(input.top_k);
@@ -150,6 +156,15 @@ function buildHybridRetrieverContractOutput(input: Record<string, any>): Record<
   };
 }
 
+/**
+ * Извлекает retrieval_query и параметры поиска из входа контракта,
+ * затем нормализует режим, top_k и alpha до допустимых значений.
+ *
+ * @param inputs Выходы предыдущих узлов пайплайна.
+ * @param context Контекст выполнения текущего узла.
+ * @returns Нормализованный вход для executor-а.
+ * @throws {HttpError} Если retrieval_query отсутствует или пустой.
+ */
 export function resolveHybridRetrieverContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const fromInputJson = extractRetrievalQuery(context.input_json);
   const fromInputs = fromInputJson
@@ -175,6 +190,9 @@ export function resolveHybridRetrieverContractInput(inputs: any[], context: Node
   };
 }
 
+/**
+ * Определяет контракт HybridRetriever, его алиасы и допустимые executor-ы.
+ */
 export const hybridRetrieverToolContractDefinition: ToolContractDefinition = {
   name: 'HybridRetriever',
   aliases: ['hybridretriever', 'hybrid-retriever', 'hybrid_retriever'],

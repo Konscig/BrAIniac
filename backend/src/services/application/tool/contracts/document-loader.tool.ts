@@ -97,6 +97,12 @@ function normalizeUriList(raw: unknown): string[] {
   return out;
 }
 
+/**
+ * Формирует стабильный contract_output для контракта DocumentLoader.
+ *
+ * @param input Нормализованный вход контракта.
+ * @returns Детерминированный результат с набором документов.
+ */
 function buildDocumentLoaderContractOutput(input: Record<string, any>): Record<string, any> {
   const datasetId = coerceOptionalPositiveInt(input.dataset_id) ?? null;
   const uris = normalizeUriList(input.uris);
@@ -114,6 +120,15 @@ function buildDocumentLoaderContractOutput(input: Record<string, any>): Record<s
   };
 }
 
+/**
+ * Нормализует вход контракта DocumentLoader из input_json и входов предыдущих узлов.
+ * Требует хотя бы один источник: dataset_id или непустой список uris.
+ *
+ * @param inputs Выходы предыдущих узлов пайплайна.
+ * @param context Контекст выполнения текущего узла.
+ * @returns Нормализованный вход для executor-а.
+ * @throws {HttpError} Если отсутствуют dataset_id и uris.
+ */
 export function resolveDocumentLoaderContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? context.input_json : {};
   const datasetId =
@@ -143,6 +158,9 @@ export function resolveDocumentLoaderContractInput(inputs: any[], context: NodeE
   };
 }
 
+/**
+ * Определяет контракт DocumentLoader, его алиасы и допустимые executor-ы.
+ */
 export const documentLoaderToolContractDefinition: ToolContractDefinition = {
   name: 'DocumentLoader',
   aliases: ['documentloader', 'document-loader', 'document_loader'],

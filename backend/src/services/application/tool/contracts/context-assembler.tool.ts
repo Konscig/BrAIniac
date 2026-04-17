@@ -150,6 +150,13 @@ function normalizeInputCandidates(raw: unknown): RetrievalCandidate[] {
   return out;
 }
 
+/**
+ * Собирает итоговый context_bundle из ранжированных кандидатов,
+ * ограничивая объем контекста по approximate token budget.
+ *
+ * @param input Нормализованный вход контракта.
+ * @returns Детерминированный context_bundle и метрики отбора.
+ */
 function buildContextAssemblerContractOutput(input: Record<string, any>): Record<string, any> {
   const candidates = normalizeInputCandidates(input.candidates);
   const maxTokens = clampInt(
@@ -199,6 +206,15 @@ function buildContextAssemblerContractOutput(input: Record<string, any>): Record
   };
 }
 
+/**
+ * Нормализует вход ContextAssembler: извлекает кандидатов,
+ * валидирует их наличие и ограничивает max_context_tokens.
+ *
+ * @param inputs Выходы предыдущих узлов пайплайна.
+ * @param context Контекст выполнения текущего узла.
+ * @returns Нормализованный вход для executor-а.
+ * @throws {HttpError} Если не найдено ни одного кандидата.
+ */
 export function resolveContextAssemblerContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const candidates: RetrievalCandidate[] = [];
   collectCandidates(context.input_json, candidates);
@@ -229,6 +245,9 @@ export function resolveContextAssemblerContractInput(inputs: any[], context: Nod
   };
 }
 
+/**
+ * Определяет контракт ContextAssembler, его алиасы и допустимые executor-ы.
+ */
 export const contextAssemblerToolContractDefinition: ToolContractDefinition = {
   name: 'ContextAssembler',
   aliases: ['contextassembler', 'context-assembler', 'context_assembler'],

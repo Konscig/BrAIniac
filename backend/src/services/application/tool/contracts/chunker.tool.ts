@@ -177,6 +177,13 @@ function splitTextIntoChunks(text: string, chunkSize: number, overlap: number): 
   return out;
 }
 
+/**
+ * Формирует deterministic output контракта Chunker.
+ * Разбивает документы на окна слов с учетом chunk_size и overlap.
+ *
+ * @param input Нормализованный вход контракта.
+ * @returns Детерминированный результат разбиения документов на чанки.
+ */
 function buildChunkerContractOutput(input: Record<string, any>): Record<string, any> {
   const documents = normalizeInputDocuments(input.documents);
   const requestedChunkSize = coercePositiveInt(input.chunk_size) ?? DEFAULT_CHUNK_SIZE;
@@ -212,6 +219,15 @@ function buildChunkerContractOutput(input: Record<string, any>): Record<string, 
   };
 }
 
+/**
+ * Нормализует и валидирует вход Chunker: собирает документы,
+ * ограничивает размер чанка и пересечение по безопасным границам.
+ *
+ * @param inputs Выходы предыдущих узлов пайплайна.
+ * @param context Контекст выполнения текущего узла.
+ * @returns Нормализованный вход для executor-а.
+ * @throws {HttpError} Если не удалось получить ни одного документа.
+ */
 export function resolveChunkerContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const documents: ChunkerDocument[] = [];
   collectDocuments(context.input_json, documents);
@@ -244,6 +260,9 @@ export function resolveChunkerContractInput(inputs: any[], context: NodeExecutio
   };
 }
 
+/**
+ * Определяет контракт Chunker, его алиасы и допустимые executor-ы.
+ */
 export const chunkerToolContractDefinition: ToolContractDefinition = {
   name: 'Chunker',
   aliases: ['chunker', 'text-chunker', 'text_chunker'],

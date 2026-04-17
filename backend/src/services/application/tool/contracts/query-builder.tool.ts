@@ -69,6 +69,12 @@ function tokenizeQuery(raw: string): string[] {
   return matches.filter((token) => token.length > 1);
 }
 
+/**
+ * Формирует стабильный keyword-выход для контракта QueryBuilder.
+ *
+ * @param input Нормализованный вход контракта.
+ * @returns Детерминированный результат keyword-разбора запроса.
+ */
 function buildQueryBuilderContractOutput(input: Record<string, any>): Record<string, any> {
   const normalizedQuery = normalizeText(String(input.user_query ?? ''));
   const maxTerms = coerceOptionalPositiveInt(input.max_terms) ?? 8;
@@ -90,6 +96,15 @@ function buildQueryBuilderContractOutput(input: Record<string, any>): Record<str
   };
 }
 
+/**
+ * Извлекает и валидирует `user_query` из текущего узла и входов,
+ * затем нормализует лимит терминов для keyword-режима.
+ *
+ * @param inputs Выходы предыдущих узлов пайплайна.
+ * @param context Контекст выполнения текущего узла.
+ * @returns Нормализованный вход для executor-а.
+ * @throws {HttpError} Если `user_query` пустой или отсутствует.
+ */
 export function resolveQueryBuilderContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const fromInputJson = extractQueryText(context.input_json);
   const fromInputs = fromInputJson
@@ -114,6 +129,9 @@ export function resolveQueryBuilderContractInput(inputs: any[], context: NodeExe
   };
 }
 
+/**
+ * Определяет контракт QueryBuilder, его алиасы и допустимые executor-ы.
+ */
 export const queryBuilderToolContractDefinition: ToolContractDefinition = {
   name: 'QueryBuilder',
   aliases: ['querybuilder', 'query-builder', 'query_builder'],
