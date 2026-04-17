@@ -1,7 +1,15 @@
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
 
 export type ToolExecutorKind = 'http-json' | 'openrouter-embeddings';
-export type ToolContractName = 'DocumentLoader' | 'QueryBuilder' | 'Chunker' | 'Embedder' | 'VectorUpsert' | 'HybridRetriever';
+export type ToolContractName =
+  | 'DocumentLoader'
+  | 'QueryBuilder'
+  | 'Chunker'
+  | 'Embedder'
+  | 'VectorUpsert'
+  | 'HybridRetriever'
+  | 'ContextAssembler'
+  | 'CitationFormatter';
 
 export interface ToolContractHttpSuccessContext {
   input: Record<string, any>;

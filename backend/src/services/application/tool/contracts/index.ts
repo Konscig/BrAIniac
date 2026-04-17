@@ -1,4 +1,6 @@
+import { citationFormatterToolContractDefinition } from './citation-formatter.tool.js';
 import { chunkerToolContractDefinition } from './chunker.tool.js';
+import { contextAssemblerToolContractDefinition } from './context-assembler.tool.js';
 import { documentLoaderToolContractDefinition } from './document-loader.tool.js';
 import { embedderToolContractDefinition } from './embedder.tool.js';
 import { hybridRetrieverToolContractDefinition } from './hybrid-retriever.tool.js';
@@ -13,6 +15,8 @@ const TOOL_CONTRACT_DEFINITIONS: ToolContractDefinition[] = [
   embedderToolContractDefinition,
   vectorUpsertToolContractDefinition,
   hybridRetrieverToolContractDefinition,
+  contextAssemblerToolContractDefinition,
+  citationFormatterToolContractDefinition,
 ];
 
 const TOOL_CONTRACT_ALIAS_MAP = buildToolContractAliasMap(TOOL_CONTRACT_DEFINITIONS);

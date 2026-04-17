@@ -2039,6 +2039,344 @@ async function run() {
     });
   }
 
+  r = await req('/pipelines', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_project_id: project.project_id,
+      name: `it-toolnode-contextassembler-contract-happy-${suffix}`,
+      max_time: 30,
+      max_cost: 100,
+      max_reject: 0.15,
+      report_json: {},
+    }),
+  });
+  console.log('POST /pipelines (toolnode contextassembler contract happy) ->', r.status);
+  if (!ok(r.status)) return fail('create toolnode contextassembler contract happy pipeline failed', r);
+  const contextAssemblerHappyPipeline = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: contextAssemblerHappyPipeline.pipeline_id,
+      fk_type_id: manualInputType.type_id,
+      top_k: 1,
+      ui_json: { x: 20, y: 940 },
+    }),
+  });
+  console.log('POST /nodes (ContextAssembler contract happy ManualInput) ->', r.status);
+  if (!ok(r.status)) return fail('create ContextAssembler contract happy ManualInput node failed', r);
+  const contextAssemblerHappyManualNode = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: contextAssemblerHappyPipeline.pipeline_id,
+      fk_type_id: strictToolNodeType.type_id,
+      top_k: 1,
+      ui_json: {
+        x: 180,
+        y: 940,
+        tool: {
+          name: 'ContextAssembler',
+          config_json: {
+            executor: 'http-json',
+            method: 'GET',
+            url: `${base}/health`,
+            contract: {
+              name: 'ContextAssembler',
+            },
+          },
+        },
+      },
+    }),
+  });
+  console.log('POST /nodes (ContextAssembler contract happy ToolNode target) ->', r.status);
+  if (!ok(r.status)) return fail('create ContextAssembler contract happy ToolNode node failed', r);
+  const contextAssemblerHappyToolNode = r.body;
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_from_node: contextAssemblerHappyManualNode.node_id,
+      fk_to_node: contextAssemblerHappyToolNode.node_id,
+    }),
+  });
+  console.log('POST /edges (ContextAssembler contract happy flow) ->', r.status);
+  if (!ok(r.status)) return fail('create ContextAssembler contract happy flow edge failed', r);
+
+  r = await req(`/pipelines/${contextAssemblerHappyPipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      input_json: {
+        ranked_candidates: [
+          { document_id: 'doc_1', chunk_id: 'chunk_1', snippet: 'rag uses retrieval context', score: 0.93 },
+          { document_id: 'doc_2', chunk_id: 'chunk_2', snippet: 'citations improve trustworthiness', score: 0.88 },
+          { document_id: 'doc_3', chunk_id: 'chunk_3', snippet: 'assemble compact context bundles', score: 0.83 },
+        ],
+        max_context_tokens: 7,
+        strategy: 'topk-pack',
+      },
+    }),
+  });
+  console.log('POST /pipelines/:id/execute (ContextAssembler contract happy) ->', r.status);
+  if (r.status !== 202 || !r.body?.execution_id) {
+    return fail('ContextAssembler contract happy execution should return 202 with execution_id', r);
+  }
+
+  const contextAssemblerHappyExecutionId = r.body.execution_id;
+  let contextAssemblerHappyExecution = null;
+  for (let i = 0; i < 30; i += 1) {
+    r = await req(`/pipelines/${contextAssemblerHappyPipeline.pipeline_id}/executions/${contextAssemblerHappyExecutionId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!ok(r.status)) return fail('contextassembler contract happy execution status check failed', r);
+
+    if (r.body?.status === 'succeeded' || r.body?.status === 'failed') {
+      contextAssemblerHappyExecution = r.body;
+      break;
+    }
+
+    await wait(150);
+  }
+
+  if (!contextAssemblerHappyExecution) {
+    return fail('contextassembler contract happy execution did not finish in time', r);
+  }
+  if (contextAssemblerHappyExecution.status !== 'succeeded') {
+    return fail('contextassembler contract happy execution should succeed', {
+      status: 500,
+      body: contextAssemblerHappyExecution,
+    });
+  }
+
+  r = await req(`/pipelines/${contextAssemblerHappyPipeline.pipeline_id}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  console.log('GET /pipelines/:id (contextassembler contract happy report) ->', r.status);
+  if (!ok(r.status)) return fail('get contextassembler contract happy pipeline failed', r);
+
+  const contextAssemblerHappyReportNodes = r.body?.report_json?.nodes;
+  if (!Array.isArray(contextAssemblerHappyReportNodes)) {
+    return fail('contextassembler contract happy report must contain nodes array', r);
+  }
+
+  const contextAssemblerHappyToolNodeState = contextAssemblerHappyReportNodes.find(
+    (node) => node?.node_id === contextAssemblerHappyToolNode.node_id,
+  );
+  if (contextAssemblerHappyToolNodeState?.status !== 'completed') {
+    return fail('ContextAssembler contract happy ToolNode target should be completed', {
+      status: 500,
+      body: contextAssemblerHappyToolNodeState,
+    });
+  }
+
+  const contextAssemblerHappyOutput = contextAssemblerHappyToolNodeState?.output_json;
+  if (contextAssemblerHappyOutput?.kind !== 'tool_node' || contextAssemblerHappyOutput?.contract_name !== 'ContextAssembler') {
+    return fail('ContextAssembler contract happy ToolNode output should include contract_name', {
+      status: 500,
+      body: contextAssemblerHappyOutput,
+    });
+  }
+
+  const contextAssemblerContractOutput = contextAssemblerHappyOutput?.contract_output;
+  const contextBundle = contextAssemblerContractOutput?.context_bundle;
+  if (
+    !contextAssemblerContractOutput ||
+    Number(contextAssemblerContractOutput?.candidate_count) !== 3 ||
+    Number(contextAssemblerContractOutput?.selected_count) !== 2 ||
+    contextAssemblerContractOutput?.truncated !== true ||
+    !contextBundle
+  ) {
+    return fail('ContextAssembler contract happy output should include expected context bundle summary', {
+      status: 500,
+      body: contextAssemblerHappyOutput,
+    });
+  }
+
+  if (Number(contextBundle?.token_estimate) !== 7 || !String(contextBundle?.text ?? '').includes('[1] rag uses retrieval context')) {
+    return fail('ContextAssembler contract happy output should preserve deterministic assembled context', {
+      status: 500,
+      body: contextAssemblerHappyOutput,
+    });
+  }
+
+  r = await req('/pipelines', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_project_id: project.project_id,
+      name: `it-toolnode-citationformatter-contract-happy-${suffix}`,
+      max_time: 30,
+      max_cost: 100,
+      max_reject: 0.15,
+      report_json: {},
+    }),
+  });
+  console.log('POST /pipelines (toolnode citationformatter contract happy) ->', r.status);
+  if (!ok(r.status)) return fail('create toolnode citationformatter contract happy pipeline failed', r);
+  const citationFormatterHappyPipeline = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: citationFormatterHappyPipeline.pipeline_id,
+      fk_type_id: manualInputType.type_id,
+      top_k: 1,
+      ui_json: { x: 20, y: 1020 },
+    }),
+  });
+  console.log('POST /nodes (CitationFormatter contract happy ManualInput) ->', r.status);
+  if (!ok(r.status)) return fail('create CitationFormatter contract happy ManualInput node failed', r);
+  const citationFormatterHappyManualNode = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: citationFormatterHappyPipeline.pipeline_id,
+      fk_type_id: strictToolNodeType.type_id,
+      top_k: 1,
+      ui_json: {
+        x: 180,
+        y: 1020,
+        tool: {
+          name: 'CitationFormatter',
+          config_json: {
+            executor: 'http-json',
+            method: 'GET',
+            url: `${base}/health`,
+            contract: {
+              name: 'CitationFormatter',
+            },
+          },
+        },
+      },
+    }),
+  });
+  console.log('POST /nodes (CitationFormatter contract happy ToolNode target) ->', r.status);
+  if (!ok(r.status)) return fail('create CitationFormatter contract happy ToolNode node failed', r);
+  const citationFormatterHappyToolNode = r.body;
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_from_node: citationFormatterHappyManualNode.node_id,
+      fk_to_node: citationFormatterHappyToolNode.node_id,
+    }),
+  });
+  console.log('POST /edges (CitationFormatter contract happy flow) ->', r.status);
+  if (!ok(r.status)) return fail('create CitationFormatter contract happy flow edge failed', r);
+
+  r = await req(`/pipelines/${citationFormatterHappyPipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      input_json: {
+        answer: 'RAG combines retrieval with generation.',
+        ranked_candidates: [
+          { document_id: 'doc_1', chunk_id: 'chunk_1', snippet: 'retrieval augments answer grounding' },
+          { document_id: 'doc_2', chunk_id: 'chunk_2', snippet: 'citations help users verify source evidence' },
+        ],
+      },
+    }),
+  });
+  console.log('POST /pipelines/:id/execute (CitationFormatter contract happy) ->', r.status);
+  if (r.status !== 202 || !r.body?.execution_id) {
+    return fail('CitationFormatter contract happy execution should return 202 with execution_id', r);
+  }
+
+  const citationFormatterHappyExecutionId = r.body.execution_id;
+  let citationFormatterHappyExecution = null;
+  for (let i = 0; i < 30; i += 1) {
+    r = await req(`/pipelines/${citationFormatterHappyPipeline.pipeline_id}/executions/${citationFormatterHappyExecutionId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!ok(r.status)) return fail('citationformatter contract happy execution status check failed', r);
+
+    if (r.body?.status === 'succeeded' || r.body?.status === 'failed') {
+      citationFormatterHappyExecution = r.body;
+      break;
+    }
+
+    await wait(150);
+  }
+
+  if (!citationFormatterHappyExecution) {
+    return fail('citationformatter contract happy execution did not finish in time', r);
+  }
+  if (citationFormatterHappyExecution.status !== 'succeeded') {
+    return fail('citationformatter contract happy execution should succeed', {
+      status: 500,
+      body: citationFormatterHappyExecution,
+    });
+  }
+
+  r = await req(`/pipelines/${citationFormatterHappyPipeline.pipeline_id}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  console.log('GET /pipelines/:id (citationformatter contract happy report) ->', r.status);
+  if (!ok(r.status)) return fail('get citationformatter contract happy pipeline failed', r);
+
+  const citationFormatterHappyReportNodes = r.body?.report_json?.nodes;
+  if (!Array.isArray(citationFormatterHappyReportNodes)) {
+    return fail('citationformatter contract happy report must contain nodes array', r);
+  }
+
+  const citationFormatterHappyToolNodeState = citationFormatterHappyReportNodes.find(
+    (node) => node?.node_id === citationFormatterHappyToolNode.node_id,
+  );
+  if (citationFormatterHappyToolNodeState?.status !== 'completed') {
+    return fail('CitationFormatter contract happy ToolNode target should be completed', {
+      status: 500,
+      body: citationFormatterHappyToolNodeState,
+    });
+  }
+
+  const citationFormatterHappyOutput = citationFormatterHappyToolNodeState?.output_json;
+  if (citationFormatterHappyOutput?.kind !== 'tool_node' || citationFormatterHappyOutput?.contract_name !== 'CitationFormatter') {
+    return fail('CitationFormatter contract happy ToolNode output should include contract_name', {
+      status: 500,
+      body: citationFormatterHappyOutput,
+    });
+  }
+
+  const citationFormatterContractOutput = citationFormatterHappyOutput?.contract_output;
+  const citations = citationFormatterContractOutput?.citations;
+  if (
+    !citationFormatterContractOutput ||
+    Number(citationFormatterContractOutput?.citation_count) !== 2 ||
+    !Array.isArray(citations) ||
+    citations.length !== 2
+  ) {
+    return fail('CitationFormatter contract happy output should include expected citations', {
+      status: 500,
+      body: citationFormatterHappyOutput,
+    });
+  }
+
+  if (
+    !String(citationFormatterContractOutput?.cited_answer ?? '').includes('Sources:') ||
+    !String(citationFormatterContractOutput?.cited_answer ?? '').includes('[1] doc_1/chunk_1')
+  ) {
+    return fail('CitationFormatter contract happy output should include formatted source markers', {
+      status: 500,
+      body: citationFormatterHappyOutput,
+    });
+  }
+
   r = await req('/datasets', {
     method: 'POST',
     headers: authHeaders,

@@ -116,7 +116,7 @@
 - input: step_events
 - output: trace_id
 
-## Что Обязательно Для Первого RAG-Агента
+## Что Обязательно Для Первого RAG-Агента (Целевой Набор)
 - DocumentLoader
 - Chunker
 - Embedder
@@ -127,14 +127,34 @@
 - LLMAnswer
 - CitationFormatter
 
+## Статус Реализации (На 2026-04-17)
+
+### MVP RAG
+- [x] DocumentLoader
+- [x] Chunker
+- [x] Embedder
+- [x] VectorUpsert
+- [x] QueryBuilder
+- [x] HybridRetriever
+- [x] ContextAssembler
+- [ ] LLMAnswer (как отдельный ToolNode-контракт; в MVP-baseline генерация может идти через `LLMCall`)
+- [x] CitationFormatter
+
+Практический вывод по готовности:
+- Индексация (DocumentLoader -> Chunker -> Embedder -> VectorUpsert) реализована.
+- Retrieval-контур до кандидатов (QueryBuilder -> HybridRetriever) реализован.
+- Контур сборки контекста и пост-обработки цитат (ContextAssembler -> CitationFormatter) реализован.
+- Полный end-to-end RAG MVP-контур инструментов завершен при генерации ответа через `LLMCall`.
+- Для полного parity с capability-моделью остается опциональная реализация `LLMAnswer` как отдельного ToolNode-контракта.
+
 ## Что Добавлять После MVP
-- TextNormalizer
-- MetadataEnricher
-- Reranker
-- GroundingChecker
-- OutputValidator
-- BudgetGuard
-- TraceLogger
+- [ ] TextNormalizer
+- [ ] MetadataEnricher
+- [ ] Reranker
+- [ ] GroundingChecker
+- [ ] OutputValidator
+- [ ] BudgetGuard
+- [ ] TraceLogger
 
 ## Матрица Переиспользуемости
 
