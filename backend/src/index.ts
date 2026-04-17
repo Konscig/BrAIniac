@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cluster from 'node:cluster';
 import os from 'node:os';
+import { config as loadEnv } from 'dotenv';
 import userRouter from './routes/resources/user/user.routes.js';
 import projectRouter from './routes/resources/project/project.routes.js';
 import authRouter from './routes/resources/auth/auth.routes.js';
@@ -12,6 +13,11 @@ import toolRouter from './routes/resources/tool/tool.routes.js';
 import pipelineRouter from './routes/resources/pipeline/pipeline.routes.js';
 import nodeTypeRouter from './routes/resources/node_type/node_type.routes.js';
 import { getOpenRouterConfig } from './services/core/openrouter/openrouter.config.js';
+
+loadEnv({ path: process.env.ENV_FILE ?? '.env' });
+if (!process.env.DATABASE_URL || !process.env.OPENROUTER_API_KEY) {
+  loadEnv({ path: '../.env' });
+}
 
 const PORT = Number(process.env.PORT ?? 3000);
 const DEFAULT_WORKERS = Math.max(1, os.cpus().length);

@@ -2213,6 +2213,177 @@ async function run() {
     headers: authHeaders,
     body: JSON.stringify({
       fk_project_id: project.project_id,
+      name: `it-toolnode-llmanswer-contract-happy-${suffix}`,
+      max_time: 30,
+      max_cost: 100,
+      max_reject: 0.15,
+      report_json: {},
+    }),
+  });
+  console.log('POST /pipelines (toolnode llmanswer contract happy) ->', r.status);
+  if (!ok(r.status)) return fail('create toolnode llmanswer contract happy pipeline failed', r);
+  const llmAnswerHappyPipeline = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: llmAnswerHappyPipeline.pipeline_id,
+      fk_type_id: manualInputType.type_id,
+      top_k: 1,
+      ui_json: { x: 20, y: 980 },
+    }),
+  });
+  console.log('POST /nodes (LLMAnswer contract happy ManualInput) ->', r.status);
+  if (!ok(r.status)) return fail('create LLMAnswer contract happy ManualInput node failed', r);
+  const llmAnswerHappyManualNode = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: llmAnswerHappyPipeline.pipeline_id,
+      fk_type_id: strictToolNodeType.type_id,
+      top_k: 1,
+      ui_json: {
+        x: 180,
+        y: 980,
+        tool: {
+          name: 'LLMAnswer',
+          config_json: {
+            executor: 'http-json',
+            method: 'GET',
+            url: `${base}/health`,
+            contract: {
+              name: 'LLMAnswer',
+            },
+          },
+        },
+      },
+    }),
+  });
+  console.log('POST /nodes (LLMAnswer contract happy ToolNode target) ->', r.status);
+  if (!ok(r.status)) return fail('create LLMAnswer contract happy ToolNode node failed', r);
+  const llmAnswerHappyToolNode = r.body;
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_from_node: llmAnswerHappyManualNode.node_id,
+      fk_to_node: llmAnswerHappyToolNode.node_id,
+    }),
+  });
+  console.log('POST /edges (LLMAnswer contract happy flow) ->', r.status);
+  if (!ok(r.status)) return fail('create LLMAnswer contract happy flow edge failed', r);
+
+  r = await req(`/pipelines/${llmAnswerHappyPipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      input_json: {
+        context_bundle: {
+          text: '[1] RAG combines retrieval with generation to ground model responses.',
+        },
+        user_query: 'What is RAG?',
+        prompt_template: 'Answer the query using context only.\nQuery: {{query}}\nContext: {{context}}',
+        model: 'openai/gpt-oss-120b:free',
+        temperature: 0.2,
+        max_output_tokens: 64,
+      },
+    }),
+  });
+  console.log('POST /pipelines/:id/execute (LLMAnswer contract happy) ->', r.status);
+  if (r.status !== 202 || !r.body?.execution_id) {
+    return fail('LLMAnswer contract happy execution should return 202 with execution_id', r);
+  }
+
+  const llmAnswerHappyExecutionId = r.body.execution_id;
+  let llmAnswerHappyExecution = null;
+  for (let i = 0; i < 30; i += 1) {
+    r = await req(`/pipelines/${llmAnswerHappyPipeline.pipeline_id}/executions/${llmAnswerHappyExecutionId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!ok(r.status)) return fail('llmanswer contract happy execution status check failed', r);
+
+    if (r.body?.status === 'succeeded' || r.body?.status === 'failed') {
+      llmAnswerHappyExecution = r.body;
+      break;
+    }
+
+    await wait(150);
+  }
+
+  if (!llmAnswerHappyExecution) {
+    return fail('llmanswer contract happy execution did not finish in time', r);
+  }
+  if (llmAnswerHappyExecution.status !== 'succeeded') {
+    return fail('llmanswer contract happy execution should succeed', {
+      status: 500,
+      body: llmAnswerHappyExecution,
+    });
+  }
+
+  r = await req(`/pipelines/${llmAnswerHappyPipeline.pipeline_id}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  console.log('GET /pipelines/:id (llmanswer contract happy report) ->', r.status);
+  if (!ok(r.status)) return fail('get llmanswer contract happy pipeline failed', r);
+
+  const llmAnswerHappyReportNodes = r.body?.report_json?.nodes;
+  if (!Array.isArray(llmAnswerHappyReportNodes)) {
+    return fail('llmanswer contract happy report must contain nodes array', r);
+  }
+
+  const llmAnswerHappyToolNodeState = llmAnswerHappyReportNodes.find(
+    (node) => node?.node_id === llmAnswerHappyToolNode.node_id,
+  );
+  if (llmAnswerHappyToolNodeState?.status !== 'completed') {
+    return fail('LLMAnswer contract happy ToolNode target should be completed', {
+      status: 500,
+      body: llmAnswerHappyToolNodeState,
+    });
+  }
+
+  const llmAnswerHappyOutput = llmAnswerHappyToolNodeState?.output_json;
+  if (llmAnswerHappyOutput?.kind !== 'tool_node' || llmAnswerHappyOutput?.contract_name !== 'LLMAnswer') {
+    return fail('LLMAnswer contract happy ToolNode output should include contract_name', {
+      status: 500,
+      body: llmAnswerHappyOutput,
+    });
+  }
+
+  const llmAnswerContractOutput = llmAnswerHappyOutput?.contract_output;
+  if (
+    !llmAnswerContractOutput ||
+    !String(llmAnswerContractOutput?.answer ?? '').toLowerCase().includes('rag') ||
+    llmAnswerContractOutput?.grounded !== true
+  ) {
+    return fail('LLMAnswer contract happy output should include grounded deterministic answer', {
+      status: 500,
+      body: llmAnswerHappyOutput,
+    });
+  }
+
+  if (
+    llmAnswerContractOutput?.model !== 'openai/gpt-oss-120b:free' ||
+    Number(llmAnswerContractOutput?.max_output_tokens) !== 64 ||
+    !String(llmAnswerContractOutput?.prompt ?? '').includes('What is RAG?')
+  ) {
+    return fail('LLMAnswer contract happy output should preserve model and rendered prompt details', {
+      status: 500,
+      body: llmAnswerHappyOutput,
+    });
+  }
+
+  r = await req('/pipelines', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_project_id: project.project_id,
       name: `it-toolnode-citationformatter-contract-happy-${suffix}`,
       max_time: 30,
       max_cost: 100,

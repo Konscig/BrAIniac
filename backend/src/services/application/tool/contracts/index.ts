@@ -4,6 +4,7 @@ import { contextAssemblerToolContractDefinition } from './context-assembler.tool
 import { documentLoaderToolContractDefinition } from './document-loader.tool.js';
 import { embedderToolContractDefinition } from './embedder.tool.js';
 import { hybridRetrieverToolContractDefinition } from './hybrid-retriever.tool.js';
+import { llmAnswerToolContractDefinition } from './llm-answer.tool.js';
 import { queryBuilderToolContractDefinition } from './query-builder.tool.js';
 import { vectorUpsertToolContractDefinition } from './vector-upsert.tool.js';
 import type { ToolContractDefinition, ToolContractName } from './tool-contract.types.js';
@@ -16,6 +17,7 @@ const TOOL_CONTRACT_DEFINITIONS: ToolContractDefinition[] = [
   vectorUpsertToolContractDefinition,
   hybridRetrieverToolContractDefinition,
   contextAssemblerToolContractDefinition,
+  llmAnswerToolContractDefinition,
   citationFormatterToolContractDefinition,
 ];
 

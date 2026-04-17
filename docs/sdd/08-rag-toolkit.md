@@ -137,15 +137,15 @@
 - [x] QueryBuilder
 - [x] HybridRetriever
 - [x] ContextAssembler
-- [ ] LLMAnswer (как отдельный ToolNode-контракт; в MVP-baseline генерация может идти через `LLMCall`)
+- [x] LLMAnswer (отдельный ToolNode-контракт реализован; также поддерживается путь через `LLMCall`)
 - [x] CitationFormatter
 
 Практический вывод по готовности:
 - Индексация (DocumentLoader -> Chunker -> Embedder -> VectorUpsert) реализована.
 - Retrieval-контур до кандидатов (QueryBuilder -> HybridRetriever) реализован.
 - Контур сборки контекста и пост-обработки цитат (ContextAssembler -> CitationFormatter) реализован.
-- Полный end-to-end RAG MVP-контур инструментов завершен при генерации ответа через `LLMCall`.
-- Для полного parity с capability-моделью остается опциональная реализация `LLMAnswer` как отдельного ToolNode-контракта.
+- Полный end-to-end RAG MVP-контур инструментов завершен, включая `LLMAnswer` как отдельный ToolNode-контракт.
+- Генерация ответа через `LLMCall` остается поддерживаемым альтернативным runtime-путем.
 
 ## Что Добавлять После MVP
 - [ ] TextNormalizer

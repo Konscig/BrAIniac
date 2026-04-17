@@ -52,7 +52,7 @@ function appendCandidateText(out: string[], value: unknown) {
 
 function collectTextFragments(value: unknown, out: string[], depth = 0) {
   if (out.length >= MAX_EMBEDDING_INPUT_ITEMS * 2) return;
-  if (depth > 2) return;
+  if (depth > 4) return;
 
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     appendCandidateText(out, value);
@@ -85,6 +85,12 @@ function collectTextFragments(value: unknown, out: string[], depth = 0) {
     if (Array.isArray(candidate)) {
       collectTextFragments(candidate, out, depth + 1);
     }
+  }
+
+  const nestedKeys = ['value', 'data', 'payload', 'output'];
+  for (const key of nestedKeys) {
+    if (!(key in record)) continue;
+    collectTextFragments(record[key], out, depth + 1);
   }
 
   if (out.length === before && depth === 0) {

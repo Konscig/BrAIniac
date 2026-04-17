@@ -9,6 +9,7 @@ export type ToolContractName =
   | 'VectorUpsert'
   | 'HybridRetriever'
   | 'ContextAssembler'
+  | 'LLMAnswer'
   | 'CitationFormatter';
 
 export interface ToolContractHttpSuccessContext {
