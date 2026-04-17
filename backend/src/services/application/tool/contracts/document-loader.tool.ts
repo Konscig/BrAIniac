@@ -1,5 +1,5 @@
 import { HttpError } from '../../../../common/http-error.js';
-import type { NodeExecutionContext } from '../pipeline.executor.types.js';
+import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const MAX_DOCUMENT_LOADER_URIS = 64;
@@ -86,6 +86,34 @@ function collectUris(value: unknown, out: string[]) {
   pushDistinctString(out, record.uri, MAX_DOCUMENT_LOADER_URIS);
 }
 
+function normalizeUriList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+
+  const out: string[] = [];
+  for (const entry of raw.slice(0, MAX_DOCUMENT_LOADER_URIS)) {
+    pushDistinctString(out, entry, MAX_DOCUMENT_LOADER_URIS);
+  }
+
+  return out;
+}
+
+function buildDocumentLoaderContractOutput(input: Record<string, any>): Record<string, any> {
+  const datasetId = coerceOptionalPositiveInt(input.dataset_id) ?? null;
+  const uris = normalizeUriList(input.uris);
+
+  const documents = uris.map((uri, index) => ({
+    document_id: `doc_${index + 1}`,
+    uri,
+    dataset_id: datasetId,
+  }));
+
+  return {
+    dataset_id: datasetId,
+    document_count: documents.length,
+    documents,
+  };
+}
+
 export function resolveDocumentLoaderContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? context.input_json : {};
   const datasetId =
@@ -120,4 +148,5 @@ export const documentLoaderToolContractDefinition: ToolContractDefinition = {
   aliases: ['documentloader', 'document-loader', 'document_loader'],
   allowedExecutors: ['http-json'],
   resolveInput: resolveDocumentLoaderContractInput,
+  buildHttpSuccessOutput: ({ input }) => buildDocumentLoaderContractOutput(input),
 };

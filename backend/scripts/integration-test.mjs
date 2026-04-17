@@ -1047,6 +1047,335 @@ async function run() {
     });
   }
 
+  r = await req('/pipelines', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_project_id: project.project_id,
+      name: `it-toolnode-querybuilder-contract-happy-${suffix}`,
+      max_time: 30,
+      max_cost: 100,
+      max_reject: 0.15,
+      report_json: {},
+    }),
+  });
+  console.log('POST /pipelines (toolnode querybuilder contract happy) ->', r.status);
+  if (!ok(r.status)) return fail('create toolnode querybuilder contract happy pipeline failed', r);
+  const queryBuilderHappyPipeline = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: queryBuilderHappyPipeline.pipeline_id,
+      fk_type_id: manualInputType.type_id,
+      top_k: 1,
+      ui_json: { x: 20, y: 460 },
+    }),
+  });
+  console.log('POST /nodes (QueryBuilder contract happy ManualInput) ->', r.status);
+  if (!ok(r.status)) return fail('create QueryBuilder contract happy ManualInput node failed', r);
+  const queryBuilderHappyManualNode = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: queryBuilderHappyPipeline.pipeline_id,
+      fk_type_id: strictToolNodeType.type_id,
+      top_k: 1,
+      ui_json: {
+        x: 180,
+        y: 460,
+        tool: {
+          name: 'QueryBuilder',
+          config_json: {
+            executor: 'http-json',
+            method: 'GET',
+            url: `${base}/health`,
+            contract: {
+              name: 'QueryBuilder',
+            },
+          },
+        },
+      },
+    }),
+  });
+  console.log('POST /nodes (QueryBuilder contract happy ToolNode target) ->', r.status);
+  if (!ok(r.status)) return fail('create QueryBuilder contract happy ToolNode node failed', r);
+  const queryBuilderHappyToolNode = r.body;
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ fk_from_node: queryBuilderHappyManualNode.node_id, fk_to_node: queryBuilderHappyToolNode.node_id }),
+  });
+  console.log('POST /edges (QueryBuilder contract happy flow) ->', r.status);
+  if (!ok(r.status)) return fail('create QueryBuilder contract happy flow edge failed', r);
+
+  r = await req(`/pipelines/${queryBuilderHappyPipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      input_json: {
+        user_query: 'How to build a RAG retrieval pipeline with citations',
+        max_terms: 4,
+      },
+    }),
+  });
+  console.log('POST /pipelines/:id/execute (QueryBuilder contract happy) ->', r.status);
+  if (r.status !== 202 || !r.body?.execution_id) {
+    return fail('QueryBuilder contract happy execution should return 202 with execution_id', r);
+  }
+
+  const queryBuilderHappyExecutionId = r.body.execution_id;
+  let queryBuilderHappyExecution = null;
+  for (let i = 0; i < 30; i += 1) {
+    r = await req(`/pipelines/${queryBuilderHappyPipeline.pipeline_id}/executions/${queryBuilderHappyExecutionId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!ok(r.status)) return fail('querybuilder contract happy execution status check failed', r);
+
+    if (r.body?.status === 'succeeded' || r.body?.status === 'failed') {
+      queryBuilderHappyExecution = r.body;
+      break;
+    }
+
+    await wait(150);
+  }
+
+  if (!queryBuilderHappyExecution) {
+    return fail('querybuilder contract happy execution did not finish in time', r);
+  }
+  if (queryBuilderHappyExecution.status !== 'succeeded') {
+    return fail('querybuilder contract happy execution should succeed', {
+      status: 500,
+      body: queryBuilderHappyExecution,
+    });
+  }
+
+  r = await req(`/pipelines/${queryBuilderHappyPipeline.pipeline_id}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  console.log('GET /pipelines/:id (querybuilder contract happy report) ->', r.status);
+  if (!ok(r.status)) return fail('get querybuilder contract happy pipeline failed', r);
+
+  const queryBuilderHappyReportNodes = r.body?.report_json?.nodes;
+  if (!Array.isArray(queryBuilderHappyReportNodes)) {
+    return fail('querybuilder contract happy report must contain nodes array', r);
+  }
+
+  const queryBuilderHappyToolNodeState = queryBuilderHappyReportNodes.find((node) => node?.node_id === queryBuilderHappyToolNode.node_id);
+  if (queryBuilderHappyToolNodeState?.status !== 'completed') {
+    return fail('QueryBuilder contract happy ToolNode target should be completed', {
+      status: 500,
+      body: queryBuilderHappyToolNodeState,
+    });
+  }
+
+  const queryBuilderHappyOutput = queryBuilderHappyToolNodeState?.output_json;
+  if (queryBuilderHappyOutput?.kind !== 'tool_node' || queryBuilderHappyOutput?.contract_name !== 'QueryBuilder') {
+    return fail('QueryBuilder contract happy ToolNode output should include contract_name', {
+      status: 500,
+      body: queryBuilderHappyOutput,
+    });
+  }
+
+  const queryBuilderContractOutput = queryBuilderHappyOutput?.contract_output;
+  const queryBuilderKeywords = queryBuilderContractOutput?.keywords;
+  if (
+    !queryBuilderContractOutput ||
+    queryBuilderContractOutput?.query_mode !== 'keyword' ||
+    !Array.isArray(queryBuilderKeywords) ||
+    queryBuilderKeywords.length < 1 ||
+    queryBuilderKeywords.length > 4
+  ) {
+    return fail('QueryBuilder contract happy output should include keywords in expected range', {
+      status: 500,
+      body: queryBuilderHappyOutput,
+    });
+  }
+
+  const normalizedQuery = String(queryBuilderContractOutput?.normalized_query ?? '').toLowerCase();
+  if (!normalizedQuery.includes('rag')) {
+    return fail('QueryBuilder contract happy output should preserve normalized query text', {
+      status: 500,
+      body: queryBuilderHappyOutput,
+    });
+  }
+
+  r = await req('/pipelines', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_project_id: project.project_id,
+      name: `it-toolnode-documentloader-contract-happy-${suffix}`,
+      max_time: 30,
+      max_cost: 100,
+      max_reject: 0.15,
+      report_json: {},
+    }),
+  });
+  console.log('POST /pipelines (toolnode documentloader contract happy) ->', r.status);
+  if (!ok(r.status)) return fail('create toolnode documentloader contract happy pipeline failed', r);
+  const documentLoaderHappyPipeline = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: documentLoaderHappyPipeline.pipeline_id,
+      fk_type_id: manualInputType.type_id,
+      top_k: 1,
+      ui_json: { x: 20, y: 540 },
+    }),
+  });
+  console.log('POST /nodes (DocumentLoader contract happy ManualInput) ->', r.status);
+  if (!ok(r.status)) return fail('create DocumentLoader contract happy ManualInput node failed', r);
+  const documentLoaderHappyManualNode = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: documentLoaderHappyPipeline.pipeline_id,
+      fk_type_id: strictToolNodeType.type_id,
+      top_k: 1,
+      ui_json: {
+        x: 180,
+        y: 540,
+        tool: {
+          name: 'DocumentLoader',
+          config_json: {
+            executor: 'http-json',
+            method: 'GET',
+            url: `${base}/health`,
+            contract: {
+              name: 'DocumentLoader',
+            },
+          },
+        },
+      },
+    }),
+  });
+  console.log('POST /nodes (DocumentLoader contract happy ToolNode target) ->', r.status);
+  if (!ok(r.status)) return fail('create DocumentLoader contract happy ToolNode node failed', r);
+  const documentLoaderHappyToolNode = r.body;
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ fk_from_node: documentLoaderHappyManualNode.node_id, fk_to_node: documentLoaderHappyToolNode.node_id }),
+  });
+  console.log('POST /edges (DocumentLoader contract happy flow) ->', r.status);
+  if (!ok(r.status)) return fail('create DocumentLoader contract happy flow edge failed', r);
+
+  const happyDocUris = [`s3://docs/${suffix}/a.md`, `s3://docs/${suffix}/b.md`];
+  r = await req(`/pipelines/${documentLoaderHappyPipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      input_json: {
+        dataset_id: 4242,
+        uris: happyDocUris,
+      },
+    }),
+  });
+  console.log('POST /pipelines/:id/execute (DocumentLoader contract happy) ->', r.status);
+  if (r.status !== 202 || !r.body?.execution_id) {
+    return fail('DocumentLoader contract happy execution should return 202 with execution_id', r);
+  }
+
+  const documentLoaderHappyExecutionId = r.body.execution_id;
+  let documentLoaderHappyExecution = null;
+  for (let i = 0; i < 30; i += 1) {
+    r = await req(`/pipelines/${documentLoaderHappyPipeline.pipeline_id}/executions/${documentLoaderHappyExecutionId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!ok(r.status)) return fail('documentloader contract happy execution status check failed', r);
+
+    if (r.body?.status === 'succeeded' || r.body?.status === 'failed') {
+      documentLoaderHappyExecution = r.body;
+      break;
+    }
+
+    await wait(150);
+  }
+
+  if (!documentLoaderHappyExecution) {
+    return fail('documentloader contract happy execution did not finish in time', r);
+  }
+  if (documentLoaderHappyExecution.status !== 'succeeded') {
+    return fail('documentloader contract happy execution should succeed', {
+      status: 500,
+      body: documentLoaderHappyExecution,
+    });
+  }
+
+  r = await req(`/pipelines/${documentLoaderHappyPipeline.pipeline_id}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  console.log('GET /pipelines/:id (documentloader contract happy report) ->', r.status);
+  if (!ok(r.status)) return fail('get documentloader contract happy pipeline failed', r);
+
+  const documentLoaderHappyReportNodes = r.body?.report_json?.nodes;
+  if (!Array.isArray(documentLoaderHappyReportNodes)) {
+    return fail('documentloader contract happy report must contain nodes array', r);
+  }
+
+  const documentLoaderHappyToolNodeState = documentLoaderHappyReportNodes.find(
+    (node) => node?.node_id === documentLoaderHappyToolNode.node_id,
+  );
+  if (documentLoaderHappyToolNodeState?.status !== 'completed') {
+    return fail('DocumentLoader contract happy ToolNode target should be completed', {
+      status: 500,
+      body: documentLoaderHappyToolNodeState,
+    });
+  }
+
+  const documentLoaderHappyOutput = documentLoaderHappyToolNodeState?.output_json;
+  if (documentLoaderHappyOutput?.kind !== 'tool_node' || documentLoaderHappyOutput?.contract_name !== 'DocumentLoader') {
+    return fail('DocumentLoader contract happy ToolNode output should include contract_name', {
+      status: 500,
+      body: documentLoaderHappyOutput,
+    });
+  }
+
+  const documentLoaderContractOutput = documentLoaderHappyOutput?.contract_output;
+  const loadedDocuments = documentLoaderContractOutput?.documents;
+  if (
+    !documentLoaderContractOutput ||
+    Number(documentLoaderContractOutput?.document_count) !== 2 ||
+    !Array.isArray(loadedDocuments) ||
+    loadedDocuments.length !== 2
+  ) {
+    return fail('DocumentLoader contract happy output should include expected documents list', {
+      status: 500,
+      body: documentLoaderHappyOutput,
+    });
+  }
+
+  const loadedUris = loadedDocuments.map((doc) => doc?.uri);
+  if (loadedUris[0] !== happyDocUris[0] || loadedUris[1] !== happyDocUris[1]) {
+    return fail('DocumentLoader contract happy output should preserve input uri order', {
+      status: 500,
+      body: documentLoaderHappyOutput,
+    });
+  }
+
+  if (Number(loadedDocuments[0]?.dataset_id) !== 4242 || Number(loadedDocuments[1]?.dataset_id) !== 4242) {
+    return fail('DocumentLoader contract happy output should propagate dataset_id', {
+      status: 500,
+      body: documentLoaderHappyOutput,
+    });
+  }
+
   r = await req('/datasets', {
     method: 'POST',
     headers: authHeaders,

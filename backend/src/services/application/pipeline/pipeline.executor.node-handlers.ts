@@ -1,8 +1,8 @@
 import { HttpError } from '../../../common/http-error.js';
 import { getOpenRouterAdapter } from '../../core/openrouter/openrouter.adapter.js';
 import { getToolById } from '../../data/tool.service.js';
-import { listSupportedToolContracts, resolveToolContractDefinition } from './tools/index.js';
-import type { ResolvedToolContract, ToolContractDefinition, ToolExecutorKind } from './tools/tool-contract.types.js';
+import { listSupportedToolContracts, resolveToolContractDefinition } from '../tool/contracts/index.js';
+import type { ResolvedToolContract, ToolContractDefinition, ToolExecutorKind } from '../tool/contracts/tool-contract.types.js';
 import type { DatasetContext, NodeExecutionContext, NodeHandler, NodeHandlerResult, RuntimeNode } from './pipeline.executor.types.js';
 import {
   buildPrompt,
@@ -1066,6 +1066,12 @@ const NODE_HANDLER_REGISTRY = new Map<string, NodeHandler>([
           });
         }
 
+        const contractOutput = toolContract?.definition.buildHttpSuccessOutput?.({
+          input: toolContract.input,
+          status: response.status,
+          response: responseBody,
+        });
+
         return {
           output: {
             kind: 'tool_node',
@@ -1074,6 +1080,7 @@ const NODE_HANDLER_REGISTRY = new Map<string, NodeHandler>([
             tool_id: toolBinding.tool_id,
             tool_source: toolBinding.source,
             ...(toolContract ? { contract_name: toolContract.name } : {}),
+            ...(contractOutput ? { contract_output: contractOutput } : {}),
             status: response.status,
             response: responseBody,
           },

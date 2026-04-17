@@ -1,13 +1,20 @@
-import type { NodeExecutionContext } from '../pipeline.executor.types.js';
+import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
 
 export type ToolExecutorKind = 'http-json' | 'openrouter-embeddings';
 export type ToolContractName = 'DocumentLoader' | 'QueryBuilder';
+
+export interface ToolContractHttpSuccessContext {
+  input: Record<string, any>;
+  status: number;
+  response: any;
+}
 
 export interface ToolContractDefinition {
   name: ToolContractName;
   aliases: string[];
   allowedExecutors: ToolExecutorKind[];
   resolveInput: (inputs: any[], context: NodeExecutionContext) => Record<string, any>;
+  buildHttpSuccessOutput?: (context: ToolContractHttpSuccessContext) => Record<string, any>;
 }
 
 export interface ResolvedToolContract {
