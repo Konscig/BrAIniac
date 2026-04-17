@@ -20,6 +20,7 @@ NPM-скрипты (в каталоге `backend`)
 - `npm run dev` — запустить сервер в режиме разработки через `ts-node`.
 - `npm run build` — скомпилировать TypeScript в `dist/`.
 - `npm run start` — запустить скомпилированный сервер (`node dist/index.js`).
+- `npm run seed:basic-types` — создать/обновить базовый MVP-каталог типов нод в БД (`Tool` + `NodeType`).
 
 Prisma / миграции
 

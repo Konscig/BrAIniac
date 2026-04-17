@@ -19,7 +19,8 @@
     "test:db": "node ./scripts/db-invariants-test.mjs",
     "test:integration": "node ./scripts/integration-test.mjs",
     "test:auth": "node ./scripts/auth-test.mjs",
-    "test:ownership": "node ./scripts/ownership-test.mjs"
+    "test:ownership": "node ./scripts/ownership-test.mjs",
+    "seed:basic-types": "node ./prisma/seeds/seed-basic-node-types.mjs"
   },
   "keywords": [],
   "author": "",
