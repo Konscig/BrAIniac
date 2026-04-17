@@ -23,6 +23,12 @@ Out-of-scope для стартовой итерации исполнения (с
 
 Принцип: стартовый baseline должен быть минимально достаточным для RAG-контура без перегруженной архитектуры и без неиспользуемых абстракций.
 
+## Граница Документа (Важно)
+- Этот каталог описывает ноды графа исполнения (runtime/orchestration слой).
+- Каталог инструментов (capabilities) описан отдельно в `./08-rag-toolkit.md`.
+- Профили ролей и правила применения ограничений описаны в `./03-node-role-profiles.md`.
+- Совпадение названий по смыслу между нодой и инструментом не означает, что это одна и та же сущность.
+
 ## Source
 1. Trigger
 - purpose: старт пайплайна по событию, расписанию или ручному запуску
@@ -59,6 +65,8 @@ Out-of-scope для стартовой итерации исполнения (с
 - output: 1..2
 - predecessors: any
 - successors: any
+- note: это нода уровня графа для прямого вызова модели.
+- note: не тождественна инструменту `LLMAnswer` из `./08-rag-toolkit.md`.
 
 6. AgentCall
 - purpose: запуск агентного runtime внутри одной ноды
@@ -67,6 +75,7 @@ Out-of-scope для стартовой итерации исполнения (с
 - internals: bounded runtime loop с вызовами инструментов
 - predecessors: any
 - successors: any
+- note: AgentCall отвечает за оркестрацию стратегии, а не за каталогизацию инструментов.
 
 7. Parser
 - purpose: парсинг, нормализация и структурирование результата
@@ -81,6 +90,7 @@ Out-of-scope для стартовой итерации исполнения (с
 - output: 1..2
 - predecessors: any
 - successors: any
+- note: baseline utility; не обязателен для первого минимального RAG-контура из `./08-rag-toolkit.md`.
 
 9. Ranker
 - purpose: ранжирование кандидатов или ответов
@@ -88,6 +98,7 @@ Out-of-scope для стартовой итерации исполнения (с
 - output: 1..2
 - predecessors: any
 - successors: any
+- note: baseline utility; для первого минимального RAG-контура может быть отложен.
 
 10. ToolNode
 - purpose: инструмент как отдельная нода (вход -> исполнение -> выход)
@@ -95,6 +106,10 @@ Out-of-scope для стартовой итерации исполнения (с
 - output: 0..8
 - predecessors: any
 - successors: any
+- note: ToolNode исполняет контракт инструмента; сам инструмент определяется в `./08-rag-toolkit.md`.
+- note: executor kind относится к runtime-конфигурации ToolNode, а не к каталогу нод.
+- note: текущие runtime-kind: `http-json`, `openrouter-embeddings`.
+- note: для исполнения требуется явный binding инструмента и явный executor kind.
 - note: маршрут AgentCall -> ToolNode -> AgentCall допустим при loop-policy
 
 ## Control

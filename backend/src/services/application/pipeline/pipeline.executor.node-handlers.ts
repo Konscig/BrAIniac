@@ -1,6 +1,8 @@
 import { HttpError } from '../../../common/http-error.js';
 import { getOpenRouterAdapter } from '../../core/openrouter/openrouter.adapter.js';
 import { getToolById } from '../../data/tool.service.js';
+import { listSupportedToolContracts, resolveToolContractDefinition } from './tools/index.js';
+import type { ResolvedToolContract, ToolContractDefinition, ToolExecutorKind } from './tools/tool-contract.types.js';
 import type { DatasetContext, NodeExecutionContext, NodeHandler, NodeHandlerResult, RuntimeNode } from './pipeline.executor.types.js';
 import {
   buildPrompt,
@@ -18,7 +20,19 @@ type ResolvedToolBinding = {
   tool_id: number | null;
   name: string;
   config_json: any;
-  source: 'node.tool' | 'node.tool_id' | 'node_type.tool';
+  source: 'node.tool' | 'node.tool_id';
+};
+
+type ResolvedToolExecutorConfig = {
+  kind: ToolExecutorKind | undefined;
+  rawKind: string | undefined;
+  options: Record<string, any>;
+};
+
+type ResolvedToolContractSelector = {
+  definition: ToolContractDefinition | undefined;
+  rawName: string | undefined;
+  explicit: boolean;
 };
 
 function normalizeTextForEmbedding(raw: string): string {
@@ -128,47 +142,285 @@ function buildEmbeddingCandidates(inputs: any[], inputJson: any, dataset: Datase
   return dedupeTexts(raw).slice(0, MAX_EMBEDDING_INPUT_ITEMS);
 }
 
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (!Array.isArray(a) || !Array.isArray(b) || a.length === 0 || b.length === 0) return 0;
+type FilterOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains';
 
-  const length = Math.min(a.length, b.length);
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < length; i += 1) {
-    const av = Number(a[i]);
-    const bv = Number(b[i]);
-    dot += av * bv;
-    normA += av * av;
-    normB += bv * bv;
-  }
-
-  if (normA <= 0 || normB <= 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+function normalizeFilterOperator(raw: unknown): FilterOperator | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const op = raw.trim().toLowerCase();
+  if (op === 'eq' || op === '==' || op === '=') return 'eq';
+  if (op === 'neq' || op === '!=' || op === '<>') return 'neq';
+  if (op === 'gt' || op === '>') return 'gt';
+  if (op === 'gte' || op === '>=') return 'gte';
+  if (op === 'lt' || op === '<') return 'lt';
+  if (op === 'lte' || op === '<=') return 'lte';
+  if (op === 'contains' || op === 'includes') return 'contains';
+  return undefined;
 }
 
-type RankedEmbeddingMatch = {
-  rank: number;
-  score: number;
-  text: string;
-};
+function parseOptionalPositiveInt(raw: unknown, max: number): number | undefined {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) return undefined;
+  return value > max ? max : value;
+}
 
-function rankEmbeddingMatches(queryVector: number[], candidateTexts: string[], vectors: number[][], topK: number): RankedEmbeddingMatch[] {
-  const scored: RankedEmbeddingMatch[] = [];
-  const usableCount = Math.min(candidateTexts.length, vectors.length);
+function resolveNodeSectionConfig(runtime: RuntimeNode, section: string): Record<string, any> {
+  const fromType = runtime.config && typeof runtime.config === 'object' ? runtime.config[section] : undefined;
+  const nodeUi = runtime.node.ui_json && typeof runtime.node.ui_json === 'object' ? runtime.node.ui_json : {};
+  const fromNode = nodeUi[section];
 
-  for (let i = 0; i < usableCount; i += 1) {
-    const score = cosineSimilarity(queryVector, vectors[i]!);
-    scored.push({
-      rank: i + 1,
-      score,
-      text: candidateTexts[i]!,
+  const typeConfig = fromType && typeof fromType === 'object' ? fromType : {};
+  const nodeConfig = fromNode && typeof fromNode === 'object' ? fromNode : {};
+  return {
+    ...typeConfig,
+    ...nodeConfig,
+  };
+}
+
+function resolveCandidateCollection(value: unknown): any[] | null {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== 'object') return null;
+
+  const record = value as Record<string, any>;
+  const keys = ['items', 'candidates', 'documents', 'chunks', 'records', 'results', 'matches'];
+  for (const key of keys) {
+    if (Array.isArray(record[key])) {
+      return record[key];
+    }
+  }
+
+  const nestedKeys = ['value', 'data', 'payload', 'output'];
+  for (const key of nestedKeys) {
+    if (!(key in record)) continue;
+    const nested = resolveCandidateCollection(record[key]);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return null;
+}
+
+function extractCandidateItems(inputs: any[], inputJson: any): any[] {
+  const out: any[] = [];
+  const sources = inputs.length > 0 ? inputs : inputJson !== undefined ? [inputJson] : [];
+
+  for (const source of sources) {
+    const collection = resolveCandidateCollection(source);
+    if (collection) {
+      out.push(...collection);
+      continue;
+    }
+
+    if (source !== undefined && source !== null) {
+      out.push(source);
+    }
+  }
+
+  return out;
+}
+
+function readNestedField(record: unknown, fieldPath: string): unknown {
+  if (!fieldPath) return undefined;
+  const keys = fieldPath
+    .split('.')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+
+  if (keys.length === 0) return undefined;
+
+  let cursor: any = record;
+  for (const key of keys) {
+    if (!cursor || typeof cursor !== 'object' || !(key in cursor)) {
+      return undefined;
+    }
+    cursor = cursor[key];
+  }
+
+  return cursor;
+}
+
+function toFiniteNumber(raw: unknown): number | undefined {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return undefined;
+  return parsed;
+}
+
+function normalizeComparableText(raw: unknown): string {
+  return normalizeTextForEmbedding(toText(raw)).toLowerCase();
+}
+
+function compareFilterValue(actual: unknown, op: FilterOperator, expected: unknown): boolean {
+  const actualNum = toFiniteNumber(actual);
+  const expectedNum = toFiniteNumber(expected);
+
+  if (op === 'gt' || op === 'gte' || op === 'lt' || op === 'lte') {
+    if (actualNum === undefined || expectedNum === undefined) return false;
+    if (op === 'gt') return actualNum > expectedNum;
+    if (op === 'gte') return actualNum >= expectedNum;
+    if (op === 'lt') return actualNum < expectedNum;
+    return actualNum <= expectedNum;
+  }
+
+  if (op === 'contains') {
+    const expectedText = normalizeComparableText(expected);
+    if (!expectedText) return false;
+
+    if (Array.isArray(actual)) {
+      return actual.some((entry) => normalizeComparableText(entry) === expectedText);
+    }
+
+    return normalizeComparableText(actual).includes(expectedText);
+  }
+
+  if (actualNum !== undefined && expectedNum !== undefined) {
+    return op === 'eq' ? actualNum === expectedNum : actualNum !== expectedNum;
+  }
+
+  const actualText = normalizeComparableText(actual);
+  const expectedText = normalizeComparableText(expected);
+  return op === 'eq' ? actualText === expectedText : actualText !== expectedText;
+}
+
+function tokenizeText(raw: string): string[] {
+  return raw
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 1)
+    .slice(0, 128);
+}
+
+function scoreTextOverlap(query: string, candidate: string): number {
+  const queryTokens = tokenizeText(query);
+  if (queryTokens.length === 0) return 0;
+
+  const candidateTokens = new Set(tokenizeText(candidate));
+  if (candidateTokens.size === 0) return 0;
+
+  let overlap = 0;
+  for (const token of queryTokens) {
+    if (candidateTokens.has(token)) overlap += 1;
+  }
+
+  return overlap / queryTokens.length;
+}
+
+function resolveRankerCandidateText(item: unknown, textField: string): string {
+  const fromField = readNestedField(item, textField);
+  const text = fromField !== undefined ? toText(fromField) : toText(item);
+  return normalizeTextForEmbedding(text);
+}
+
+async function runFilterNode(runtime: RuntimeNode, inputs: any[], context: NodeExecutionContext): Promise<NodeHandlerResult> {
+  const filterConfig = resolveNodeSectionConfig(runtime, 'filter');
+  const fieldPath = typeof filterConfig.field === 'string' ? filterConfig.field.trim() : '';
+  const operator = normalizeFilterOperator(filterConfig.op);
+  const expectedValue = filterConfig.value;
+
+  if ((fieldPath && !operator) || (!fieldPath && operator)) {
+    throw new HttpError(400, {
+      code: 'EXECUTOR_FILTER_CONFIG_INVALID',
+      error: 'filter node requires both field and op when filter rule is configured',
     });
   }
 
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, topK).map((item, index) => ({ ...item, rank: index + 1 }));
+  if (operator && expectedValue === undefined) {
+    throw new HttpError(400, {
+      code: 'EXECUTOR_FILTER_CONFIG_INVALID',
+      error: 'filter node requires value when filter rule is configured',
+    });
+  }
+
+  const rawItems = extractCandidateItems(inputs, context.input_json);
+  const filtered =
+    fieldPath && operator
+      ? rawItems.filter((item) => compareFilterValue(readNestedField(item, fieldPath), operator, expectedValue))
+      : rawItems;
+
+  const limit = parseOptionalPositiveInt(filterConfig.limit, 10_000);
+  const finalItems = limit ? filtered.slice(0, limit) : filtered;
+
+  return {
+    output: {
+      kind: 'filter',
+      total_items: rawItems.length,
+      kept_items: finalItems.length,
+      dropped_items: rawItems.length - finalItems.length,
+      ...(fieldPath && operator
+        ? {
+            rule: {
+              field: fieldPath,
+              op: operator,
+              value: expectedValue,
+            },
+          }
+        : { rule: null }),
+      items: finalItems,
+    },
+    costUnits: 0,
+  };
+}
+
+async function runRankerNode(runtime: RuntimeNode, inputs: any[], context: NodeExecutionContext): Promise<NodeHandlerResult> {
+  const rankerConfig = resolveNodeSectionConfig(runtime, 'ranker');
+  const scoreField =
+    typeof rankerConfig.scoreField === 'string' && rankerConfig.scoreField.trim().length > 0
+      ? rankerConfig.scoreField.trim()
+      : 'score';
+  const textField =
+    typeof rankerConfig.textField === 'string' && rankerConfig.textField.trim().length > 0
+      ? rankerConfig.textField.trim()
+      : 'text';
+  const order = typeof rankerConfig.order === 'string' && rankerConfig.order.trim().toLowerCase() === 'asc' ? 'asc' : 'desc';
+
+  const runtimeTopK = parseOptionalPositiveInt(runtime.node.top_k, 10_000) ?? 5;
+  const topK = parseOptionalPositiveInt(rankerConfig.topK, 10_000) ?? runtimeTopK;
+  const configuredQuery = typeof rankerConfig.query === 'string' ? normalizeTextForEmbedding(rankerConfig.query) : '';
+  const queryText = configuredQuery || resolveQueryText(inputs, context.input_json, context.dataset);
+
+  const rawItems = extractCandidateItems(inputs, context.input_json);
+  const ranked = rawItems
+    .map((item, index) => {
+      const numericScore = toFiniteNumber(readNestedField(item, scoreField));
+      const candidateText = resolveRankerCandidateText(item, textField);
+      const textScore = queryText ? scoreTextOverlap(queryText, candidateText) : 0;
+      const finalScore = numericScore !== undefined ? numericScore + textScore * 0.001 : textScore;
+
+      return {
+        item,
+        source_index: index,
+        score: finalScore,
+        numeric_score: numericScore,
+        text_score: textScore,
+      };
+    })
+    .sort((a, b) => {
+      const delta = order === 'asc' ? a.score - b.score : b.score - a.score;
+      if (delta !== 0) return delta;
+      return a.source_index - b.source_index;
+    });
+
+  const selected = ranked.slice(0, topK);
+
+  return {
+    output: {
+      kind: 'ranker',
+      total_items: rawItems.length,
+      returned_items: selected.length,
+      top_k: topK,
+      order,
+      score_field: scoreField,
+      query: queryText || null,
+      items: selected.map((entry) => entry.item),
+      ranking: selected.map((entry, index) => ({
+        rank: index + 1,
+        score: entry.score,
+        source_index: entry.source_index,
+        ...(entry.numeric_score !== undefined ? { numeric_score: entry.numeric_score } : {}),
+        ...(queryText ? { text_score: entry.text_score } : {}),
+      })),
+    },
+    costUnits: 0,
+  };
 }
 
 function resolveEmbeddingModel(runtime: RuntimeNode): string | undefined {
@@ -217,37 +469,132 @@ function sanitizeStringRecord(raw: unknown): Record<string, string> {
   return out;
 }
 
-function normalizeToolExecutorKind(raw: unknown): string {
-  const value = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
-  if (!value) return 'local';
-
-  if (value === 'http' || value === 'http-json' || value === 'webhook') return 'http-json';
-  if (value === 'openrouter-chat' || value === 'chat' || value === 'llm') return 'openrouter-chat';
-  if (value === 'openrouter-embeddings' || value === 'embeddings' || value === 'embed') return 'openrouter-embeddings';
-  if (value === 'local' || value === 'passthrough' || value === 'noop') return 'local';
-
-  return value;
-}
-
-function resolveToolExecutorConfig(toolConfig: any): { kind: string; options: Record<string, any> } {
+function resolveToolContractSelector(toolName: string, toolConfig: any): ResolvedToolContractSelector {
   if (!toolConfig || typeof toolConfig !== 'object') {
-    return { kind: 'local', options: {} };
-  }
-
-  if (typeof toolConfig.executor === 'string') {
-    return { kind: normalizeToolExecutorKind(toolConfig.executor), options: {} };
-  }
-
-  if (toolConfig.executor && typeof toolConfig.executor === 'object') {
-    const options = toolConfig.executor as Record<string, any>;
     return {
-      kind: normalizeToolExecutorKind(options.kind ?? toolConfig.runtime),
-      options,
+      definition: resolveToolContractDefinition(toolName),
+      rawName: undefined,
+      explicit: false,
+    };
+  }
+
+  const rawContract = toolConfig.contract;
+  if (typeof rawContract === 'string') {
+    const rawName = rawContract.trim();
+    return {
+      definition: resolveToolContractDefinition(rawName),
+      rawName: rawName || undefined,
+      explicit: rawName.length > 0,
+    };
+  }
+
+  if (rawContract && typeof rawContract === 'object') {
+    const options = rawContract as Record<string, any>;
+    const rawSource = options.name ?? options.kind ?? options.type;
+    const rawName = typeof rawSource === 'string' ? rawSource.trim() : '';
+    return {
+      definition: resolveToolContractDefinition(rawName),
+      rawName: rawName || undefined,
+      explicit: true,
     };
   }
 
   return {
-    kind: normalizeToolExecutorKind(toolConfig.runtime),
+    definition: resolveToolContractDefinition(toolName),
+    rawName: undefined,
+    explicit: false,
+  };
+}
+
+function resolveToolContract(
+  toolBinding: ResolvedToolBinding,
+  mergedToolConfig: any,
+  inputs: any[],
+  context: NodeExecutionContext,
+): ResolvedToolContract | null {
+  const contractSelector = resolveToolContractSelector(toolBinding.name, mergedToolConfig);
+
+  if (contractSelector.explicit && contractSelector.rawName && !contractSelector.definition) {
+    throw new HttpError(400, {
+      code: 'EXECUTOR_TOOLNODE_CONTRACT_UNSUPPORTED',
+      error: `unsupported tool contract: ${contractSelector.rawName}`,
+      details: {
+        supported_contracts: listSupportedToolContracts(),
+      },
+    });
+  }
+
+  if (!contractSelector.definition) return null;
+
+  return {
+    name: contractSelector.definition.name,
+    definition: contractSelector.definition,
+    input: contractSelector.definition.resolveInput(inputs, context),
+  };
+}
+
+function assertToolContractExecutorCompatibility(contract: ResolvedToolContract, executorKind: ToolExecutorKind) {
+  const allowed = contract.definition.allowedExecutors;
+  if (allowed.includes(executorKind)) return;
+
+  throw new HttpError(400, {
+    code: 'EXECUTOR_TOOLNODE_CONTRACT_EXECUTOR_MISMATCH',
+    error: `${contract.name} contract is not supported for executor ${executorKind}`,
+    details: {
+      contract: contract.name,
+      executor: executorKind,
+      allowed_executors: allowed,
+    },
+  });
+}
+
+function normalizeToolExecutorKind(raw: unknown): ToolExecutorKind | undefined {
+  const value = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  if (!value) return undefined;
+
+  if (value === 'http' || value === 'http-json' || value === 'webhook') return 'http-json';
+  if (value === 'openrouter-embeddings' || value === 'embeddings' || value === 'embed') return 'openrouter-embeddings';
+
+  return undefined;
+}
+
+function resolveToolExecutorConfig(toolConfig: any): ResolvedToolExecutorConfig {
+  if (!toolConfig || typeof toolConfig !== 'object') {
+    return { kind: undefined, rawKind: undefined, options: {} };
+  }
+
+  if (typeof toolConfig.executor === 'string') {
+    const rawKind = toolConfig.executor.trim();
+    return {
+      kind: normalizeToolExecutorKind(rawKind),
+      rawKind: rawKind || undefined,
+      options: {},
+    };
+  }
+
+  if (toolConfig.executor && typeof toolConfig.executor === 'object') {
+    const options = toolConfig.executor as Record<string, any>;
+    const rawSource = options.kind ?? toolConfig.runtime;
+    const rawKind = typeof rawSource === 'string' ? rawSource.trim() : '';
+    return {
+      kind: normalizeToolExecutorKind(rawKind),
+      rawKind: rawKind || undefined,
+      options,
+    };
+  }
+
+  if (typeof toolConfig.runtime === 'string') {
+    const rawKind = toolConfig.runtime.trim();
+    return {
+      kind: normalizeToolExecutorKind(rawKind),
+      rawKind: rawKind || undefined,
+      options: {},
+    };
+  }
+
+  return {
+    kind: undefined,
+    rawKind: undefined,
     options: {},
   };
 }
@@ -336,25 +683,9 @@ async function resolveToolNodeBinding(runtime: RuntimeNode): Promise<ResolvedToo
     };
   }
 
-  if (runtime.tool) {
-    const fallbackConfig = runtime.tool.config_json ?? {};
-    const fallbackExecutor = resolveToolExecutorConfig(fallbackConfig);
-    const hasFallbackExecutor =
-      fallbackExecutor.kind !== 'local' || fallbackConfig.executor !== undefined || fallbackConfig.runtime !== undefined;
-
-    if (hasFallbackExecutor) {
-      return {
-        tool_id: runtime.tool.tool_id,
-        name: runtime.tool.name,
-        config_json: fallbackConfig,
-        source: 'node_type.tool',
-      };
-    }
-  }
-
   throw new HttpError(400, {
     code: 'EXECUTOR_TOOLNODE_TOOL_REQUIRED',
-    error: 'tool node requires ui_json.tool_id or ui_json.tool with execution config',
+    error: 'tool node requires explicit ui_json.tool_id or ui_json.tool binding',
   });
 }
 
@@ -412,6 +743,14 @@ const NODE_HANDLER_REGISTRY = new Map<string, NodeHandler>([
         costUnits: 0,
       };
     },
+  ],
+  [
+    'Filter',
+    runFilterNode,
+  ],
+  [
+    'Ranker',
+    runRankerNode,
   ],
   [
     'LLMCall',
@@ -542,13 +881,44 @@ const NODE_HANDLER_REGISTRY = new Map<string, NodeHandler>([
         ...toolOverrides,
       };
 
-      const { kind: executorKind, options: executorOptions } = resolveToolExecutorConfig(mergedToolConfig);
+      const {
+        kind: executorKind,
+        rawKind: rawExecutorKind,
+        options: executorOptions,
+      } = resolveToolExecutorConfig(mergedToolConfig);
+
+      if (!rawExecutorKind) {
+        throw new HttpError(400, {
+          code: 'EXECUTOR_TOOLNODE_EXECUTOR_REQUIRED',
+          error: 'tool node requires explicit executor kind (openrouter-embeddings, http-json)',
+        });
+      }
+
+      if (!executorKind) {
+        throw new HttpError(400, {
+          code: 'EXECUTOR_TOOLNODE_EXECUTOR_UNSUPPORTED',
+          error: `unsupported tool executor kind: ${rawExecutorKind}`,
+        });
+      }
+
+      const toolContract = resolveToolContract(toolBinding, mergedToolConfig, inputs, context);
+      if (toolContract) {
+        assertToolContractExecutorCompatibility(toolContract, executorKind);
+      }
+
       const toolPayload = {
         tool: {
           tool_id: toolBinding.tool_id,
           name: toolBinding.name,
           source: toolBinding.source,
         },
+        ...(toolContract
+          ? {
+              contract: {
+                name: toolContract.name,
+              },
+            }
+          : {}),
         node: {
           node_id: runtime.node.node_id,
           top_k: runtime.node.top_k,
@@ -557,57 +927,9 @@ const NODE_HANDLER_REGISTRY = new Map<string, NodeHandler>([
           inputs,
           input_json: context.input_json ?? null,
           dataset: context.dataset ?? null,
+          ...(toolContract ? { contract_input: toolContract.input } : {}),
         },
       };
-
-      if (executorKind === 'openrouter-chat') {
-        const adapter = getOpenRouterAdapter();
-        const model =
-          typeof executorOptions.model === 'string' && executorOptions.model.trim().length > 0
-            ? executorOptions.model
-            : typeof mergedToolConfig.llm?.modelId === 'string' && mergedToolConfig.llm.modelId.trim().length > 0
-            ? mergedToolConfig.llm.modelId
-            : undefined;
-
-        const configuredSystemPrompt =
-          typeof executorOptions.systemPrompt === 'string' && executorOptions.systemPrompt.trim().length > 0
-            ? executorOptions.systemPrompt
-            : typeof mergedToolConfig.systemPrompt === 'string' && mergedToolConfig.systemPrompt.trim().length > 0
-            ? mergedToolConfig.systemPrompt
-            : `You are running tool \"${toolBinding.name}\" inside a pipeline ToolNode.`;
-
-        const prompt = buildPrompt(inputs, context.input_json).trim();
-        const completion = await adapter.chatCompletion({
-          ...(model ? { model } : {}),
-          messages: [
-            { role: 'system', content: configuredSystemPrompt },
-            {
-              role: 'user',
-              content: prompt.length > 0 ? prompt : JSON.stringify(toolPayload),
-            },
-          ],
-          ...(Number.isFinite(Number(executorOptions.temperature))
-            ? { temperature: Number(executorOptions.temperature) }
-            : {}),
-          ...(Number.isInteger(Number(executorOptions.maxTokens)) && Number(executorOptions.maxTokens) > 0
-            ? { maxTokens: Number(executorOptions.maxTokens) }
-            : {}),
-        });
-
-        return {
-          output: {
-            kind: 'tool_node',
-            executor: 'openrouter-chat',
-            tool_name: toolBinding.name,
-            tool_id: toolBinding.tool_id,
-            tool_source: toolBinding.source,
-            model: completion.model,
-            text: completion.text,
-            usage: completion.usage ?? null,
-          },
-          costUnits: 1,
-        };
-      }
 
       if (executorKind === 'openrouter-embeddings') {
         const adapter = getOpenRouterAdapter();
@@ -638,6 +960,7 @@ const NODE_HANDLER_REGISTRY = new Map<string, NodeHandler>([
             tool_name: toolBinding.name,
             tool_id: toolBinding.tool_id,
             tool_source: toolBinding.source,
+            ...(toolContract ? { contract_name: toolContract.name } : {}),
             model: embeddingResult.model,
             input_items: inputTexts.length,
             embeddings: embeddingResult.embeddings,
@@ -750,25 +1073,11 @@ const NODE_HANDLER_REGISTRY = new Map<string, NodeHandler>([
             tool_name: toolBinding.name,
             tool_id: toolBinding.tool_id,
             tool_source: toolBinding.source,
+            ...(toolContract ? { contract_name: toolContract.name } : {}),
             status: response.status,
             response: responseBody,
           },
           costUnits: 1,
-        };
-      }
-
-      if (executorKind === 'local') {
-        return {
-          output: {
-            kind: 'tool_node',
-            executor: 'local',
-            tool_name: toolBinding.name,
-            tool_id: toolBinding.tool_id,
-            tool_source: toolBinding.source,
-            request: toolPayload,
-            note: 'local executor mode has no external runtime binding; payload echoed as stub result',
-          },
-          costUnits: 0,
         };
       }
 
@@ -814,7 +1123,10 @@ export async function executeNode(
   inputs: any[],
   context: NodeExecutionContext,
 ): Promise<NodeHandlerResult> {
-  const handler = NODE_HANDLER_REGISTRY.get(runtime.nodeType.name);
+  const rawNodeTypeName = typeof runtime.nodeType.name === 'string' ? runtime.nodeType.name : '';
+  const nodeTypeName = rawNodeTypeName.trim();
+
+  const handler = NODE_HANDLER_REGISTRY.get(nodeTypeName);
   if (handler) {
     return handler(runtime, inputs, context);
   }
@@ -822,7 +1134,7 @@ export async function executeNode(
   return {
     output: {
       kind: 'not_implemented',
-      node_type: runtime.nodeType.name,
+      node_type: nodeTypeName || rawNodeTypeName,
       message: 'handler is not implemented in current executor mvp',
       received_inputs: inputs.length,
     },
