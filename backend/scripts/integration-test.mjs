@@ -1376,6 +1376,669 @@ async function run() {
     });
   }
 
+  r = await req('/pipelines', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_project_id: project.project_id,
+      name: `it-toolnode-chunker-contract-happy-${suffix}`,
+      max_time: 30,
+      max_cost: 100,
+      max_reject: 0.15,
+      report_json: {},
+    }),
+  });
+  console.log('POST /pipelines (toolnode chunker contract happy) ->', r.status);
+  if (!ok(r.status)) return fail('create toolnode chunker contract happy pipeline failed', r);
+  const chunkerHappyPipeline = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: chunkerHappyPipeline.pipeline_id,
+      fk_type_id: manualInputType.type_id,
+      top_k: 1,
+      ui_json: { x: 20, y: 620 },
+    }),
+  });
+  console.log('POST /nodes (Chunker contract happy ManualInput) ->', r.status);
+  if (!ok(r.status)) return fail('create Chunker contract happy ManualInput node failed', r);
+  const chunkerHappyManualNode = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: chunkerHappyPipeline.pipeline_id,
+      fk_type_id: strictToolNodeType.type_id,
+      top_k: 1,
+      ui_json: {
+        x: 180,
+        y: 620,
+        tool: {
+          name: 'Chunker',
+          config_json: {
+            executor: 'http-json',
+            method: 'GET',
+            url: `${base}/health`,
+            contract: {
+              name: 'Chunker',
+            },
+          },
+        },
+      },
+    }),
+  });
+  console.log('POST /nodes (Chunker contract happy ToolNode target) ->', r.status);
+  if (!ok(r.status)) return fail('create Chunker contract happy ToolNode node failed', r);
+  const chunkerHappyToolNode = r.body;
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ fk_from_node: chunkerHappyManualNode.node_id, fk_to_node: chunkerHappyToolNode.node_id }),
+  });
+  console.log('POST /edges (Chunker contract happy flow) ->', r.status);
+  if (!ok(r.status)) return fail('create Chunker contract happy flow edge failed', r);
+
+  r = await req(`/pipelines/${chunkerHappyPipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      input_json: {
+        normalized_documents: [
+          {
+            document_id: 'doc_alpha',
+            text: 'alpha beta gamma delta epsilon zeta',
+          },
+        ],
+        chunk_size: 3,
+        overlap: 1,
+      },
+    }),
+  });
+  console.log('POST /pipelines/:id/execute (Chunker contract happy) ->', r.status);
+  if (r.status !== 202 || !r.body?.execution_id) {
+    return fail('Chunker contract happy execution should return 202 with execution_id', r);
+  }
+
+  const chunkerHappyExecutionId = r.body.execution_id;
+  let chunkerHappyExecution = null;
+  for (let i = 0; i < 30; i += 1) {
+    r = await req(`/pipelines/${chunkerHappyPipeline.pipeline_id}/executions/${chunkerHappyExecutionId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!ok(r.status)) return fail('chunker contract happy execution status check failed', r);
+
+    if (r.body?.status === 'succeeded' || r.body?.status === 'failed') {
+      chunkerHappyExecution = r.body;
+      break;
+    }
+
+    await wait(150);
+  }
+
+  if (!chunkerHappyExecution) {
+    return fail('chunker contract happy execution did not finish in time', r);
+  }
+  if (chunkerHappyExecution.status !== 'succeeded') {
+    return fail('chunker contract happy execution should succeed', {
+      status: 500,
+      body: chunkerHappyExecution,
+    });
+  }
+
+  r = await req(`/pipelines/${chunkerHappyPipeline.pipeline_id}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  console.log('GET /pipelines/:id (chunker contract happy report) ->', r.status);
+  if (!ok(r.status)) return fail('get chunker contract happy pipeline failed', r);
+
+  const chunkerHappyReportNodes = r.body?.report_json?.nodes;
+  if (!Array.isArray(chunkerHappyReportNodes)) {
+    return fail('chunker contract happy report must contain nodes array', r);
+  }
+
+  const chunkerHappyToolNodeState = chunkerHappyReportNodes.find((node) => node?.node_id === chunkerHappyToolNode.node_id);
+  if (chunkerHappyToolNodeState?.status !== 'completed') {
+    return fail('Chunker contract happy ToolNode target should be completed', {
+      status: 500,
+      body: chunkerHappyToolNodeState,
+    });
+  }
+
+  const chunkerHappyOutput = chunkerHappyToolNodeState?.output_json;
+  if (chunkerHappyOutput?.kind !== 'tool_node' || chunkerHappyOutput?.contract_name !== 'Chunker') {
+    return fail('Chunker contract happy ToolNode output should include contract_name', {
+      status: 500,
+      body: chunkerHappyOutput,
+    });
+  }
+
+  const chunkerContractOutput = chunkerHappyOutput?.contract_output;
+  const chunkerChunks = chunkerContractOutput?.chunks;
+  if (
+    !chunkerContractOutput ||
+    Number(chunkerContractOutput?.chunk_count) !== 3 ||
+    !Array.isArray(chunkerChunks) ||
+    chunkerChunks.length !== 3
+  ) {
+    return fail('Chunker contract happy output should include expected chunks list', {
+      status: 500,
+      body: chunkerHappyOutput,
+    });
+  }
+
+  if (chunkerChunks[0]?.text !== 'alpha beta gamma' || chunkerChunks[1]?.text !== 'gamma delta epsilon') {
+    return fail('Chunker contract happy output should preserve expected chunk overlap', {
+      status: 500,
+      body: chunkerHappyOutput,
+    });
+  }
+
+  r = await req('/pipelines', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_project_id: project.project_id,
+      name: `it-toolnode-embedder-contract-happy-${suffix}`,
+      max_time: 30,
+      max_cost: 100,
+      max_reject: 0.15,
+      report_json: {},
+    }),
+  });
+  console.log('POST /pipelines (toolnode embedder contract happy) ->', r.status);
+  if (!ok(r.status)) return fail('create toolnode embedder contract happy pipeline failed', r);
+  const embedderHappyPipeline = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: embedderHappyPipeline.pipeline_id,
+      fk_type_id: manualInputType.type_id,
+      top_k: 1,
+      ui_json: { x: 20, y: 700 },
+    }),
+  });
+  console.log('POST /nodes (Embedder contract happy ManualInput) ->', r.status);
+  if (!ok(r.status)) return fail('create Embedder contract happy ManualInput node failed', r);
+  const embedderHappyManualNode = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: embedderHappyPipeline.pipeline_id,
+      fk_type_id: strictToolNodeType.type_id,
+      top_k: 1,
+      ui_json: {
+        x: 180,
+        y: 700,
+        tool: {
+          name: 'Embedder',
+          config_json: {
+            executor: 'http-json',
+            method: 'GET',
+            url: `${base}/health`,
+            contract: {
+              name: 'Embedder',
+            },
+          },
+        },
+      },
+    }),
+  });
+  console.log('POST /nodes (Embedder contract happy ToolNode target) ->', r.status);
+  if (!ok(r.status)) return fail('create Embedder contract happy ToolNode node failed', r);
+  const embedderHappyToolNode = r.body;
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ fk_from_node: embedderHappyManualNode.node_id, fk_to_node: embedderHappyToolNode.node_id }),
+  });
+  console.log('POST /edges (Embedder contract happy flow) ->', r.status);
+  if (!ok(r.status)) return fail('create Embedder contract happy flow edge failed', r);
+
+  r = await req(`/pipelines/${embedderHappyPipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      input_json: {
+        chunks: [
+          { chunk_id: 'chunk_a', text: 'alpha beta gamma' },
+          { chunk_id: 'chunk_b', text: 'delta epsilon zeta' },
+        ],
+        vector_size: 6,
+      },
+    }),
+  });
+  console.log('POST /pipelines/:id/execute (Embedder contract happy) ->', r.status);
+  if (r.status !== 202 || !r.body?.execution_id) {
+    return fail('Embedder contract happy execution should return 202 with execution_id', r);
+  }
+
+  const embedderHappyExecutionId = r.body.execution_id;
+  let embedderHappyExecution = null;
+  for (let i = 0; i < 30; i += 1) {
+    r = await req(`/pipelines/${embedderHappyPipeline.pipeline_id}/executions/${embedderHappyExecutionId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!ok(r.status)) return fail('embedder contract happy execution status check failed', r);
+
+    if (r.body?.status === 'succeeded' || r.body?.status === 'failed') {
+      embedderHappyExecution = r.body;
+      break;
+    }
+
+    await wait(150);
+  }
+
+  if (!embedderHappyExecution) {
+    return fail('embedder contract happy execution did not finish in time', r);
+  }
+  if (embedderHappyExecution.status !== 'succeeded') {
+    return fail('embedder contract happy execution should succeed', {
+      status: 500,
+      body: embedderHappyExecution,
+    });
+  }
+
+  r = await req(`/pipelines/${embedderHappyPipeline.pipeline_id}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  console.log('GET /pipelines/:id (embedder contract happy report) ->', r.status);
+  if (!ok(r.status)) return fail('get embedder contract happy pipeline failed', r);
+
+  const embedderHappyReportNodes = r.body?.report_json?.nodes;
+  if (!Array.isArray(embedderHappyReportNodes)) {
+    return fail('embedder contract happy report must contain nodes array', r);
+  }
+
+  const embedderHappyToolNodeState = embedderHappyReportNodes.find((node) => node?.node_id === embedderHappyToolNode.node_id);
+  if (embedderHappyToolNodeState?.status !== 'completed') {
+    return fail('Embedder contract happy ToolNode target should be completed', {
+      status: 500,
+      body: embedderHappyToolNodeState,
+    });
+  }
+
+  const embedderHappyOutput = embedderHappyToolNodeState?.output_json;
+  if (embedderHappyOutput?.kind !== 'tool_node' || embedderHappyOutput?.contract_name !== 'Embedder') {
+    return fail('Embedder contract happy ToolNode output should include contract_name', {
+      status: 500,
+      body: embedderHappyOutput,
+    });
+  }
+
+  const embedderContractOutput = embedderHappyOutput?.contract_output;
+  const embedderVectors = embedderContractOutput?.vectors;
+  if (
+    !embedderContractOutput ||
+    Number(embedderContractOutput?.vector_count) !== 2 ||
+    !Array.isArray(embedderVectors) ||
+    embedderVectors.length !== 2
+  ) {
+    return fail('Embedder contract happy output should include expected vectors list', {
+      status: 500,
+      body: embedderHappyOutput,
+    });
+  }
+
+  if (
+    !Array.isArray(embedderVectors[0]?.vector) ||
+    embedderVectors[0].vector.length !== 6 ||
+    !embedderVectors[0].vector.every((value) => Number.isFinite(value))
+  ) {
+    return fail('Embedder contract happy output should include finite vector values of expected size', {
+      status: 500,
+      body: embedderHappyOutput,
+    });
+  }
+
+  r = await req('/pipelines', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_project_id: project.project_id,
+      name: `it-toolnode-vectorupsert-contract-happy-${suffix}`,
+      max_time: 30,
+      max_cost: 100,
+      max_reject: 0.15,
+      report_json: {},
+    }),
+  });
+  console.log('POST /pipelines (toolnode vectorupsert contract happy) ->', r.status);
+  if (!ok(r.status)) return fail('create toolnode vectorupsert contract happy pipeline failed', r);
+  const vectorUpsertHappyPipeline = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: vectorUpsertHappyPipeline.pipeline_id,
+      fk_type_id: manualInputType.type_id,
+      top_k: 1,
+      ui_json: { x: 20, y: 780 },
+    }),
+  });
+  console.log('POST /nodes (VectorUpsert contract happy ManualInput) ->', r.status);
+  if (!ok(r.status)) return fail('create VectorUpsert contract happy ManualInput node failed', r);
+  const vectorUpsertHappyManualNode = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: vectorUpsertHappyPipeline.pipeline_id,
+      fk_type_id: strictToolNodeType.type_id,
+      top_k: 1,
+      ui_json: {
+        x: 180,
+        y: 780,
+        tool: {
+          name: 'VectorUpsert',
+          config_json: {
+            executor: 'http-json',
+            method: 'GET',
+            url: `${base}/health`,
+            contract: {
+              name: 'VectorUpsert',
+            },
+          },
+        },
+      },
+    }),
+  });
+  console.log('POST /nodes (VectorUpsert contract happy ToolNode target) ->', r.status);
+  if (!ok(r.status)) return fail('create VectorUpsert contract happy ToolNode node failed', r);
+  const vectorUpsertHappyToolNode = r.body;
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ fk_from_node: vectorUpsertHappyManualNode.node_id, fk_to_node: vectorUpsertHappyToolNode.node_id }),
+  });
+  console.log('POST /edges (VectorUpsert contract happy flow) ->', r.status);
+  if (!ok(r.status)) return fail('create VectorUpsert contract happy flow edge failed', r);
+
+  r = await req(`/pipelines/${vectorUpsertHappyPipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      input_json: {
+        index_name: 'knowledge_idx',
+        namespace: 'tenant_a',
+        vectors: [
+          { chunk_id: 'chunk_a', vector: [0.1, 0.2, 0.3] },
+          { chunk_id: 'chunk_b', vector: [0.3, 0.2, 0.1] },
+        ],
+      },
+    }),
+  });
+  console.log('POST /pipelines/:id/execute (VectorUpsert contract happy) ->', r.status);
+  if (r.status !== 202 || !r.body?.execution_id) {
+    return fail('VectorUpsert contract happy execution should return 202 with execution_id', r);
+  }
+
+  const vectorUpsertHappyExecutionId = r.body.execution_id;
+  let vectorUpsertHappyExecution = null;
+  for (let i = 0; i < 30; i += 1) {
+    r = await req(`/pipelines/${vectorUpsertHappyPipeline.pipeline_id}/executions/${vectorUpsertHappyExecutionId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!ok(r.status)) return fail('vectorupsert contract happy execution status check failed', r);
+
+    if (r.body?.status === 'succeeded' || r.body?.status === 'failed') {
+      vectorUpsertHappyExecution = r.body;
+      break;
+    }
+
+    await wait(150);
+  }
+
+  if (!vectorUpsertHappyExecution) {
+    return fail('vectorupsert contract happy execution did not finish in time', r);
+  }
+  if (vectorUpsertHappyExecution.status !== 'succeeded') {
+    return fail('vectorupsert contract happy execution should succeed', {
+      status: 500,
+      body: vectorUpsertHappyExecution,
+    });
+  }
+
+  r = await req(`/pipelines/${vectorUpsertHappyPipeline.pipeline_id}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  console.log('GET /pipelines/:id (vectorupsert contract happy report) ->', r.status);
+  if (!ok(r.status)) return fail('get vectorupsert contract happy pipeline failed', r);
+
+  const vectorUpsertHappyReportNodes = r.body?.report_json?.nodes;
+  if (!Array.isArray(vectorUpsertHappyReportNodes)) {
+    return fail('vectorupsert contract happy report must contain nodes array', r);
+  }
+
+  const vectorUpsertHappyToolNodeState = vectorUpsertHappyReportNodes.find(
+    (node) => node?.node_id === vectorUpsertHappyToolNode.node_id,
+  );
+  if (vectorUpsertHappyToolNodeState?.status !== 'completed') {
+    return fail('VectorUpsert contract happy ToolNode target should be completed', {
+      status: 500,
+      body: vectorUpsertHappyToolNodeState,
+    });
+  }
+
+  const vectorUpsertHappyOutput = vectorUpsertHappyToolNodeState?.output_json;
+  if (vectorUpsertHappyOutput?.kind !== 'tool_node' || vectorUpsertHappyOutput?.contract_name !== 'VectorUpsert') {
+    return fail('VectorUpsert contract happy ToolNode output should include contract_name', {
+      status: 500,
+      body: vectorUpsertHappyOutput,
+    });
+  }
+
+  const vectorUpsertContractOutput = vectorUpsertHappyOutput?.contract_output;
+  const vectorUpsertIds = vectorUpsertContractOutput?.upsert_ids;
+  if (
+    !vectorUpsertContractOutput ||
+    Number(vectorUpsertContractOutput?.upserted_count) !== 2 ||
+    !Array.isArray(vectorUpsertIds) ||
+    vectorUpsertIds.length !== 2
+  ) {
+    return fail('VectorUpsert contract happy output should include expected upsert report', {
+      status: 500,
+      body: vectorUpsertHappyOutput,
+    });
+  }
+
+  if (
+    vectorUpsertContractOutput?.index_name !== 'knowledge_idx' ||
+    vectorUpsertContractOutput?.namespace !== 'tenant_a' ||
+    vectorUpsertIds[0] !== 'chunk_a' ||
+    vectorUpsertIds[1] !== 'chunk_b'
+  ) {
+    return fail('VectorUpsert contract happy output should preserve index/namespace/upsert order', {
+      status: 500,
+      body: vectorUpsertHappyOutput,
+    });
+  }
+
+  r = await req('/pipelines', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_project_id: project.project_id,
+      name: `it-toolnode-hybridretriever-contract-happy-${suffix}`,
+      max_time: 30,
+      max_cost: 100,
+      max_reject: 0.15,
+      report_json: {},
+    }),
+  });
+  console.log('POST /pipelines (toolnode hybridretriever contract happy) ->', r.status);
+  if (!ok(r.status)) return fail('create toolnode hybridretriever contract happy pipeline failed', r);
+  const hybridRetrieverHappyPipeline = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: hybridRetrieverHappyPipeline.pipeline_id,
+      fk_type_id: manualInputType.type_id,
+      top_k: 1,
+      ui_json: { x: 20, y: 860 },
+    }),
+  });
+  console.log('POST /nodes (HybridRetriever contract happy ManualInput) ->', r.status);
+  if (!ok(r.status)) return fail('create HybridRetriever contract happy ManualInput node failed', r);
+  const hybridRetrieverHappyManualNode = r.body;
+
+  r = await req('/nodes', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: hybridRetrieverHappyPipeline.pipeline_id,
+      fk_type_id: strictToolNodeType.type_id,
+      top_k: 1,
+      ui_json: {
+        x: 180,
+        y: 860,
+        tool: {
+          name: 'HybridRetriever',
+          config_json: {
+            executor: 'http-json',
+            method: 'GET',
+            url: `${base}/health`,
+            contract: {
+              name: 'HybridRetriever',
+            },
+          },
+        },
+      },
+    }),
+  });
+  console.log('POST /nodes (HybridRetriever contract happy ToolNode target) ->', r.status);
+  if (!ok(r.status)) return fail('create HybridRetriever contract happy ToolNode node failed', r);
+  const hybridRetrieverHappyToolNode = r.body;
+
+  r = await req('/edges', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ fk_from_node: hybridRetrieverHappyManualNode.node_id, fk_to_node: hybridRetrieverHappyToolNode.node_id }),
+  });
+  console.log('POST /edges (HybridRetriever contract happy flow) ->', r.status);
+  if (!ok(r.status)) return fail('create HybridRetriever contract happy flow edge failed', r);
+
+  r = await req(`/pipelines/${hybridRetrieverHappyPipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      input_json: {
+        retrieval_query: 'rag retrieval citations quality',
+        top_k: 3,
+        mode: 'hybrid',
+        alpha: 0.35,
+      },
+    }),
+  });
+  console.log('POST /pipelines/:id/execute (HybridRetriever contract happy) ->', r.status);
+  if (r.status !== 202 || !r.body?.execution_id) {
+    return fail('HybridRetriever contract happy execution should return 202 with execution_id', r);
+  }
+
+  const hybridRetrieverHappyExecutionId = r.body.execution_id;
+  let hybridRetrieverHappyExecution = null;
+  for (let i = 0; i < 30; i += 1) {
+    r = await req(`/pipelines/${hybridRetrieverHappyPipeline.pipeline_id}/executions/${hybridRetrieverHappyExecutionId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!ok(r.status)) return fail('hybridretriever contract happy execution status check failed', r);
+
+    if (r.body?.status === 'succeeded' || r.body?.status === 'failed') {
+      hybridRetrieverHappyExecution = r.body;
+      break;
+    }
+
+    await wait(150);
+  }
+
+  if (!hybridRetrieverHappyExecution) {
+    return fail('hybridretriever contract happy execution did not finish in time', r);
+  }
+  if (hybridRetrieverHappyExecution.status !== 'succeeded') {
+    return fail('hybridretriever contract happy execution should succeed', {
+      status: 500,
+      body: hybridRetrieverHappyExecution,
+    });
+  }
+
+  r = await req(`/pipelines/${hybridRetrieverHappyPipeline.pipeline_id}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  console.log('GET /pipelines/:id (hybridretriever contract happy report) ->', r.status);
+  if (!ok(r.status)) return fail('get hybridretriever contract happy pipeline failed', r);
+
+  const hybridRetrieverHappyReportNodes = r.body?.report_json?.nodes;
+  if (!Array.isArray(hybridRetrieverHappyReportNodes)) {
+    return fail('hybridretriever contract happy report must contain nodes array', r);
+  }
+
+  const hybridRetrieverHappyToolNodeState = hybridRetrieverHappyReportNodes.find(
+    (node) => node?.node_id === hybridRetrieverHappyToolNode.node_id,
+  );
+  if (hybridRetrieverHappyToolNodeState?.status !== 'completed') {
+    return fail('HybridRetriever contract happy ToolNode target should be completed', {
+      status: 500,
+      body: hybridRetrieverHappyToolNodeState,
+    });
+  }
+
+  const hybridRetrieverHappyOutput = hybridRetrieverHappyToolNodeState?.output_json;
+  if (hybridRetrieverHappyOutput?.kind !== 'tool_node' || hybridRetrieverHappyOutput?.contract_name !== 'HybridRetriever') {
+    return fail('HybridRetriever contract happy ToolNode output should include contract_name', {
+      status: 500,
+      body: hybridRetrieverHappyOutput,
+    });
+  }
+
+  const hybridRetrieverContractOutput = hybridRetrieverHappyOutput?.contract_output;
+  const hybridCandidates = hybridRetrieverContractOutput?.candidates;
+  if (
+    !hybridRetrieverContractOutput ||
+    Number(hybridRetrieverContractOutput?.candidate_count) !== 3 ||
+    !Array.isArray(hybridCandidates) ||
+    hybridCandidates.length !== 3
+  ) {
+    return fail('HybridRetriever contract happy output should include expected candidates list', {
+      status: 500,
+      body: hybridRetrieverHappyOutput,
+    });
+  }
+
+  if (
+    hybridRetrieverContractOutput?.mode !== 'hybrid' ||
+    !String(hybridCandidates[0]?.snippet ?? '').toLowerCase().includes('rag')
+  ) {
+    return fail('HybridRetriever contract happy output should preserve mode and retrieval context', {
+      status: 500,
+      body: hybridRetrieverHappyOutput,
+    });
+  }
+
   r = await req('/datasets', {
     method: 'POST',
     headers: authHeaders,

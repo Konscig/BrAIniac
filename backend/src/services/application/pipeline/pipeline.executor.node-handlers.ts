@@ -953,6 +953,12 @@ const NODE_HANDLER_REGISTRY = new Map<string, NodeHandler>([
           input: inputTexts,
         });
 
+        const contractOutput = toolContract?.definition.buildEmbeddingSuccessOutput?.({
+          input: toolContract.input,
+          model: embeddingResult.model,
+          embeddings: embeddingResult.embeddings,
+        });
+
         return {
           output: {
             kind: 'tool_node',
@@ -961,6 +967,7 @@ const NODE_HANDLER_REGISTRY = new Map<string, NodeHandler>([
             tool_id: toolBinding.tool_id,
             tool_source: toolBinding.source,
             ...(toolContract ? { contract_name: toolContract.name } : {}),
+            ...(contractOutput ? { contract_output: contractOutput } : {}),
             model: embeddingResult.model,
             input_items: inputTexts.length,
             embeddings: embeddingResult.embeddings,

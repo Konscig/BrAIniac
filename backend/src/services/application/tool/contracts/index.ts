@@ -1,10 +1,18 @@
+import { chunkerToolContractDefinition } from './chunker.tool.js';
 import { documentLoaderToolContractDefinition } from './document-loader.tool.js';
+import { embedderToolContractDefinition } from './embedder.tool.js';
+import { hybridRetrieverToolContractDefinition } from './hybrid-retriever.tool.js';
 import { queryBuilderToolContractDefinition } from './query-builder.tool.js';
+import { vectorUpsertToolContractDefinition } from './vector-upsert.tool.js';
 import type { ToolContractDefinition, ToolContractName } from './tool-contract.types.js';
 
 const TOOL_CONTRACT_DEFINITIONS: ToolContractDefinition[] = [
   documentLoaderToolContractDefinition,
   queryBuilderToolContractDefinition,
+  chunkerToolContractDefinition,
+  embedderToolContractDefinition,
+  vectorUpsertToolContractDefinition,
+  hybridRetrieverToolContractDefinition,
 ];
 
 const TOOL_CONTRACT_ALIAS_MAP = buildToolContractAliasMap(TOOL_CONTRACT_DEFINITIONS);
