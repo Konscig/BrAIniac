@@ -62,7 +62,7 @@ const DEFAULT_OPTIONS: GraphValidationOptions = {
   roleValidationMode: 'warn',
 };
 
-const PRESET_OPTIONS: Record<GraphValidationPreset, Partial<GraphValidationOptions>> = {
+const PRESET_OPTIONS: Record<GraphValidationPreset, GraphValidationOptions> = {
   default: {
     ...DEFAULT_OPTIONS,
   },
@@ -93,38 +93,15 @@ export function parseGraphValidationPreset(value: unknown): GraphValidationPrese
   return undefined;
 }
 
-export function getGraphValidationPresetOptions(preset: GraphValidationPreset): Partial<GraphValidationOptions> {
+function normalizePreset(preset: GraphValidationPreset | undefined): GraphValidationPreset {
+  if (preset === 'default' || preset === 'dev' || preset === 'production') {
+    return preset;
+  }
+  return 'default';
+}
+
+export function getGraphValidationPresetOptions(preset: GraphValidationPreset): GraphValidationOptions {
   return { ...(PRESET_OPTIONS[preset] ?? PRESET_OPTIONS.default) };
-}
-
-function normalizeMode(value: any): ValidationMode | undefined {
-  if (value === 'strict' || value === 'relaxed') return value;
-  return undefined;
-}
-
-function normalizeProfileFallback(value: any): ProfileFallbackMode | undefined {
-  if (value === 'warn' || value === 'strict' || value === 'off') return value;
-  return undefined;
-}
-
-function normalizeRoleValidationMode(value: any): RoleValidationMode | undefined {
-  if (value === 'off' || value === 'warn' || value === 'strict') return value;
-  return undefined;
-}
-
-function normalizeOptions(overrides?: Partial<GraphValidationOptions>): GraphValidationOptions {
-  return {
-    mode: normalizeMode(overrides?.mode) ?? DEFAULT_OPTIONS.mode,
-    includeWarnings: typeof overrides?.includeWarnings === 'boolean' ? overrides.includeWarnings : DEFAULT_OPTIONS.includeWarnings,
-    profileFallback: normalizeProfileFallback(overrides?.profileFallback) ?? DEFAULT_OPTIONS.profileFallback,
-    enforceLoopPolicies:
-      typeof overrides?.enforceLoopPolicies === 'boolean' ? overrides.enforceLoopPolicies : DEFAULT_OPTIONS.enforceLoopPolicies,
-    requireExecutionBudgets:
-      typeof overrides?.requireExecutionBudgets === 'boolean'
-        ? overrides.requireExecutionBudgets
-        : DEFAULT_OPTIONS.requireExecutionBudgets,
-    roleValidationMode: normalizeRoleValidationMode(overrides?.roleValidationMode) ?? DEFAULT_OPTIONS.roleValidationMode,
-  };
 }
 
 function toNumberOrNull(value: any): number | null {
@@ -253,9 +230,9 @@ function findCycleComponents(nodeIds: number[], adjacency: Map<number, number[]>
 
 export async function validatePipelineGraph(
   pipelineId: number,
-  overrides?: Partial<GraphValidationOptions>,
+  preset: GraphValidationPreset = 'default',
 ): Promise<GraphValidationResult> {
-  const options = normalizeOptions(overrides);
+  const options = getGraphValidationPresetOptions(normalizePreset(preset));
 
   const [pipeline, rawNodes, rawEdges] = await Promise.all([
     getPipelineById(pipelineId),

@@ -237,10 +237,19 @@ async function run() {
     headers: authHeaders,
     body: JSON.stringify({ includeWarnings: false }),
   });
-  console.log(`POST /pipelines/${pipeline.pipeline_id}/validate-graph (includeWarnings=false) ->`, r.status);
-  if (!ok(r.status)) return fail('validate-graph (includeWarnings=false) failed', r);
-  if (!Array.isArray(r.body?.warnings) || r.body.warnings.length !== 0) {
-    return fail('validate-graph should suppress warnings when includeWarnings=false', r);
+  console.log(`POST /pipelines/${pipeline.pipeline_id}/validate-graph (legacy override) ->`, r.status);
+  if (r.status !== 400) {
+    return fail('validate-graph should reject legacy override fields in preset-only contract', r);
+  }
+
+  r = await req(`/pipelines/${pipeline.pipeline_id}/execute`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ input_json: { prompt: 'health check' }, validation: { includeWarnings: false } }),
+  });
+  console.log(`POST /pipelines/${pipeline.pipeline_id}/execute (legacy validation override) ->`, r.status);
+  if (r.status !== 400) {
+    return fail('execute should reject legacy validation override fields in preset-only contract', r);
   }
 
   const executionKey = `it-execution-${suffix}`;

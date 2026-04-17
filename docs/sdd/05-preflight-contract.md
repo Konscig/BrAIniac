@@ -10,14 +10,14 @@
 ## Тело Запроса
 ```json
 {
-  "mode": "strict",
-  "includeWarnings": true,
-  "profileFallback": "warn",
-  "enforceLoopPolicies": true,
-  "requireExecutionBudgets": false,
-  "roleValidationMode": "warn"
+  "preset": "default"
 }
 ```
+
+Дополнительно допускается query-параметр `preset` со значениями `default | dev | production`.
+
+Валидационный контракт упрощен до preset-only.
+Legacy-поля (`mode`, `includeWarnings`, `profileFallback`, `enforceLoopPolicies`, `requireExecutionBudgets`, `roleValidationMode`) не поддерживаются и должны отклоняться.
 
 ## Тело Ответа
 ```json
@@ -53,8 +53,9 @@
 ```
 
 ## Режимы
-- strict: hard-нарушения устанавливают valid=false.
-- relaxed: hard-проверки также выполняются, но отдельные пробелы профиля могут возвращаться как warnings.
+- default: базовый режим для старта, предупреждения включены, role-проверки в warn-режиме.
+- dev: эквивалент default для разработки и миграции.
+- production: строгий режим с обязательными execution-budget проверками и strict role-проверками.
 
 ## Политика Циклов
 - Guarded-циклы допускаются.
@@ -62,9 +63,7 @@
 - Для guarded-циклов обязательно наличие maxIterations.
 
 ## Политика Типовых Ограничений
-- roleValidationMode=off: role-cardinality и role-compatibility не проверяются.
-- roleValidationMode=warn: нарушения role-правил возвращаются как warnings.
-- roleValidationMode=strict: нарушения role-правил возвращаются как hard-errors.
+Политики валидации определяются только выбранным `preset` и не переопределяются на уровне одного запроса.
 
 ## Детерминизм
 Для одинакового графа и одинакового набора профилей ответ MUST быть детерминированным.

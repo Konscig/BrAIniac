@@ -1,7 +1,6 @@
 import express from 'express';
 import { createPipeline, listPipelines, listPipelinesByOwner, updatePipeline, deletePipeline } from '../../../services/data/pipeline.service.js';
 import {
-  getGraphValidationPresetOptions,
   parseGraphValidationPreset,
   validatePipelineGraph,
 } from '../../../services/core/graph_validation.service.js';
@@ -69,21 +68,21 @@ router.post('/:id/validate-graph', async (req, res) => {
     await ensurePipelineOwnedByUser(pipelineId, (req as any).user.user_id);
 
     const body = (req.body ?? {}) as Record<string, any>;
+    const unsupportedFields = Object.keys(body).filter((key) => key !== 'preset');
+    if (unsupportedFields.length > 0) {
+      throw new HttpError(400, {
+        error: 'validate-graph accepts preset only',
+        details: { unsupported_fields: unsupportedFields },
+      });
+    }
+
     const rawPreset = req.query.preset ?? body.preset;
     const preset = parseGraphValidationPreset(rawPreset);
     if (rawPreset !== undefined && rawPreset !== null && rawPreset !== '' && !preset) {
       throw new HttpError(400, { error: 'invalid preset' });
     }
 
-    const result = await validatePipelineGraph(pipelineId, {
-      ...getGraphValidationPresetOptions(preset ?? 'default'),
-      ...(body.mode !== undefined ? { mode: body.mode } : {}),
-      ...(body.includeWarnings !== undefined ? { includeWarnings: body.includeWarnings } : {}),
-      ...(body.profileFallback !== undefined ? { profileFallback: body.profileFallback } : {}),
-      ...(body.enforceLoopPolicies !== undefined ? { enforceLoopPolicies: body.enforceLoopPolicies } : {}),
-      ...(body.requireExecutionBudgets !== undefined ? { requireExecutionBudgets: body.requireExecutionBudgets } : {}),
-      ...(body.roleValidationMode !== undefined ? { roleValidationMode: body.roleValidationMode } : {}),
-    });
+    const result = await validatePipelineGraph(pipelineId, preset ?? 'default');
 
     res.json(result);
   } catch (err) {
@@ -95,6 +94,14 @@ router.post('/:id/execute', async (req: any, res) => {
   try {
     const pipelineId = requiredId(req.params.id, 'invalid id');
     const body = (req.body ?? {}) as Record<string, any>;
+    const unsupportedFields = Object.keys(body).filter((key) => !['preset', 'dataset_id', 'input_json'].includes(key));
+    if (unsupportedFields.length > 0) {
+      throw new HttpError(400, {
+        error: 'execute accepts preset, dataset_id and input_json only',
+        details: { unsupported_fields: unsupportedFields },
+      });
+    }
+
     const rawPreset = body.preset ?? req.query.preset;
     const preset = parseGraphValidationPreset(rawPreset);
 
@@ -110,7 +117,6 @@ router.post('/:id/execute', async (req: any, res) => {
         preset: preset ?? 'default',
         ...(datasetId !== undefined ? { dataset_id: datasetId } : {}),
         ...(body.input_json !== undefined ? { input_json: body.input_json } : {}),
-        ...(body.validation !== undefined ? { validation: body.validation } : {}),
       },
       typeof req.headers['x-idempotency-key'] === 'string' ? req.headers['x-idempotency-key'] : undefined,
     );

@@ -75,6 +75,7 @@ const CATALOG = [
         enabled: true,
         maxAttempts: 3,
         maxToolCalls: 8,
+        maxCandidates: 16,
         maxTimeMs: 20000,
         maxCostUsd: 0.5,
         maxTokens: 12000,
@@ -99,7 +100,11 @@ const CATALOG = [
   {
     name: 'ToolNode',
     desc: 'Use a tool as an explicit graph node.',
-    config_json: baseProfile('transform', 0, 8, 0, 8),
+    config_json: baseProfile('transform', 0, 8, 0, 8, {
+      tool: {
+        bindingRequired: true,
+      },
+    }),
   },
   {
     name: 'Branch',

@@ -1,5 +1,28 @@
 # MVP-Каталог Нод
 
+## Backend Baseline Freeze (Start Scope)
+
+Backend-стартовый baseline для исполнения графа фиксируется следующим набором нод:
+- ManualInput
+- DatasetInput
+- ToolNode
+- PromptBuilder
+- LLMCall
+- Parser
+- SaveResult
+- Filter
+- Ranker
+
+Out-of-scope для стартовой итерации исполнения (следующая волна):
+- Branch
+- Merge
+- RetryGate
+- LoopGate
+- Notify
+- Export
+
+Принцип: стартовый baseline должен быть минимально достаточным для RAG-контура без перегруженной архитектуры и без неиспользуемых абстракций.
+
 ## Source
 1. Trigger
 - purpose: старт пайплайна по событию, расписанию или ручному запуску
