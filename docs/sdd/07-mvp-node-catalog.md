@@ -27,7 +27,7 @@ Out-of-scope для стартовой итерации исполнения (с
 
 Источник проверки: `backend/src/services/application/pipeline/pipeline.executor.node-handlers.ts` (`NODE_HANDLER_REGISTRY`).
 
-Реализованы и готовы в текущем executor MVP:
+Реализованы в текущем executor MVP (эксплуатационный статус см. примечания ниже):
 - [x] Trigger
 - [x] DatasetInput
 - [x] ManualInput
@@ -39,6 +39,10 @@ Out-of-scope для стартовой итерации исполнения (с
 - [x] Filter
 - [x] Ranker
 - [x] SaveResult
+
+Ограничение/требует фикса (на 2026-04-18):
+- `LLMCall` реализован в runtime, но в изолированном `ManualInput -> LLMCall` и в realistic e2e регулярно падает с `OPENROUTER_UPSTREAM_ERROR` (HTTP 503).
+- До исправления устойчивости считать `LLMCall` эксплуатационно нестабильным: требуется retry/backoff и согласованная политика soft-failure для e2e-проверок.
 
 Подтверждение по AgentCall tool-calling:
 - Внутренний bounded loop с реальными вызовами инструментов в AgentCall реализован в `backend/src/services/application/pipeline/pipeline.executor.node-handlers.ts`.
@@ -96,6 +100,7 @@ Out-of-scope для стартовой итерации исполнения (с
 - successors: any
 - note: это нода уровня графа для прямого вызова модели.
 - note: не тождественна инструменту `LLMAnswer` из `./08-rag-toolkit.md`.
+- note: текущий known issue - нестабильность при вызове внешнего провайдера (серия `OPENROUTER_UPSTREAM_ERROR`/503 в e2e); требует отдельного фикса устойчивости.
 
 6. AgentCall
 - purpose: запуск агентного runtime внутри одной ноды

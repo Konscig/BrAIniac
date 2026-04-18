@@ -145,9 +145,13 @@
 - Retrieval-контур до кандидатов (QueryBuilder -> HybridRetriever) реализован.
 - Контур сборки контекста и пост-обработки цитат (ContextAssembler -> CitationFormatter) реализован.
 - Полный end-to-end RAG MVP-контур инструментов завершен, включая `LLMAnswer` как отдельный ToolNode-контракт.
-- Генерация ответа через `LLMCall` остается поддерживаемым альтернативным runtime-путем.
+- Генерация ответа через `LLMCall` остается поддерживаемым runtime-путем на уровне кода, но на 2026-04-18 зафиксирована эксплуатационная нестабильность в e2e (ошибки `OPENROUTER_UPSTREAM_ERROR`/503).
 - Для AgentCall подтвержден автономный внутренний tool-calling путь (без отдельной цепочки ToolNode в графе) через e2e сценарий `ManualInput -> AgentCall`.
 - Команда проверки: `npm --prefix backend run test:agent:e2e`.
+
+Known issue (требует фикса):
+- `LLMCall` в изолированном и realistic e2e может завершаться `failed` из-за upstream-ошибок провайдера (`OPENROUTER_UPSTREAM_ERROR`, status 503).
+- Нужен отдельный фикс устойчивости: retry/backoff в runtime-обработчике `LLMCall` и выравнивание soft-failure политики в e2e.
 
 ### MVP Runtime Ноды (RAG-связанный срез)
 - [x] ManualInput
@@ -217,7 +221,7 @@
 Практическое правило:
 - `LLMAnswer` может исполняться через ToolNode или как внутренний tool-call внутри AgentCall.
 - `LLMCall` используется, когда нужен прямой шаг вызова модели без инструментальной оркестрации.
-- Для MVP первого RAG-агента рекомендованный путь генерации: `LLMCall`.
+- До исправления known issue по устойчивости `LLMCall` рекомендованный путь генерации для e2e-проверок: `AgentCall` с внутренним tool-calling или `LLMAnswer` через ToolNode.
 - Исполнение `LLMAnswer` через ToolNode с chat-kind не является обязательной частью MVP-baseline.
 - Эти варианты эквивалентны по цели, но различаются по уровню архитектуры и контролю исполнения.
 
