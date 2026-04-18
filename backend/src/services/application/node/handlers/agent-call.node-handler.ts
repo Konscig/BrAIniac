@@ -1,0 +1,292 @@
+import { HttpError } from '../../../../common/http-error.js';
+import { getOpenRouterAdapter } from '../../../core/openrouter/openrouter.adapter.js';
+import type { NodeHandler } from '../../pipeline/pipeline.executor.types.js';
+import { buildPrompt, readBoundedInteger, tryParseJsonFromText } from '../../pipeline/pipeline.executor.utils.js';
+import {
+  type AgentDirective,
+  executeResolvedToolBinding,
+  extractAgentArtifactAnswer,
+  getHttpErrorCode,
+  getHttpErrorStatus,
+  isSoftOpenRouterError,
+  mergeInputJson,
+  normalizeToolLookupKey,
+  parseAgentDirective,
+  resolveAgentChatModel,
+  resolveAgentToolBindings,
+  resolveNodeSectionConfig,
+  stringifyForAgent,
+  summarizeAgentToolOutput,
+} from './node-handler.shared.js';
+
+export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context) => {
+  const adapter = getOpenRouterAdapter();
+  const prompt = buildPrompt(inputs, context.input_json).trim();
+  if (!prompt) {
+    throw new HttpError(400, {
+      code: 'EXECUTOR_AGENTCALL_INPUT_REQUIRED',
+      error: 'agent call requires non-empty input context',
+    });
+  }
+
+  const agentConfig = resolveNodeSectionConfig(runtime, 'agent');
+  const llmConfig = resolveNodeSectionConfig(runtime, 'llm');
+
+  const maxToolCalls = readBoundedInteger(agentConfig.maxToolCalls, 3, 1, 8);
+  const maxAttempts = readBoundedInteger(agentConfig.maxAttempts, 1, 1, 5);
+  const agentModel = resolveAgentChatModel(runtime);
+  const temperatureRaw = Number(agentConfig.temperature ?? llmConfig.temperature);
+  const maxTokensRaw = Number(agentConfig.maxTokens ?? llmConfig.maxTokens);
+  const configuredSystemPrompt = agentConfig.systemPrompt;
+  const baseSystemPrompt =
+    typeof configuredSystemPrompt === 'string' && configuredSystemPrompt.trim().length > 0
+      ? configuredSystemPrompt
+      : 'You are AgentCall runtime in a pipeline graph. Return concise, actionable output. Use JSON when structure is useful.';
+
+  const toolResolution = await resolveAgentToolBindings(runtime);
+  const availableTools = toolResolution.advertised;
+  const toolText =
+    availableTools.length > 0
+      ? `Available tools:\n${availableTools
+          .map((tool, index) => `${index + 1}. ${tool.name}${tool.desc ? ` - ${tool.desc}` : ''}`)
+          .join('\n')}`
+      : 'Available tools: none';
+
+  const unresolvedToolText =
+    toolResolution.unresolvedTools.length > 0
+      ? `\nUnresolved tools (not callable): ${toolResolution.unresolvedTools.join(', ')}`
+      : '';
+
+  const toolProtocol = [
+    'Tool protocol:',
+    '1) To call a tool, respond with ONLY JSON:',
+    '{"type":"tool_call","tool_name":"<name>","input":{...}}',
+    '2) To finish, respond with ONLY JSON:',
+    '{"type":"final","text":"<answer>"}',
+    '3) One JSON object per response. No markdown wrappers.',
+  ].join('\n');
+
+  const systemPrompt = `${baseSystemPrompt}\n\n${toolProtocol}`;
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    {
+      role: 'system',
+      content: systemPrompt,
+    },
+    {
+      role: 'user',
+      content: `${toolText}${unresolvedToolText}\n\nTask:\n${prompt}`,
+    },
+  ];
+
+  let attemptsUsed = 0;
+  let llmTurns = 0;
+  let toolCallsExecuted = 0;
+  let finalText = '';
+  let finalModel = agentModel ?? '';
+  let finalUsage: Record<string, any> | undefined;
+  let providerSoftFailure = false;
+  let plannerFallbackUsed = false;
+  const toolCallTrace: Array<Record<string, any>> = [];
+
+  const workingInputs = [...inputs];
+  let workingInputJson: any = context.input_json;
+  const attemptedToolKeys = new Set<string>();
+
+  const runToolCall = async (requestedToolName: string, inputPatch: Record<string, any>, source: 'model' | 'fallback') => {
+    const requestedKey = normalizeToolLookupKey(requestedToolName);
+    const resolvedBinding = toolResolution.byKey.get(requestedKey);
+
+    toolCallsExecuted += 1;
+
+    if (!resolvedBinding) {
+      toolCallTrace.push({
+        index: toolCallsExecuted,
+        requested_tool: requestedToolName,
+        source,
+        status: 'not_found',
+      });
+
+      messages.push({
+        role: 'user',
+        content: `Tool result:\n${stringifyForAgent({
+          status: 'not_found',
+          requested_tool: requestedToolName,
+        })}`,
+      });
+      return;
+    }
+
+    const resolvedKey = normalizeToolLookupKey(resolvedBinding.name);
+    attemptedToolKeys.add(resolvedKey);
+    attemptedToolKeys.add(requestedKey);
+
+    workingInputJson = mergeInputJson(workingInputJson, inputPatch);
+    const toolContext = {
+      dataset: context.dataset,
+      input_json: workingInputJson,
+    };
+
+    try {
+      const toolResult = await executeResolvedToolBinding(runtime, resolvedBinding, workingInputs, toolContext, {
+        nodeId: runtime.node.node_id,
+        topK: runtime.node.top_k,
+      });
+
+      workingInputs.push(toolResult.output);
+      toolCallTrace.push({
+        index: toolCallsExecuted,
+        requested_tool: requestedToolName,
+        resolved_tool: resolvedBinding.name,
+        source,
+        status: 'completed',
+        output: summarizeAgentToolOutput(toolResult.output),
+      });
+
+      messages.push({
+        role: 'user',
+        content: `Tool result:\n${stringifyForAgent({
+          status: 'completed',
+          tool_name: resolvedBinding.name,
+          output: summarizeAgentToolOutput(toolResult.output),
+        })}`,
+      });
+    } catch (error) {
+      const errorCode = getHttpErrorCode(error);
+      const errorStatus = getHttpErrorStatus(error);
+      const errorMessage = error instanceof Error ? error.message : 'tool call failed';
+
+      toolCallTrace.push({
+        index: toolCallsExecuted,
+        requested_tool: requestedToolName,
+        resolved_tool: resolvedBinding.name,
+        source,
+        status: 'failed',
+        error: {
+          ...(errorCode ? { code: errorCode } : {}),
+          ...(errorStatus ? { status: errorStatus } : {}),
+          message: errorMessage,
+        },
+      });
+
+      messages.push({
+        role: 'user',
+        content: `Tool result:\n${stringifyForAgent({
+          status: 'failed',
+          tool_name: resolvedBinding.name,
+          error: {
+            ...(errorCode ? { code: errorCode } : {}),
+            ...(errorStatus ? { status: errorStatus } : {}),
+            message: errorMessage,
+          },
+        })}`,
+      });
+    }
+  };
+
+  while (llmTurns < maxToolCalls + 1) {
+    llmTurns += 1;
+
+    let completionText = '';
+    let completionError: unknown;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      attemptsUsed += 1;
+      try {
+        const completion = await adapter.chatCompletion({
+          ...(agentModel ? { model: agentModel } : {}),
+          messages,
+          ...(Number.isFinite(temperatureRaw) ? { temperature: temperatureRaw } : {}),
+          ...(Number.isInteger(maxTokensRaw) && maxTokensRaw > 0 ? { maxTokens: maxTokensRaw } : {}),
+        });
+
+        finalModel = completion.model;
+        finalUsage = completion.usage;
+        completionText = completion.text.trim();
+        if (completionText.length > 0) break;
+      } catch (error) {
+        completionError = error;
+        const openRouterCode = getHttpErrorCode(error);
+        const isOpenRouterError = typeof openRouterCode === 'string' && openRouterCode.startsWith('OPENROUTER_');
+        if (!isSoftOpenRouterError(error) && !isOpenRouterError) {
+          throw error;
+        }
+        providerSoftFailure = true;
+        break;
+      }
+    }
+
+    if (completionText.length > 0) {
+      messages.push({
+        role: 'assistant',
+        content: completionText,
+      });
+    }
+
+    const hasToolBudget = toolCallsExecuted < maxToolCalls;
+    const directive: AgentDirective = completionText ? parseAgentDirective(completionText) : { kind: 'none', raw: null };
+
+    if (directive.kind === 'tool_call' && hasToolBudget) {
+      await runToolCall(directive.toolName, directive.input, 'model');
+      continue;
+    }
+
+    if (directive.kind === 'final' && directive.text.trim().length > 0) {
+      finalText = directive.text.trim();
+      break;
+    }
+
+    if (hasToolBudget) {
+      const fallbackTool = toolResolution.orderedBindings.find((entry) => !attemptedToolKeys.has(entry.key));
+      if (fallbackTool) {
+        plannerFallbackUsed = true;
+        await runToolCall(fallbackTool.binding.name, {}, 'fallback');
+        continue;
+      }
+    }
+
+    const fallbackAnswer = extractAgentArtifactAnswer(workingInputs);
+    if (fallbackAnswer) {
+      finalText = fallbackAnswer;
+      break;
+    }
+
+    if (completionText.length > 0) {
+      finalText = completionText;
+      break;
+    }
+
+    if (completionError && isSoftOpenRouterError(completionError)) {
+      providerSoftFailure = true;
+    }
+
+    break;
+  }
+
+  if (!finalText) {
+    finalText = extractAgentArtifactAnswer(workingInputs) ?? 'AgentCall completed with empty answer.';
+  }
+
+  const structuredOutput = tryParseJsonFromText(finalText);
+
+  return {
+    output: {
+      kind: 'agent_call',
+      provider: 'openrouter',
+      model: finalModel,
+      text: finalText,
+      usage: finalUsage ?? null,
+      attempts_used: attemptsUsed,
+      llm_turns: llmTurns,
+      max_attempts: maxAttempts,
+      max_tool_calls: maxToolCalls,
+      tool_calls_executed: toolCallsExecuted,
+      tool_call_trace: toolCallTrace,
+      provider_soft_failure: providerSoftFailure,
+      planner_fallback_used: plannerFallbackUsed,
+      ...(availableTools.length > 0 ? { available_tools: availableTools } : {}),
+      ...(toolResolution.unresolvedTools.length > 0 ? { unresolved_tools: toolResolution.unresolvedTools } : {}),
+      ...(structuredOutput !== null ? { structured_output: structuredOutput } : {}),
+    },
+    costUnits: Math.max(1, attemptsUsed + toolCallsExecuted),
+  };
+};

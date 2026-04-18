@@ -42,7 +42,7 @@ function unwrapPayload(value: unknown): unknown {
   if (!value || typeof value !== 'object') return value;
 
   const record = value as Record<string, unknown>;
-  const nestedKeys = ['value', 'data', 'payload', 'output'];
+  const nestedKeys = ['value', 'data', 'payload', 'output', 'contract_output'];
   for (const key of nestedKeys) {
     if (!(key in record)) continue;
 

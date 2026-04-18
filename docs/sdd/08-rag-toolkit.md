@@ -127,7 +127,7 @@
 - LLMAnswer
 - CitationFormatter
 
-## Статус Реализации (На 2026-04-17)
+## Статус Реализации (На 2026-04-18)
 
 ### MVP RAG
 - [x] DocumentLoader
@@ -146,6 +146,31 @@
 - Контур сборки контекста и пост-обработки цитат (ContextAssembler -> CitationFormatter) реализован.
 - Полный end-to-end RAG MVP-контур инструментов завершен, включая `LLMAnswer` как отдельный ToolNode-контракт.
 - Генерация ответа через `LLMCall` остается поддерживаемым альтернативным runtime-путем.
+- Для AgentCall подтвержден автономный внутренний tool-calling путь (без отдельной цепочки ToolNode в графе) через e2e сценарий `ManualInput -> AgentCall`.
+- Команда проверки: `npm --prefix backend run test:agent:e2e`.
+
+### MVP Runtime Ноды (RAG-связанный срез)
+- [x] ManualInput
+- [x] DatasetInput
+- [x] PromptBuilder
+- [x] ToolNode
+- [x] LLMCall
+- [x] AgentCall
+- [x] Parser
+- [x] Filter
+- [x] Ranker
+- [x] SaveResult
+
+Ноды из общего каталога, которые пока не готовы в текущем executor MVP:
+- [ ] Branch
+- [ ] Merge
+- [ ] RetryGate
+- [ ] LoopGate
+- [ ] Notify
+- [ ] Export
+
+Примечание:
+- Полный статус нод и источник проверки по runtime-dispatcher см. `./07-mvp-node-catalog.md`.
 
 ## Что Добавлять После MVP
 - [ ] TextNormalizer

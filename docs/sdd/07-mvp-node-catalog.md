@@ -23,6 +23,35 @@ Out-of-scope для стартовой итерации исполнения (с
 
 Принцип: стартовый baseline должен быть минимально достаточным для RAG-контура без перегруженной архитектуры и без неиспользуемых абстракций.
 
+## Статус Реализации Executor (На 2026-04-18)
+
+Источник проверки: `backend/src/services/application/pipeline/pipeline.executor.node-handlers.ts` (`NODE_HANDLER_REGISTRY`).
+
+Реализованы и готовы в текущем executor MVP:
+- [x] Trigger
+- [x] DatasetInput
+- [x] ManualInput
+- [x] PromptBuilder
+- [x] ToolNode
+- [x] LLMCall
+- [x] AgentCall
+- [x] Parser
+- [x] Filter
+- [x] Ranker
+- [x] SaveResult
+
+Подтверждение по AgentCall tool-calling:
+- Внутренний bounded loop с реальными вызовами инструментов в AgentCall реализован в `backend/src/services/application/pipeline/pipeline.executor.node-handlers.ts`.
+- Автономная проверка сценария `ManualInput -> AgentCall` зафиксирована отдельным e2e-скриптом: `npm --prefix backend run test:agent:e2e`.
+
+Определены в каталоге, но пока без handler (возвращается `kind: not_implemented`):
+- [ ] Branch
+- [ ] Merge
+- [ ] RetryGate
+- [ ] LoopGate
+- [ ] Notify
+- [ ] Export
+
 ## Граница Документа (Важно)
 - Этот каталог описывает ноды графа исполнения (runtime/orchestration слой).
 - Каталог инструментов (capabilities) описан отдельно в `./08-rag-toolkit.md`.
@@ -76,6 +105,7 @@ Out-of-scope для стартовой итерации исполнения (с
 - predecessors: any
 - successors: any
 - note: AgentCall отвечает за оркестрацию стратегии, а не за каталогизацию инструментов.
+- note: поддержан внутренний tool-calling protocol (`tool_call` / `final`) и fallback planner при soft-сбоях внешнего LLM-провайдера.
 
 7. Parser
 - purpose: парсинг, нормализация и структурирование результата

@@ -34,6 +34,10 @@ Prisma / миграции
 Интеграционные тесты
 
 - `npm run test:integration` — выполнит `backend/scripts/integration-test.mjs`, который пробегает по хэппи-патам основного API (создание user/project/agent/dataset/document/tool/metric/export/refresh-token, затем часть CRUD и негативный кейс).
+- `npm run test:rag` (или `npm run test:rag:smoke`) — быстрый smoke для RAG-сценария (1 вопрос, мягкий режим для внешнего LLM-провайдера).
+- `npm run test:rag:e2e` (или `npm run test:rag:e2e:full`) — полный длительный RAG e2e (4 вопроса, полный пайплайн инструментов), запускать отдельно когда нужен полный прогон.
+- `npm run test:rag:e2e:realistic` — RAG e2e в realistic-профиле: без подмешивания `chunks/vectors/candidates/context_bundle/answer` в `input_json` (промежуточные данные собираются цепочкой ToolNode во время исполнения).
+- `npm run test:agent:e2e` — автономный AgentCall e2e (граф `ManualInput -> AgentCall`): проверяет внутренний tool-calling loop внутри AgentCall, включая трассу выполненных tool-calls.
 
 Примеры команд (PowerShell)
 

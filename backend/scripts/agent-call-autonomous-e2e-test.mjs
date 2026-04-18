@@ -1,0 +1,463 @@
+const envBaseUrl = process.env.BASE_URL;
+const requestTimeoutMs = Number(process.env.AGENT_E2E_HTTP_TIMEOUT_MS || 30000);
+const forceHealthExecutor = process.env.AGENT_E2E_FORCE_HEALTH_EXECUTOR !== '0';
+const strictOpenRouter = process.env.AGENT_E2E_STRICT_OPENROUTER === '1';
+const headers = { 'Content-Type': 'application/json' };
+
+const autonomousAgentTools = [
+  'DocumentLoader',
+  'Chunker',
+  'Embedder',
+  'VectorUpsert',
+  'QueryBuilder',
+  'HybridRetriever',
+  'ContextAssembler',
+  'LLMAnswer',
+];
+
+const seedDocuments = [
+  {
+    document_id: 'doc_artemis_overview',
+    uri: 'https://www.nasa.gov/humans-in-space/artemis/',
+    text:
+      'NASA Artemis is a long-term lunar exploration program. Artemis II is planned as the first crewed Orion mission around the Moon and validates systems before future landing campaigns.',
+  },
+  {
+    document_id: 'doc_space_risks',
+    uri: 'https://www.nasa.gov/humans-in-space/',
+    text:
+      'Long-duration lunar missions face radiation exposure, logistics constraints, communication delays and crew stress. Mitigation includes shielding, redundancy and mission rehearsal.',
+  },
+  {
+    document_id: 'doc_training',
+    uri: 'https://www.nasa.gov/missions/artemis/artemis-ii/',
+    text:
+      'Artemis II crew training includes autonomy drills, emergency simulations and cross-disciplinary operations in constrained conditions.',
+  },
+];
+
+function isOk(status) {
+  return status >= 200 && status < 300;
+}
+
+function normalizeText(raw) {
+  return String(raw ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function excerpt(raw, max = 220) {
+  const text = normalizeText(raw);
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 3)}...`;
+}
+
+function trimName(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function toNodeOutput(node) {
+  return node?.output_json?.data ?? node?.output_json ?? null;
+}
+
+function fail(msg, details) {
+  console.error('[agent-e2e] FAIL:', msg);
+  if (details !== undefined) {
+    console.error(typeof details === 'string' ? details : JSON.stringify(details, null, 2));
+  }
+  process.exit(2);
+}
+
+async function req(base, path, opts = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+
+  try {
+    const response = await fetch(base + path, { ...opts, signal: controller.signal });
+    const text = await response.text();
+    let body = text;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+
+    return { status: response.status, body };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`request timeout after ${requestTimeoutMs}ms: ${path}`);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function mustOk(label, response) {
+  if (!isOk(response.status)) {
+    throw new Error(`${label} failed: ${response.status} ${JSON.stringify(response.body)}`);
+  }
+  return response.body;
+}
+
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function resolveBaseUrl() {
+  if (envBaseUrl) {
+    const health = await req(envBaseUrl, '/health', { method: 'GET' });
+    if (!isOk(health.status)) {
+      throw new Error(`BASE_URL is set but unhealthy: ${envBaseUrl}, status=${health.status}`);
+    }
+    return envBaseUrl;
+  }
+
+  const candidates = ['http://localhost:3000', 'http://localhost:8080', 'http://localhost:3010'];
+  for (const candidate of candidates) {
+    try {
+      const health = await req(candidate, '/health', { method: 'GET' });
+      if (isOk(health.status)) return candidate;
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  throw new Error('could not resolve BASE_URL automatically; set BASE_URL env var');
+}
+
+async function createAuth(base) {
+  const suffix = Date.now();
+  const email = `agent-autonomous-e2e-${suffix}@local`;
+  const password = 'pwd';
+
+  let response = await req(base, '/auth/signup', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ email, password }),
+  });
+  mustOk('signup', response);
+
+  response = await req(base, '/auth/login', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ email, password }),
+  });
+  const login = mustOk('login', response);
+
+  return {
+    email,
+    authHeaders: {
+      ...headers,
+      Authorization: `Bearer ${login.accessToken}`,
+    },
+  };
+}
+
+async function ensureAgentTools(base, authHeaders) {
+  const response = await req(base, '/tools', { method: 'GET', headers: authHeaders });
+  const tools = mustOk('list tools', response);
+
+  const byName = new Map(tools.map((tool) => [trimName(tool.name), tool]));
+  for (const toolName of autonomousAgentTools) {
+    const tool = byName.get(toolName);
+    if (!tool) {
+      throw new Error(`required tool missing: ${toolName}`);
+    }
+
+    if (!forceHealthExecutor) continue;
+
+    const currentConfig = tool.config_json && typeof tool.config_json === 'object' ? tool.config_json : {};
+    const mergedConfig = {
+      ...currentConfig,
+      executor: {
+        ...(currentConfig.executor && typeof currentConfig.executor === 'object' ? currentConfig.executor : {}),
+        kind: 'http-json',
+        method: 'GET',
+        url: `${base}/health`,
+      },
+    };
+
+    const updateResponse = await req(base, `/tools/${tool.tool_id}`, {
+      method: 'PUT',
+      headers: authHeaders,
+      body: JSON.stringify({ config_json: mergedConfig }),
+    });
+    mustOk(`update tool ${toolName}`, updateResponse);
+  }
+
+  return byName;
+}
+
+async function createProjectPipelineDataset(base, authHeaders) {
+  const suffix = Date.now();
+
+  let response = await req(base, '/projects', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ name: `agent-autonomous-project-${suffix}` }),
+  });
+  const project = mustOk('create project', response);
+
+  response = await req(base, '/pipelines', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_project_id: project.project_id,
+      name: `agent-autonomous-pipeline-${suffix}`,
+      max_time: 300,
+      max_cost: 500,
+      max_reject: 0.2,
+      report_json: {},
+    }),
+  });
+  const pipeline = mustOk('create pipeline', response);
+
+  response = await req(base, '/datasets', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      fk_pipeline_id: pipeline.pipeline_id,
+      uri: `memory://agent-autonomous-dataset-${suffix}`,
+      desc: 'Dataset for autonomous AgentCall internal tool-calling e2e',
+    }),
+  });
+  const dataset = mustOk('create dataset', response);
+
+  return { project, pipeline, dataset };
+}
+
+async function resolveNodeTypes(base, authHeaders) {
+  const response = await req(base, '/node-types?fk_tool_id=3', { method: 'GET', headers: authHeaders });
+  const nodeTypes = mustOk('list node types', response);
+  const byName = new Map(nodeTypes.map((row) => [trimName(row.name), row]));
+
+  const required = ['ManualInput', 'AgentCall'];
+  for (const name of required) {
+    if (!byName.get(name)) {
+      throw new Error(`required node type missing: ${name}`);
+    }
+  }
+
+  return byName;
+}
+
+async function createGraph(base, authHeaders, pipelineId, nodeTypesByName) {
+  async function createNode(payload) {
+    const response = await req(base, '/nodes', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify(payload),
+    });
+    return mustOk('create node', response);
+  }
+
+  async function createEdge(fromNodeId, toNodeId) {
+    const response = await req(base, '/edges', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ fk_from_node: fromNodeId, fk_to_node: toNodeId }),
+    });
+    return mustOk('create edge', response);
+  }
+
+  const manualType = nodeTypesByName.get('ManualInput');
+  const agentType = nodeTypesByName.get('AgentCall');
+
+  const nManual = await createNode({
+    fk_pipeline_id: pipelineId,
+    fk_type_id: manualType.type_id,
+    top_k: 1,
+    ui_json: { x: 120, y: 180, label: 'ManualInput' },
+  });
+
+  const nAgent = await createNode({
+    fk_pipeline_id: pipelineId,
+    fk_type_id: agentType.type_id,
+    top_k: 1,
+    ui_json: {
+      x: 420,
+      y: 180,
+      label: 'AgentCall',
+      tools: autonomousAgentTools.map((name) => ({ name, desc: `Autonomous agent tool ${name}` })),
+      agent: {
+        maxToolCalls: 8,
+        maxAttempts: 1,
+      },
+    },
+  });
+
+  await createEdge(nManual.node_id, nAgent.node_id);
+
+  return {
+    ManualInput: nManual.node_id,
+    AgentCall: nAgent.node_id,
+  };
+}
+
+async function executeAutonomousRun(base, authHeaders, pipelineId, datasetId) {
+  const question = 'What is the main purpose of Artemis II before future lunar landing missions?';
+
+  const startResponse = await req(base, `/pipelines/${pipelineId}/execute`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      dataset_id: datasetId,
+      input_json: {
+        locale: 'en',
+        question,
+        user_query: question,
+        retrieval_query: question,
+        instruction: 'Answer briefly and stay grounded in the provided context.',
+        uris: seedDocuments.map((doc) => doc.uri),
+        documents: seedDocuments.map((doc) => ({ document_id: doc.document_id, text: doc.text })),
+        prompt_template: 'Ground answer for query {{query}} using context below.\n\n{{context}}',
+        max_context_tokens: 320,
+        top_k: 6,
+        mode: 'hybrid',
+        alpha: 0.5,
+        model: 'openai/gpt-oss-120b:free',
+        temperature: 0.2,
+        max_output_tokens: 220,
+      },
+    }),
+  });
+  const started = mustOk('start execution', startResponse);
+
+  let snapshot = null;
+  for (let poll = 0; poll < 150; poll += 1) {
+    const statusResponse = await req(base, `/pipelines/${pipelineId}/executions/${started.execution_id}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+    snapshot = mustOk('poll execution', statusResponse);
+    if (snapshot.status === 'succeeded' || snapshot.status === 'failed') break;
+    await sleep(1000);
+  }
+
+  return {
+    execution_id: started.execution_id,
+    status: snapshot?.status ?? 'unknown',
+  };
+}
+
+async function run() {
+  console.log('[agent-e2e] starting...');
+
+  const base = await resolveBaseUrl();
+  console.log(`[agent-e2e] base url: ${base}`);
+
+  const auth = await createAuth(base);
+  console.log(`[agent-e2e] auth created for ${auth.email}`);
+
+  const toolsByName = await ensureAgentTools(base, auth.authHeaders);
+  console.log(
+    `[agent-e2e] tools prepared (${autonomousAgentTools.join(', ')})` +
+      (forceHealthExecutor ? ' with forced /health executor' : ' with original executors'),
+  );
+
+  const { project, pipeline, dataset } = await createProjectPipelineDataset(base, auth.authHeaders);
+  console.log(`[agent-e2e] project=${project.project_id}, pipeline=${pipeline.pipeline_id}, dataset=${dataset.dataset_id}`);
+
+  const nodeTypesByName = await resolveNodeTypes(base, auth.authHeaders);
+  const nodeIdByLabel = await createGraph(base, auth.authHeaders, pipeline.pipeline_id, nodeTypesByName);
+  console.log('[agent-e2e] graph created (ManualInput -> AgentCall)');
+
+  const execution = await executeAutonomousRun(base, auth.authHeaders, pipeline.pipeline_id, dataset.dataset_id);
+  console.log(`[agent-e2e] execution_id=${execution.execution_id}, status=${execution.status}`);
+
+  const nodesResponse = await req(base, `/nodes?fk_pipeline_id=${pipeline.pipeline_id}`, {
+    method: 'GET',
+    headers: auth.authHeaders,
+  });
+  const nodes = mustOk('list nodes', nodesResponse);
+  const nodeById = new Map(nodes.map((row) => [row.node_id, row]));
+
+  const pipelineResponse = await req(base, `/pipelines/${pipeline.pipeline_id}`, {
+    method: 'GET',
+    headers: auth.authHeaders,
+  });
+  const pipelineBody = mustOk('get pipeline', pipelineResponse);
+  const reportNodes = Array.isArray(pipelineBody?.report_json?.nodes) ? pipelineBody.report_json.nodes : [];
+  const reportById = new Map(reportNodes.map((row) => [row.node_id, row]));
+
+  const manualStatus = reportById.get(nodeIdByLabel.ManualInput)?.status ?? 'unknown';
+  const agentStatus = reportById.get(nodeIdByLabel.AgentCall)?.status ?? 'unknown';
+
+  if (manualStatus !== 'completed') {
+    fail('ManualInput is not completed', reportById.get(nodeIdByLabel.ManualInput) ?? null);
+  }
+  if (agentStatus !== 'completed') {
+    fail('AgentCall is not completed', reportById.get(nodeIdByLabel.AgentCall) ?? null);
+  }
+
+  const agentOutput = toNodeOutput(nodeById.get(nodeIdByLabel.AgentCall));
+  if (!agentOutput || typeof agentOutput !== 'object') {
+    fail('AgentCall output is empty', agentOutput);
+  }
+
+  const toolCallsExecuted = Number(agentOutput.tool_calls_executed ?? 0);
+  const toolTrace = Array.isArray(agentOutput.tool_call_trace) ? agentOutput.tool_call_trace : [];
+  const completedToolCalls = toolTrace.filter((row) => row && row.status === 'completed');
+
+  if (toolCallsExecuted <= 0) {
+    fail('AgentCall did not execute any internal tool calls', agentOutput);
+  }
+  if (completedToolCalls.length <= 0) {
+    fail('AgentCall has no completed tool calls in trace', toolTrace);
+  }
+
+  const providerSoftFailure = Boolean(agentOutput.provider_soft_failure);
+  if (providerSoftFailure && strictOpenRouter) {
+    fail('strict mode enabled and OpenRouter soft failure occurred', agentOutput);
+  }
+
+  const finalText = normalizeText(agentOutput.text);
+  if (!finalText) {
+    fail('AgentCall final text is empty', agentOutput);
+  }
+
+  console.log(`[agent-e2e] final text excerpt: ${excerpt(finalText, 260)}`);
+  console.log(
+    `[agent-e2e] tool calls: executed=${toolCallsExecuted}, completed=${completedToolCalls.length}, soft_openrouter_failure=${providerSoftFailure}`,
+  );
+
+  console.log('[agent-e2e] summary');
+  console.log(
+    JSON.stringify(
+      {
+        base,
+        strict_openrouter: strictOpenRouter,
+        force_health_executor: forceHealthExecutor,
+        project_id: project.project_id,
+        pipeline_id: pipeline.pipeline_id,
+        dataset_id: dataset.dataset_id,
+        node_ids: nodeIdByLabel,
+        tools_advertised: autonomousAgentTools,
+        tools_resolved: autonomousAgentTools.filter((name) => toolsByName.has(name)),
+        execution_id: execution.execution_id,
+        execution_status: execution.status,
+        agent_tool_calls_executed: toolCallsExecuted,
+        agent_completed_tool_calls: completedToolCalls.length,
+        provider_soft_failure: providerSoftFailure,
+      },
+      null,
+      2,
+    ),
+  );
+
+  console.log('[agent-e2e] SUCCESS');
+}
+
+run().catch((error) => {
+  fail(
+    'unexpected error',
+    error instanceof Error
+      ? {
+          message: error.message,
+          stack: error.stack,
+        }
+      : String(error),
+  );
+});
