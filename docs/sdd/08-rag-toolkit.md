@@ -144,14 +144,36 @@
 - Индексация (DocumentLoader -> Chunker -> Embedder -> VectorUpsert) реализована.
 - Retrieval-контур до кандидатов (QueryBuilder -> HybridRetriever) реализован.
 - Контур сборки контекста и пост-обработки цитат (ContextAssembler -> CitationFormatter) реализован.
-- Полный end-to-end RAG MVP-контур инструментов завершен, включая `LLMAnswer` как отдельный ToolNode-контракт.
-- Генерация ответа через `LLMCall` остается поддерживаемым runtime-путем на уровне кода, но на 2026-04-18 зафиксирована эксплуатационная нестабильность в e2e (ошибки `OPENROUTER_UPSTREAM_ERROR`/503).
+- Контур контрактов инструментов завершен (contract-mode), включая `LLMAnswer` как ToolNode-контракт.
+- Генерация ответа через `LLMCall` остается поддерживаемым runtime-путем на уровне кода, но эксплуатационно нестабильна в e2e из-за OpenRouter upstream/rate-limit ошибок (`OPENROUTER_UPSTREAM_ERROR`).
 - Для AgentCall подтвержден автономный внутренний tool-calling путь (без отдельной цепочки ToolNode в графе) через e2e сценарий `ManualInput -> AgentCall`.
 - Команда проверки: `npm --prefix backend run test:agent:e2e`.
 
 Known issue (требует фикса):
-- `LLMCall` в изолированном и realistic e2e может завершаться `failed` из-за upstream-ошибок провайдера (`OPENROUTER_UPSTREAM_ERROR`, status 503).
+- `LLMCall` в изолированном и realistic e2e может завершаться `failed` из-за upstream-ошибок провайдера (`OPENROUTER_UPSTREAM_ERROR`, status 429/503).
 - Нужен отдельный фикс устойчивости: retry/backoff в runtime-обработчике `LLMCall` и выравнивание soft-failure политики в e2e.
+
+## Аудит Эксплуатационной Готовности Инструментов (На 2026-04-18)
+
+Статусы:
+- Contract-ready: контракт и схема вход/выход реализованы и исполняются в ToolNode.
+- Integration-ready: подтверждена реальная внешняя интеграция (не только contract-mode).
+
+MVP-инструменты (фактический статус):
+- DocumentLoader: Contract-ready, Integration-ready: нет (по умолчанию deterministic contract output).
+- Chunker: Contract-ready, Integration-ready: не требуется как локальная трансформация.
+- Embedder: Contract-ready; Integration-ready частично (`openrouter-embeddings` path есть, но по умолчанию seed ставит `http-json`).
+- VectorUpsert: Contract-ready, Integration-ready: нет (реальный upsert во внешний векторный backend не подтвержден по default path).
+- QueryBuilder: Contract-ready, Integration-ready: не требуется как локальная трансформация.
+- HybridRetriever: Contract-ready, Integration-ready: нет (default path формирует детерминированных кандидатов по контрактной логике).
+- ContextAssembler: Contract-ready, Integration-ready: не требуется как локальная трансформация.
+- LLMAnswer: Contract-ready, Integration-ready: нет (в ToolNode-контракте используется deterministic answer path).
+- CitationFormatter: Contract-ready, Integration-ready: не требуется как локальная трансформация.
+
+Критичные расхождения, влияющие на восприятие "готово":
+- По seed-конфигу contract tools используют `http-json` GET на `/health` как default executor, то есть тест может подтвердить orchestration, но не реальную внешнюю бизнес-интеграцию.
+- Для ветки `http-json` большинство контрактов строят `contract_output` детерминированно из нормализованного входа; это корректно для contract-mode, но не эквивалент production-интеграции.
+- `test:rag:e2e` и `test:rag:e2e:realistic` могут завершаться `SUCCESS` при soft OpenRouter failure в non-strict режиме.
 
 ### MVP Runtime Ноды (RAG-связанный срез)
 - [x] ManualInput

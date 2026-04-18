@@ -41,11 +41,36 @@ Out-of-scope для стартовой итерации исполнения (с
 - [x] SaveResult
 
 Ограничение/требует фикса (на 2026-04-18):
-- `LLMCall` реализован в runtime, но в изолированном `ManualInput -> LLMCall` и в realistic e2e регулярно падает с `OPENROUTER_UPSTREAM_ERROR` (HTTP 503).
+- `LLMCall` реализован в runtime, но в изолированном `ManualInput -> LLMCall` и в realistic e2e регулярно падает с `OPENROUTER_UPSTREAM_ERROR` (HTTP 429/503).
 - До исправления устойчивости считать `LLMCall` эксплуатационно нестабильным: требуется retry/backoff и согласованная политика soft-failure для e2e-проверок.
 
+## Результат Аудита Готовности (Код + Фактические Прогоны, На 2026-04-18)
+
+Категории аудита:
+- Реализовано: есть handler и рабочий runtime-path.
+- Частично готово: функциональность есть, но подтверждена только в тестовом/контрактном режиме или с ограничениями.
+- Не готово: handler отсутствует или поведение не подтверждено как рабочее.
+
+Ноды runtime:
+- Trigger: реализовано; базовый source-узел работает.
+- ManualInput: реализовано; передача `input_json` работает.
+- DatasetInput: реализовано; требует валидный dataset.
+- PromptBuilder: реализовано; базовая сборка prompt работает.
+- Filter: реализовано; rule-based фильтрация работает.
+- Ranker: реализовано; эвристическое ранжирование работает.
+- Parser: реализовано; базовый JSON parse path работает.
+- SaveResult: частично готово; формирует `save_result` output и preview, но не выполняет отдельный целевой sink/export-процесс, кроме общего сохранения `output_json` executor-ом.
+- ToolNode: частично готово; универсальный executor-path работает, но фактическое поведение инструмента зависит от executor-конфига и contract-режима.
+- AgentCall: частично готово; internal tool-calling loop реализован и проходит `test:agent:e2e`, но успешность в этом тесте достигается в режиме forced `/health` executor и допускает `provider_soft_failure`.
+- LLMCall: реализовано в коде, но эксплуатационно нестабильно из-за OpenRouter upstream/rate-limit ошибок (изолированные и realistic прогоны показывают регулярный `OPENROUTER_UPSTREAM_ERROR`).
+- Branch / Merge / RetryGate / LoopGate / Notify / Export: не готово, runtime возвращает `kind: not_implemented`.
+
+Зафиксированные расхождения с заявленным функционалом:
+- Успех `agent:e2e` подтверждает внутреннюю оркестрацию AgentCall, но не подтверждает полноценную работу внешних инструментальных интеграций.
+- В текущем MVP AgentCall вызывает инструменты внутри одной ноды (internal tool-calls), а не переключает выполнение графа на отдельные ToolNode-ноды по шагам.
+
 Подтверждение по AgentCall tool-calling:
-- Внутренний bounded loop с реальными вызовами инструментов в AgentCall реализован в `backend/src/services/application/pipeline/pipeline.executor.node-handlers.ts`.
+- Внутренний bounded loop с реальными вызовами инструментов в AgentCall реализован в `backend/src/services/application/node/handlers/agent-call.node-handler.ts`.
 - Автономная проверка сценария `ManualInput -> AgentCall` зафиксирована отдельным e2e-скриптом: `npm --prefix backend run test:agent:e2e`.
 
 Определены в каталоге, но пока без handler (возвращается `kind: not_implemented`):
@@ -100,7 +125,7 @@ Out-of-scope для стартовой итерации исполнения (с
 - successors: any
 - note: это нода уровня графа для прямого вызова модели.
 - note: не тождественна инструменту `LLMAnswer` из `./08-rag-toolkit.md`.
-- note: текущий known issue - нестабильность при вызове внешнего провайдера (серия `OPENROUTER_UPSTREAM_ERROR`/503 в e2e); требует отдельного фикса устойчивости.
+- note: текущий known issue - нестабильность при вызове внешнего провайдера (серия `OPENROUTER_UPSTREAM_ERROR`/429/503 в e2e); требует отдельного фикса устойчивости.
 
 6. AgentCall
 - purpose: запуск агентного runtime внутри одной ноды
