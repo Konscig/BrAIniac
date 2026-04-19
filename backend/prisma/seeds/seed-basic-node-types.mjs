@@ -70,7 +70,7 @@ const CATALOG = [
   {
     name: 'AgentCall',
     desc: 'Run bounded internal agent runtime with tool calls.',
-    config_json: baseProfile('transform', 1, 3, 1, 2, {
+    config_json: baseProfile('transform', 1, 20, 0, 2, {
       agent: {
         enabled: true,
         maxAttempts: 3,

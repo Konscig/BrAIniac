@@ -11,10 +11,10 @@ function resolveDefaultHttpUrl() {
   const rawBase = typeof process.env.BASE_URL === 'string' ? process.env.BASE_URL.trim() : '';
   if (rawBase) {
     const normalized = rawBase.replace(/\/+$/, '');
-    return normalized.endsWith('/health') ? normalized : `${normalized}/health`;
+    return normalized.endsWith('/tool-executor/contracts') ? normalized : `${normalized}/tool-executor/contracts`;
   }
 
-  return 'http://localhost:8080/health';
+  return 'http://localhost:8080/tool-executor/contracts';
 }
 
 const DEFAULT_HTTP_URL = resolveDefaultHttpUrl();
@@ -91,7 +91,7 @@ function buildCatalogConfig(entry) {
     entry.defaultExecutorKind === 'http-json'
       ? {
           kind: 'http-json',
-          method: 'GET',
+          method: 'POST',
           url: DEFAULT_HTTP_URL,
         }
       : {

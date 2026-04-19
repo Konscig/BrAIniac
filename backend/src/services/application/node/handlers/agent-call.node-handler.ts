@@ -19,6 +19,22 @@ import {
   summarizeAgentToolOutput,
 } from './node-handler.shared.js';
 
+function hasPositiveUsageTokens(usage: Record<string, any> | undefined): boolean {
+  if (!usage || typeof usage !== 'object') return false;
+
+  const tokenKeys = ['total_tokens', 'prompt_tokens', 'completion_tokens', 'input_tokens', 'output_tokens'];
+  for (const key of tokenKeys) {
+    const value = Number((usage as Record<string, any>)[key]);
+    if (Number.isFinite(value) && value > 0) return true;
+  }
+
+  return false;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context) => {
   const adapter = getOpenRouterAdapter();
   const prompt = buildPrompt(inputs, context.input_json).trim();
@@ -34,6 +50,7 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
 
   const maxToolCalls = readBoundedInteger(agentConfig.maxToolCalls, 3, 1, 8);
   const maxAttempts = readBoundedInteger(agentConfig.maxAttempts, 1, 1, 5);
+  const softRetryDelayMs = readBoundedInteger(agentConfig.softRetryDelayMs ?? llmConfig.softRetryDelayMs, 1200, 100, 15000);
   const agentModel = resolveAgentChatModel(runtime);
   const temperatureRaw = Number(agentConfig.temperature ?? llmConfig.temperature);
   const maxTokensRaw = Number(agentConfig.maxTokens ?? llmConfig.maxTokens);
@@ -43,7 +60,7 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
       ? configuredSystemPrompt
       : 'You are AgentCall runtime in a pipeline graph. Return concise, actionable output. Use JSON when structure is useful.';
 
-  const toolResolution = await resolveAgentToolBindings(runtime);
+  const toolResolution = await resolveAgentToolBindings(runtime, inputs);
   const availableTools = toolResolution.advertised;
   const toolText =
     availableTools.length > 0
@@ -83,8 +100,13 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   let toolCallsExecuted = 0;
   let finalText = '';
   let finalModel = agentModel ?? '';
+  let finalProviderResponseId = '';
   let finalUsage: Record<string, any> | undefined;
-  let providerSoftFailure = false;
+  let providerCallsAttempted = 0;
+  let providerLastErrorCode = '';
+  let providerLastErrorStatus: number | null = null;
+  let providerSoftFailures = 0;
+  let providerSuccessfulResponses = 0;
   let plannerFallbackUsed = false;
   const toolCallTrace: Array<Record<string, any>> = [];
 
@@ -191,6 +213,7 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       attemptsUsed += 1;
+      providerCallsAttempted += 1;
       try {
         const completion = await adapter.chatCompletion({
           ...(agentModel ? { model: agentModel } : {}),
@@ -200,17 +223,34 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
         });
 
         finalModel = completion.model;
+        finalProviderResponseId = typeof completion.responseId === 'string' ? completion.responseId.trim() : finalProviderResponseId;
         finalUsage = completion.usage;
+        providerSuccessfulResponses += 1;
+        providerLastErrorCode = '';
+        providerLastErrorStatus = null;
         completionText = completion.text.trim();
         if (completionText.length > 0) break;
       } catch (error) {
         completionError = error;
+        providerLastErrorCode = getHttpErrorCode(error) ?? '';
+        providerLastErrorStatus = getHttpErrorStatus(error);
         const openRouterCode = getHttpErrorCode(error);
         const isOpenRouterError = typeof openRouterCode === 'string' && openRouterCode.startsWith('OPENROUTER_');
-        if (!isSoftOpenRouterError(error) && !isOpenRouterError) {
+        const isRecoverableSoftError = isSoftOpenRouterError(error);
+        if (!isRecoverableSoftError && !isOpenRouterError) {
           throw error;
         }
-        providerSoftFailure = true;
+        providerSoftFailures += 1;
+
+        const backoffMs = Math.max(0, Math.min(softRetryDelayMs * attempt, 30_000));
+        if (backoffMs > 0) {
+          await sleep(backoffMs);
+        }
+
+        if (isRecoverableSoftError && attempt < maxAttempts) {
+          continue;
+        }
+
         break;
       }
     }
@@ -255,10 +295,6 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
       break;
     }
 
-    if (completionError && isSoftOpenRouterError(completionError)) {
-      providerSoftFailure = true;
-    }
-
     break;
   }
 
@@ -267,14 +303,26 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   }
 
   const structuredOutput = tryParseJsonFromText(finalText);
+  const providerSoftFailure = providerSoftFailures > 0 && providerSuccessfulResponses === 0;
 
   return {
     output: {
       kind: 'agent_call',
       provider: 'openrouter',
       model: finalModel,
+      provider_response_id: finalProviderResponseId || null,
       text: finalText,
       usage: finalUsage ?? null,
+      provider_usage_complete: hasPositiveUsageTokens(finalUsage),
+      provider_calls_attempted: providerCallsAttempted,
+      provider_soft_failures: providerSoftFailures,
+      provider_last_error:
+        providerLastErrorCode || providerLastErrorStatus
+          ? {
+              ...(providerLastErrorCode ? { code: providerLastErrorCode } : {}),
+              ...(providerLastErrorStatus ? { status: providerLastErrorStatus } : {}),
+            }
+          : null,
       attempts_used: attemptsUsed,
       llm_turns: llmTurns,
       max_attempts: maxAttempts,

@@ -18,6 +18,7 @@ export interface OpenRouterChatRequest {
 export interface OpenRouterChatResult {
   model: string;
   text: string;
+  responseId?: string;
   usage?: Record<string, any>;
   raw?: any;
 }
@@ -221,6 +222,7 @@ export class OpenRouterAdapter {
     return {
       model: typeof payload?.model === 'string' ? payload.model : model,
       text,
+      ...(typeof payload?.id === 'string' && payload.id.trim().length > 0 ? { responseId: payload.id.trim() } : {}),
       usage: payload?.usage,
       raw: payload,
     };

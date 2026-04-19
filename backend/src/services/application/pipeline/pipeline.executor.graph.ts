@@ -56,7 +56,8 @@ export async function executeGraph(
   for (const nodeId of nodeIds) {
     const runtime = runtimeByNodeId.get(nodeId)!;
     const inputMin = getRange(runtime.config, 'input').min;
-    if (inputMin === 0) {
+    const predecessorIds = predecessors.get(nodeId) ?? [];
+    if (inputMin === 0 && predecessorIds.length === 0) {
       enqueue(nodeId);
     }
   }

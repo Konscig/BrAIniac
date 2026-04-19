@@ -14,12 +14,13 @@ import {
 
 const MAX_EMBEDDING_INPUT_ITEMS = readPositiveInteger(process.env.EXECUTOR_EMBEDDING_MAX_INPUTS, 24);
 const MAX_EMBEDDING_TEXT_LENGTH = readPositiveInteger(process.env.EXECUTOR_EMBEDDING_MAX_TEXT_LENGTH, 1_800);
+const ENABLE_LOCAL_SYNTHETIC_CONTRACT_OUTPUT = (process.env.EXECUTOR_ALLOW_LOCAL_CONTRACT_OUTPUT ?? '0').trim() === '1';
 
 export type ResolvedToolBinding = {
   tool_id: number | null;
   name: string;
   config_json: any;
-  source: 'node.tool' | 'node.tool_id' | 'agent.tools';
+  source: 'node.tool' | 'node.tool_id' | 'agent.tools' | 'agent.inputs';
 };
 
 type ResolvedToolExecutorConfig = {
@@ -40,6 +41,7 @@ export type AgentToolBinding = {
   schema?: Record<string, any>;
   tool_id?: number;
   config_json?: Record<string, any>;
+  source?: 'agent.tools' | 'agent.inputs';
 };
 
 export type AgentDirective =
@@ -688,10 +690,96 @@ function listAgentToolBindings(runtime: RuntimeNode): AgentToolBinding[] {
       ...(record.schema && typeof record.schema === 'object' ? { schema: record.schema } : {}),
       ...(toolId ? { tool_id: toolId } : {}),
       ...(configRecord ? { config_json: configRecord } : {}),
+      source: 'agent.tools',
     });
   }
 
   return normalized;
+}
+
+function buildAgentBindingKey(binding: AgentToolBinding): string {
+  if (binding.tool_id && Number.isInteger(binding.tool_id) && binding.tool_id > 0) {
+    return `id:${binding.tool_id}`;
+  }
+
+  const normalizedName = normalizeToolLookupKey(binding.name);
+  if (normalizedName) {
+    return `name:${normalizedName}`;
+  }
+
+  return '';
+}
+
+function listAgentInputToolBindings(inputs: any[]): AgentToolBinding[] {
+  const out: AgentToolBinding[] = [];
+  const seen = new Set<string>();
+
+  for (const source of inputs.slice(0, 80)) {
+    const record = toObjectRecord(source);
+    if (!record) continue;
+
+    const toolRecord = toObjectRecord(record.tool);
+    const kind = typeof record.kind === 'string' ? record.kind.trim().toLowerCase() : '';
+    const looksLikeToolOutput =
+      kind === 'tool_node' ||
+      typeof record.contract_name === 'string' ||
+      typeof record.executor === 'string' ||
+      record.tool_name !== undefined ||
+      record.tool_id !== undefined ||
+      toolRecord !== null;
+
+    if (!looksLikeToolOutput) continue;
+
+    const toolId = coerceOptionalPositiveInt(
+      record.tool_id ?? record.toolId ?? record.fk_tool_id ?? toolRecord?.tool_id ?? toolRecord?.toolId ?? toolRecord?.fk_tool_id,
+    );
+
+    const toolNameRaw =
+      typeof record.tool_name === 'string'
+        ? record.tool_name
+        : typeof record.toolName === 'string'
+        ? record.toolName
+        : typeof toolRecord?.name === 'string'
+        ? toolRecord.name
+        : '';
+
+    const toolName = toolNameRaw.trim();
+    if (!toolName && !toolId) continue;
+
+    const configRecord = toObjectRecord(toolRecord?.config_json ?? toolRecord?.config);
+    const contractName = typeof record.contract_name === 'string' ? record.contract_name.trim() : '';
+
+    const binding: AgentToolBinding = {
+      name: toolName || `tool#${toolId}`,
+      ...(toolId ? { tool_id: toolId } : {}),
+      ...(configRecord ? { config_json: configRecord } : {}),
+      ...(contractName ? { desc: `Edge-derived tool (${contractName})` } : { desc: 'Edge-derived tool binding' }),
+      source: 'agent.inputs',
+    };
+
+    const key = buildAgentBindingKey(binding);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(binding);
+  }
+
+  return out;
+}
+
+function mergeAgentToolBindings(preferred: AgentToolBinding[], fallback: AgentToolBinding[]): AgentToolBinding[] {
+  const out: AgentToolBinding[] = [];
+  const seen = new Set<string>();
+
+  for (const list of [preferred, fallback]) {
+    for (const binding of list) {
+      const key = buildAgentBindingKey(binding);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(binding);
+    }
+  }
+
+  return out;
 }
 
 function listAdvertisedAgentTools(bindings: AgentToolBinding[]): Array<Record<string, any>> {
@@ -1022,10 +1110,12 @@ function buildAgentFallbackSequence(orderedBindings: AgentResolvedToolBinding[])
   return out;
 }
 
-export async function resolveAgentToolBindings(runtime: RuntimeNode): Promise<AgentToolResolution> {
+export async function resolveAgentToolBindings(runtime: RuntimeNode, inputs: any[] = []): Promise<AgentToolResolution> {
+  const edgeBindings = listAgentInputToolBindings(inputs);
   const declaredBindings = listAgentToolBindings(runtime);
-  const advertised = listAdvertisedAgentTools(declaredBindings);
-  if (declaredBindings.length === 0) {
+  const mergedBindings = mergeAgentToolBindings(edgeBindings, declaredBindings);
+  const advertised = listAdvertisedAgentTools(mergedBindings);
+  if (mergedBindings.length === 0) {
     return {
       advertised,
       orderedBindings: [],
@@ -1054,7 +1144,7 @@ export async function resolveAgentToolBindings(runtime: RuntimeNode): Promise<Ag
   const byKey = new Map<string, ResolvedToolBinding>();
   const unresolvedTools: string[] = [];
 
-  for (const declared of declaredBindings) {
+  for (const declared of mergedBindings) {
     const declaredKey = normalizeToolLookupKey(declared.name);
     if (!declaredKey) continue;
 
@@ -1079,7 +1169,7 @@ export async function resolveAgentToolBindings(runtime: RuntimeNode): Promise<Ag
         ...linkedConfig,
         ...declaredConfig,
       },
-      source: 'agent.tools',
+      source: declared.source === 'agent.inputs' ? 'agent.inputs' : 'agent.tools',
     };
 
     const resolved: AgentResolvedToolBinding = {
@@ -1093,8 +1183,14 @@ export async function resolveAgentToolBindings(runtime: RuntimeNode): Promise<Ag
     };
 
     orderedBindings.push(resolved);
-    byKey.set(declaredKey, resolvedBinding);
-    byKey.set(normalizeToolLookupKey(linkedName), resolvedBinding);
+    if (!byKey.has(declaredKey)) {
+      byKey.set(declaredKey, resolvedBinding);
+    }
+
+    const linkedKey = normalizeToolLookupKey(linkedName);
+    if (linkedKey && !byKey.has(linkedKey)) {
+      byKey.set(linkedKey, resolvedBinding);
+    }
   }
 
   return {
@@ -1257,11 +1353,14 @@ export async function executeResolvedToolBinding(
       input: inputTexts,
     });
 
-    const contractOutput = toolContract?.definition.buildEmbeddingSuccessOutput?.({
-      input: toolContract.input,
-      model: embeddingResult.model,
-      embeddings: embeddingResult.embeddings,
-    });
+    const contractOutput =
+      ENABLE_LOCAL_SYNTHETIC_CONTRACT_OUTPUT && toolContract?.definition.buildEmbeddingSuccessOutput
+        ? toolContract.definition.buildEmbeddingSuccessOutput({
+            input: toolContract.input,
+            model: embeddingResult.model,
+            embeddings: embeddingResult.embeddings,
+          })
+        : null;
 
     return {
       output: {
@@ -1377,11 +1476,17 @@ export async function executeResolvedToolBinding(
       });
     }
 
-    const contractOutput = toolContract?.definition.buildHttpSuccessOutput?.({
-      input: toolContract.input,
-      status: response.status,
-      response: responseBody,
-    });
+    const responseContractOutput = toObjectRecord(toObjectRecord(responseBody)?.contract_output);
+    const localContractOutput =
+      ENABLE_LOCAL_SYNTHETIC_CONTRACT_OUTPUT && toolContract?.definition.buildHttpSuccessOutput
+        ? toolContract.definition.buildHttpSuccessOutput({
+            input: toolContract.input,
+            status: response.status,
+            response: responseBody,
+          })
+        : null;
+    const contractOutput = responseContractOutput ?? localContractOutput;
+    const contractOutputSource = responseContractOutput ? 'executor-response' : localContractOutput ? 'local-synthetic' : null;
 
     return {
       output: {
@@ -1391,6 +1496,7 @@ export async function executeResolvedToolBinding(
         tool_id: toolBinding.tool_id,
         tool_source: toolBinding.source,
         ...(toolContract ? { contract_name: toolContract.name } : {}),
+        ...(contractOutputSource ? { contract_output_source: contractOutputSource } : {}),
         ...(contractOutput ? { contract_output: contractOutput } : {}),
         status: response.status,
         response: responseBody,

@@ -1,7 +1,10 @@
 const envBaseUrl = process.env.BASE_URL;
 const requestTimeoutMs = Number(process.env.AGENT_E2E_HTTP_TIMEOUT_MS || 30000);
-const forceHealthExecutor = process.env.AGENT_E2E_FORCE_HEALTH_EXECUTOR !== '0';
-const strictOpenRouter = process.env.AGENT_E2E_STRICT_OPENROUTER === '1';
+const forceHealthExecutor = process.env.AGENT_E2E_FORCE_HEALTH_EXECUTOR === '1';
+const strictOpenRouter = process.env.AGENT_E2E_STRICT_OPENROUTER !== '0';
+const strictExecutionRetries = Math.max(1, Number(process.env.AGENT_E2E_STRICT_RETRIES || 3));
+const strictRetryDelayMs = Math.max(0, Number(process.env.AGENT_E2E_STRICT_RETRY_DELAY_MS || 2000));
+const agentE2EModel = String(process.env.AGENT_E2E_MODEL || process.env.OPENROUTER_LLM_MODEL || 'openrouter/auto').trim();
 const headers = { 'Content-Type': 'application/json' };
 
 const autonomousAgentTools = [
@@ -56,6 +59,54 @@ function trimName(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function usageHasPositiveTokens(usage) {
+  if (!usage || typeof usage !== 'object') return false;
+
+  const keys = ['total_tokens', 'prompt_tokens', 'completion_tokens', 'input_tokens', 'output_tokens'];
+  return keys.some((key) => {
+    const value = Number(usage[key]);
+    return Number.isFinite(value) && value > 0;
+  });
+}
+
+function isHealthExecutorConfig(config) {
+  const executor = config?.executor && typeof config.executor === 'object' ? config.executor : {};
+  const kind = trimName(executor.kind).toLowerCase();
+  const url = trimName(executor.url).toLowerCase();
+
+  if (kind !== 'http-json') return false;
+  if (!url) return false;
+  return /(^|\/)health($|[/?#])/.test(url);
+}
+
+function resolveExecutorKind(config) {
+  const executor = config?.executor && typeof config.executor === 'object' ? config.executor : {};
+  return trimName(executor.kind).toLowerCase();
+}
+
+function buildStrictToolConfig(base, toolName, currentConfig) {
+  const executor = currentConfig?.executor && typeof currentConfig.executor === 'object' ? currentConfig.executor : {};
+  if (toolName === 'Embedder') {
+    return {
+      ...currentConfig,
+      executor: {
+        ...executor,
+        kind: 'openrouter-embeddings',
+      },
+    };
+  }
+
+  return {
+    ...currentConfig,
+    executor: {
+      ...executor,
+      kind: 'http-json',
+      method: 'POST',
+      url: `${base}/tool-executor/contracts`,
+    },
+  };
+}
+
 function toNodeOutput(node) {
   return node?.output_json?.data ?? node?.output_json ?? null;
 }
@@ -99,6 +150,58 @@ function mustOk(label, response) {
     throw new Error(`${label} failed: ${response.status} ${JSON.stringify(response.body)}`);
   }
   return response.body;
+}
+
+function toObjectRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+async function ensureAgentCallNodeTypeProfile(base, authHeaders, nodeType, requiredInputMax = 20) {
+  if (!nodeType || typeof nodeType !== 'object') return nodeType;
+
+  const config = toObjectRecord(nodeType.config_json);
+  const input = toObjectRecord(config.input);
+  const output = toObjectRecord(config.output);
+
+  const currentInputMin = Number(input.min);
+  const currentInputMax = Number(input.max);
+  const currentOutputMin = Number(output.min);
+  const currentOutputMax = Number(output.max);
+
+  const nextInputMin = Number.isInteger(currentInputMin) && currentInputMin > 0 ? currentInputMin : 1;
+  const nextInputMax = Number.isInteger(currentInputMax) && currentInputMax > 0 ? Math.max(currentInputMax, requiredInputMax) : requiredInputMax;
+  const nextOutputMin = 0;
+  const nextOutputMax = Number.isInteger(currentOutputMax) && currentOutputMax >= nextOutputMin ? Math.max(currentOutputMax, 1) : 2;
+
+  const shouldUpdate =
+    currentInputMin !== nextInputMin ||
+    currentInputMax !== nextInputMax ||
+    currentOutputMin !== nextOutputMin ||
+    currentOutputMax !== nextOutputMax;
+
+  if (!shouldUpdate) return nodeType;
+
+  const updatedConfig = {
+    ...config,
+    input: {
+      ...input,
+      min: nextInputMin,
+      max: nextInputMax,
+    },
+    output: {
+      ...output,
+      min: nextOutputMin,
+      max: nextOutputMax,
+    },
+  };
+
+  const updateResponse = await req(base, `/node-types/${nodeType.type_id}`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({ config_json: updatedConfig }),
+  });
+
+  return mustOk('update AgentCall node type profile', updateResponse);
 }
 
 async function sleep(ms) {
@@ -166,9 +269,30 @@ async function ensureAgentTools(base, authHeaders) {
       throw new Error(`required tool missing: ${toolName}`);
     }
 
-    if (!forceHealthExecutor) continue;
-
     const currentConfig = tool.config_json && typeof tool.config_json === 'object' ? tool.config_json : {};
+
+    if (!forceHealthExecutor) {
+      if (!strictOpenRouter) continue;
+
+      const strictConfig = buildStrictToolConfig(base, toolName, currentConfig);
+      const strictKind = resolveExecutorKind(strictConfig);
+      const currentKind = resolveExecutorKind(currentConfig);
+      const requiresUpdate =
+        isHealthExecutorConfig(currentConfig) ||
+        (toolName === 'Embedder' ? strictKind !== currentKind : true);
+
+      if (requiresUpdate) {
+        const updateResponse = await req(base, `/tools/${tool.tool_id}`, {
+          method: 'PUT',
+          headers: authHeaders,
+          body: JSON.stringify({ config_json: strictConfig }),
+        });
+        mustOk(`strict tool config ${toolName}`, updateResponse);
+      }
+
+      continue;
+    }
+
     const mergedConfig = {
       ...currentConfig,
       executor: {
@@ -240,6 +364,11 @@ async function resolveNodeTypes(base, authHeaders) {
     }
   }
 
+  if (strictOpenRouter) {
+    const normalizedAgentType = await ensureAgentCallNodeTypeProfile(base, authHeaders, byName.get('AgentCall'), 20);
+    byName.set('AgentCall', normalizedAgentType);
+  }
+
   return byName;
 }
 
@@ -282,8 +411,10 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName) {
       label: 'AgentCall',
       tools: autonomousAgentTools.map((name) => ({ name, desc: `Autonomous agent tool ${name}` })),
       agent: {
-        maxToolCalls: 8,
-        maxAttempts: 1,
+        maxToolCalls: 4,
+        maxAttempts: 3,
+        softRetryDelayMs: 1200,
+        ...(agentE2EModel ? { modelId: agentE2EModel } : {}),
       },
     },
   });
@@ -303,6 +434,7 @@ async function executeAutonomousRun(base, authHeaders, pipelineId, datasetId) {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({
+      preset: 'production',
       dataset_id: datasetId,
       input_json: {
         locale: 'en',
@@ -336,14 +468,57 @@ async function executeAutonomousRun(base, authHeaders, pipelineId, datasetId) {
     await sleep(1000);
   }
 
+  if (!snapshot || snapshot.status !== 'succeeded') {
+    throw new Error(
+      `execution failed: ${JSON.stringify({
+        execution_id: started.execution_id,
+        status: snapshot?.status ?? 'unknown',
+        error: snapshot?.error ?? null,
+        preflight_errors: snapshot?.preflight?.errors ?? [],
+      })}`,
+    );
+  }
+
   return {
     execution_id: started.execution_id,
     status: snapshot?.status ?? 'unknown',
   };
 }
 
+async function loadExecutionReportNodes(base, authHeaders, pipelineId, executionId) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const executionResponse = await req(base, `/pipelines/${pipelineId}/executions/${executionId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+    const executionBody = mustOk('poll execution report', executionResponse);
+    const reportNodes = Array.isArray(executionBody?.report_json?.nodes) ? executionBody.report_json.nodes : [];
+    if (reportNodes.length > 0) {
+      return {
+        reportNodes,
+        source: 'execution',
+      };
+    }
+    await sleep(500);
+  }
+
+  const pipelineResponse = await req(base, `/pipelines/${pipelineId}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  const pipelineBody = mustOk('get pipeline', pipelineResponse);
+  return {
+    reportNodes: Array.isArray(pipelineBody?.report_json?.nodes) ? pipelineBody.report_json.nodes : [],
+    source: 'pipeline-fallback',
+  };
+}
+
 async function run() {
   console.log('[agent-e2e] starting...');
+
+  if (strictOpenRouter && forceHealthExecutor) {
+    fail('strict mode cannot run with AGENT_E2E_FORCE_HEALTH_EXECUTOR=1');
+  }
 
   const base = await resolveBaseUrl();
   console.log(`[agent-e2e] base url: ${base}`);
@@ -364,90 +539,149 @@ async function run() {
   const nodeIdByLabel = await createGraph(base, auth.authHeaders, pipeline.pipeline_id, nodeTypesByName);
   console.log('[agent-e2e] graph created (ManualInput -> AgentCall)');
 
-  const execution = await executeAutonomousRun(base, auth.authHeaders, pipeline.pipeline_id, dataset.dataset_id);
-  console.log(`[agent-e2e] execution_id=${execution.execution_id}, status=${execution.status}`);
+  for (let strictAttempt = 1; strictAttempt <= strictExecutionRetries; strictAttempt += 1) {
+    const execution = await executeAutonomousRun(base, auth.authHeaders, pipeline.pipeline_id, dataset.dataset_id);
+    console.log(`[agent-e2e] execution_id=${execution.execution_id}, status=${execution.status}`);
 
-  const nodesResponse = await req(base, `/nodes?fk_pipeline_id=${pipeline.pipeline_id}`, {
-    method: 'GET',
-    headers: auth.authHeaders,
-  });
-  const nodes = mustOk('list nodes', nodesResponse);
-  const nodeById = new Map(nodes.map((row) => [row.node_id, row]));
+    const nodesResponse = await req(base, `/nodes?fk_pipeline_id=${pipeline.pipeline_id}`, {
+      method: 'GET',
+      headers: auth.authHeaders,
+    });
+    const nodes = mustOk('list nodes', nodesResponse);
+    const nodeById = new Map(nodes.map((row) => [row.node_id, row]));
 
-  const pipelineResponse = await req(base, `/pipelines/${pipeline.pipeline_id}`, {
-    method: 'GET',
-    headers: auth.authHeaders,
-  });
-  const pipelineBody = mustOk('get pipeline', pipelineResponse);
-  const reportNodes = Array.isArray(pipelineBody?.report_json?.nodes) ? pipelineBody.report_json.nodes : [];
-  const reportById = new Map(reportNodes.map((row) => [row.node_id, row]));
+    const reportBundle = await loadExecutionReportNodes(
+      base,
+      auth.authHeaders,
+      pipeline.pipeline_id,
+      execution.execution_id,
+    );
+    const reportNodes = reportBundle.reportNodes;
+    const reportById = new Map(reportNodes.map((row) => [row.node_id, row]));
 
-  const manualStatus = reportById.get(nodeIdByLabel.ManualInput)?.status ?? 'unknown';
-  const agentStatus = reportById.get(nodeIdByLabel.AgentCall)?.status ?? 'unknown';
+    const manualStatus = reportById.get(nodeIdByLabel.ManualInput)?.status ?? 'unknown';
+    const agentStatus = reportById.get(nodeIdByLabel.AgentCall)?.status ?? 'unknown';
 
-  if (manualStatus !== 'completed') {
-    fail('ManualInput is not completed', reportById.get(nodeIdByLabel.ManualInput) ?? null);
+    if (manualStatus !== 'completed') {
+      fail('ManualInput is not completed', {
+        report_source: reportBundle.source,
+        report_nodes_count: reportNodes.length,
+        node: reportById.get(nodeIdByLabel.ManualInput) ?? null,
+      });
+    }
+    if (agentStatus !== 'completed') {
+      fail('AgentCall is not completed', {
+        report_source: reportBundle.source,
+        report_nodes_count: reportNodes.length,
+        node: reportById.get(nodeIdByLabel.AgentCall) ?? null,
+      });
+    }
+
+    const agentOutput = toNodeOutput(nodeById.get(nodeIdByLabel.AgentCall));
+    if (!agentOutput || typeof agentOutput !== 'object') {
+      fail('AgentCall output is empty', agentOutput);
+    }
+
+    const toolCallsExecuted = Number(agentOutput.tool_calls_executed ?? 0);
+    const toolTrace = Array.isArray(agentOutput.tool_call_trace) ? agentOutput.tool_call_trace : [];
+    const completedToolCalls = toolTrace.filter((row) => row && row.status === 'completed');
+
+    if (toolCallsExecuted <= 0) {
+      fail('AgentCall did not execute any internal tool calls', agentOutput);
+    }
+    if (completedToolCalls.length <= 0) {
+      fail('AgentCall has no completed tool calls in trace', toolTrace);
+    }
+
+    const providerSoftFailure = Boolean(agentOutput.provider_soft_failure);
+    const providerModel = trimName(agentOutput.model);
+    const providerResponseId = trimName(agentOutput.provider_response_id);
+    const providerUsage = agentOutput.usage && typeof agentOutput.usage === 'object' ? agentOutput.usage : null;
+    const providerCallsAttempted = Number(agentOutput.provider_calls_attempted ?? 0);
+    const unresolvedTools = Array.isArray(agentOutput.unresolved_tools) ? agentOutput.unresolved_tools : [];
+
+    const strictIssues = [];
+    if (strictOpenRouter) {
+      if (providerSoftFailure) {
+        strictIssues.push('provider_soft_failure');
+      }
+      if (!providerModel) {
+        strictIssues.push('provider_model_empty');
+      }
+      if (!providerResponseId) {
+        strictIssues.push('provider_response_id_missing');
+      }
+      if (!usageHasPositiveTokens(providerUsage)) {
+        strictIssues.push('provider_usage_missing');
+      }
+      if (!Number.isFinite(providerCallsAttempted) || providerCallsAttempted <= 0) {
+        strictIssues.push('provider_calls_attempted_invalid');
+      }
+      if (unresolvedTools.length > 0) {
+        strictIssues.push('unresolved_tools');
+      }
+    }
+
+    if (strictOpenRouter && strictIssues.length > 0) {
+      if (strictAttempt < strictExecutionRetries) {
+        console.log(
+          `[agent-e2e] strict provider checks failed on attempt ${strictAttempt}/${strictExecutionRetries} (${strictIssues.join(', ')}), retrying...`,
+        );
+        if (strictRetryDelayMs > 0) {
+          await sleep(strictRetryDelayMs);
+        }
+        continue;
+      }
+
+      fail('strict mode provider checks failed after retries', {
+        attempts: strictExecutionRetries,
+        strict_issues: strictIssues,
+        agent_output: agentOutput,
+      });
+    }
+
+    const finalText = normalizeText(agentOutput.text);
+    if (!finalText) {
+      fail('AgentCall final text is empty', agentOutput);
+    }
+
+    console.log(`[agent-e2e] final text excerpt: ${excerpt(finalText, 260)}`);
+    console.log(
+      `[agent-e2e] tool calls: executed=${toolCallsExecuted}, completed=${completedToolCalls.length}, soft_openrouter_failure=${providerSoftFailure}`,
+    );
+
+    console.log('[agent-e2e] summary');
+    console.log(
+      JSON.stringify(
+        {
+          base,
+          strict_openrouter: strictOpenRouter,
+          force_health_executor: forceHealthExecutor,
+          project_id: project.project_id,
+          pipeline_id: pipeline.pipeline_id,
+          dataset_id: dataset.dataset_id,
+          node_ids: nodeIdByLabel,
+          tools_advertised: autonomousAgentTools,
+          tools_resolved: autonomousAgentTools.filter((name) => toolsByName.has(name)),
+          execution_id: execution.execution_id,
+          execution_status: execution.status,
+          agent_tool_calls_executed: toolCallsExecuted,
+          agent_completed_tool_calls: completedToolCalls.length,
+          provider_soft_failure: providerSoftFailure,
+          provider_model: providerModel || null,
+          provider_response_id: providerResponseId || null,
+          provider_usage_complete: usageHasPositiveTokens(providerUsage),
+          provider_calls_attempted: providerCallsAttempted,
+          unresolved_tools: unresolvedTools,
+        },
+        null,
+        2,
+      ),
+    );
+
+    console.log('[agent-e2e] SUCCESS');
+    return;
   }
-  if (agentStatus !== 'completed') {
-    fail('AgentCall is not completed', reportById.get(nodeIdByLabel.AgentCall) ?? null);
-  }
-
-  const agentOutput = toNodeOutput(nodeById.get(nodeIdByLabel.AgentCall));
-  if (!agentOutput || typeof agentOutput !== 'object') {
-    fail('AgentCall output is empty', agentOutput);
-  }
-
-  const toolCallsExecuted = Number(agentOutput.tool_calls_executed ?? 0);
-  const toolTrace = Array.isArray(agentOutput.tool_call_trace) ? agentOutput.tool_call_trace : [];
-  const completedToolCalls = toolTrace.filter((row) => row && row.status === 'completed');
-
-  if (toolCallsExecuted <= 0) {
-    fail('AgentCall did not execute any internal tool calls', agentOutput);
-  }
-  if (completedToolCalls.length <= 0) {
-    fail('AgentCall has no completed tool calls in trace', toolTrace);
-  }
-
-  const providerSoftFailure = Boolean(agentOutput.provider_soft_failure);
-  if (providerSoftFailure && strictOpenRouter) {
-    fail('strict mode enabled and OpenRouter soft failure occurred', agentOutput);
-  }
-
-  const finalText = normalizeText(agentOutput.text);
-  if (!finalText) {
-    fail('AgentCall final text is empty', agentOutput);
-  }
-
-  console.log(`[agent-e2e] final text excerpt: ${excerpt(finalText, 260)}`);
-  console.log(
-    `[agent-e2e] tool calls: executed=${toolCallsExecuted}, completed=${completedToolCalls.length}, soft_openrouter_failure=${providerSoftFailure}`,
-  );
-
-  console.log('[agent-e2e] summary');
-  console.log(
-    JSON.stringify(
-      {
-        base,
-        strict_openrouter: strictOpenRouter,
-        force_health_executor: forceHealthExecutor,
-        project_id: project.project_id,
-        pipeline_id: pipeline.pipeline_id,
-        dataset_id: dataset.dataset_id,
-        node_ids: nodeIdByLabel,
-        tools_advertised: autonomousAgentTools,
-        tools_resolved: autonomousAgentTools.filter((name) => toolsByName.has(name)),
-        execution_id: execution.execution_id,
-        execution_status: execution.status,
-        agent_tool_calls_executed: toolCallsExecuted,
-        agent_completed_tool_calls: completedToolCalls.length,
-        provider_soft_failure: providerSoftFailure,
-      },
-      null,
-      2,
-    ),
-  );
-
-  console.log('[agent-e2e] SUCCESS');
 }
 
 run().catch((error) => {
