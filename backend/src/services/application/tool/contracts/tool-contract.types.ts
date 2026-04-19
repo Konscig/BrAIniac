@@ -43,7 +43,9 @@ export interface ToolContractDefinition {
   /** Нормализует и валидирует входные данные перед запуском executor-а. */
   resolveInput: (inputs: any[], context: NodeExecutionContext) => Record<string, any>;
   /** Строит deterministic output для ветки http-json. */
-  buildHttpSuccessOutput?: (context: ToolContractHttpSuccessContext) => Record<string, any>;
+  buildHttpSuccessOutput?: (
+    context: ToolContractHttpSuccessContext,
+  ) => Record<string, any> | Promise<Record<string, any>>;
   /** Строит output для ветки openrouter-embeddings. */
   buildEmbeddingSuccessOutput?: (context: ToolContractEmbeddingSuccessContext) => Record<string, any>;
 }

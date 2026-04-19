@@ -1,92 +1,83 @@
-# Профили Ролей Узлов
+# Node Role Profiles
 
-## Канонические Роли
-- source
-- transform
-- control
-- sink
+## Canonical Roles
+- `source`
+- `transform`
+- `control`
+- `sink`
 
-## Термины И Слои (Антипутаница)
-- Нода (Node): исполняемая единица графа pipeline (уровень orchestration/runtime).
-- Инструмент (Tool): переиспользуемая capability с контрактом input/output/config (уровень бизнес-функции).
-- Executor kind: технический способ исполнения ToolNode (например, http-json, openrouter-embeddings).
-- Провайдер/адаптер: низкоуровневый транспорт и интеграция с внешним API; это не нода и не инструмент.
+## Layer Separation
+- Node: executable graph unit in the pipeline/runtime layer.
+- Tool: reusable capability with input/output/config contracts.
+- Executor kind: technical execution mode for a tool.
+- Provider/adapter: low-level integration transport, not a node and not a tool.
 
-Правило: одинаковая бизнес-задача может встречаться на разных слоях, но это не дублирование сущности, а разные точки исполнения.
+## Recommended Default Matrix
+| role | input.min | input.max | output.min | output.max |
+|---|---:|---:|---:|---:|
+| source | 0 | 2 | 1 | 5 |
+| transform | 0 | 8 | 0 | 8 |
+| control | 0 | 8 | 0 | 8 |
+| sink | 0 | 10 | 0 | 2 |
 
-## Матрица Ролей (MVP)
-| role | input.min | input.max | output.min | output.max | allowed predecessors | allowed successors |
-|---|---:|---:|---:|---:|---|---|
-| source | 0 | 2 | 1 | 5 | any | any |
-| transform | 0 | 8 | 0 | 8 | any | any |
-| control | 0 | 8 | 0 | 8 | any | any |
-| sink | 0 | 10 | 0 | 2 | any | any |
+These are recommended defaults, not hard constraints by themselves.
 
-Примечание: значения матрицы являются рекомендуемыми дефолтами (режим warn), а не обязательными hard-ограничениями.
-
-## Профиль AgentCall (Специализированный Transform)
-- role: transform
+## AgentCall Profile
+- role: `transform`
 - internalRuntime: enabled
-- bounded-лимиты:
-  - maxAttempts
-  - maxToolCalls
-  - maxTimeMs
-  - maxCostUsd
-  - maxTokens
-- выбор инструментов:
-  - allowedToolIds or allowedToolNames
-- выходной envelope:
-  - status
-  - answer
-  - evidence
-  - confidence
-  - attemptsUsed
-  - toolCallsUsed
-  - timing
+- bounded limits:
+  - `maxAttempts`
+  - `maxToolCalls`
+  - `maxTimeMs`
+  - `maxCostUsd`
+  - `maxTokens`
+- output envelope:
+  - `status`
+  - `answer`
+  - `evidence`
+  - `confidence`
+  - `attemptsUsed`
+  - `toolCallsUsed`
+  - `timing`
 
-## Профиль ToolNode (Специализированный Transform)
-- role: transform
-- назначение: исполнение внешнего или внутреннего инструмента как отдельного шага графа
-- обязательный binding инструмента: ui_json.tool_id или ui_json.tool
-- обязательный executor kind: один из разрешенных runtime-kind
-- контракт: ToolNode исполняет инструмент, но не определяет бизнес-смысл инструмента
+Important:
+- `AgentCall` may orchestrate tool calls internally.
+- The tool set available to `AgentCall` must come through inbound graph edges only.
+- `AgentCall` must not define its own hidden callable tool catalog in node config.
+- The preferred edge artifacts are explicit `tool_ref` / `tool_refs` payloads; direct `ToolNode` outputs are also acceptable when connected by edges.
 
-## Правило Выбора Слоя Для Одного Шага
-- Если нужен прямой одиночный вызов модели без оркестрации инструментов: использовать ноду LLMCall.
-- Если нужна переиспользуемая capability-интеграция по контракту: использовать ToolNode + инструмент.
-- Если нужна многошаговая стратегия с внутренними tool-calls и лимитами: использовать AgentCall.
-- Не дублировать один и тот же смысл одновременно в одном шаге (например, LLMCall и LLMAnswer в ToolNode для одной операции).
+## ToolNode Profile
+- role: `transform`
+- purpose: execute one explicit tool as a graph step
+- required tool binding: `ui_json.tool_id` or `ui_json.tool`
+- required executor kind: one of the supported runtime kinds
 
-## Циклы И Loop-Политика
-- Циклы допускаются через любые loop-capable ноды (не только control).
-- Для любого циклического маршрута MUST быть задан loop-policy.
-- Рекомендуемые поля loop-policy:
-  - enabled: true
-  - maxIterations: целое >= 1
-  - stopCondition: строка или ссылка на условие (опционально)
-  - onLimit: break или fail (опционально, дефолт break)
-- Для production-режима рекомендуется включать глобальные бюджеты выполнения pipeline.
+## Layer Choice Rule
+- Use `LLMCall` for a direct single model call.
+- Use `ToolNode` when a reusable tool contract should be executed as a graph step.
+- Use `AgentCall` when a bounded multi-step strategy is needed.
 
-## Политика Применения Ограничений
-- enforcementMode: off | warn | strict
-- Рекомендуемый дефолт для MVP: warn
-- В strict переводятся только подтвержденные проектом ограничения.
+## Loop Policy
+- Loops are allowed only with explicit loop policy.
+- Recommended loop policy fields:
+  - `enabled`
+  - `maxIterations`
+  - `stopCondition`
+  - `onLimit`
 
-## Fallback-Политика
-Если NodeType.config_json отсутствует или неполный:
-- role по умолчанию: transform
-- диапазон input по умолчанию: 0..10
-- диапазон output по умолчанию: 0..10
-- валидатор возвращает warning code GRAPH_NODETYPE_PROFILE_MISSING
+## Fallback Policy
+If `NodeType.config_json` is missing or incomplete:
+- default role: `transform`
+- default input range: `0..10`
+- default output range: `0..10`
+- validator returns a warning, not a hard failure, unless stricter project rules say otherwise
 
-## Пример NodeType.config_json
+## Example NodeType.config_json
 ```json
 {
   "role": "transform",
   "input": { "min": 1, "max": 3 },
   "output": { "min": 1, "max": 2 },
-  "allowedPredecessorRoles": ["any"],
-  "allowedSuccessorRoles": ["any"],
   "enforcementMode": "warn",
   "loop": {
     "enabled": true,
@@ -100,8 +91,7 @@
     "maxToolCalls": 8,
     "maxTimeMs": 20000,
     "maxCostUsd": 0.5,
-    "maxTokens": 12000,
-    "allowedToolNames": ["search", "retriever", "sql"]
+    "maxTokens": 12000
   }
 }
 ```

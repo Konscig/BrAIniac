@@ -314,6 +314,22 @@ async function ensureAgentTools(base, authHeaders) {
   return byName;
 }
 
+function buildAgentToolRefs(toolsByName) {
+  return autonomousAgentTools.map((toolName) => {
+    const tool = toolsByName.get(toolName);
+    if (!tool) {
+      throw new Error(`tool not found while building tool refs: ${toolName}`);
+    }
+
+    return {
+      kind: 'tool_ref',
+      tool_name: tool.name,
+      tool_id: tool.tool_id,
+      desc: `Edge-advertised tool ref for ${tool.name}`,
+    };
+  });
+}
+
 async function createProjectPipelineDataset(base, authHeaders) {
   const suffix = Date.now();
 
@@ -413,7 +429,6 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName, tools
         maxToolCalls: 4,
         maxAttempts: 3,
         softRetryDelayMs: 1200,
-        allowedToolNames: autonomousAgentTools,
         ...(agentE2EModel ? { modelId: agentE2EModel } : {}),
       },
     },
@@ -433,7 +448,7 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName, tools
   };
 }
 
-async function executeAutonomousRun(base, authHeaders, pipelineId, datasetId) {
+async function executeAutonomousRun(base, authHeaders, pipelineId, datasetId, toolRefs) {
   const question = 'What is the main purpose of Artemis II before future lunar landing missions?';
 
   const startResponse = await req(base, `/pipelines/${pipelineId}/execute`, {
@@ -447,9 +462,9 @@ async function executeAutonomousRun(base, authHeaders, pipelineId, datasetId) {
         question,
         user_query: question,
         retrieval_query: question,
-        instruction: 'Answer briefly and stay grounded in the provided context.',
-        uris: seedDocuments.map((doc) => doc.uri),
-        documents: seedDocuments.map((doc) => ({ document_id: doc.document_id, text: doc.text })),
+        instruction:
+          'Use the available tools to load the dataset, build retrieval context, and answer briefly using only grounded evidence.',
+        tool_refs: toolRefs,
         prompt_template: 'Ground answer for query {{query}} using context below.\n\n{{context}}',
         max_context_tokens: 320,
         top_k: 6,
@@ -533,6 +548,7 @@ async function run() {
   console.log(`[agent-e2e] auth created for ${auth.email}`);
 
   const toolsByName = await ensureAgentTools(base, auth.authHeaders);
+  const toolRefs = buildAgentToolRefs(toolsByName);
   console.log(
     `[agent-e2e] tools prepared (${autonomousAgentTools.join(', ')})` +
       (forceHealthExecutor ? ' with forced /health executor' : ' with original executors'),
@@ -543,10 +559,10 @@ async function run() {
 
   const nodeTypesByName = await resolveNodeTypes(base, auth.authHeaders);
   const nodeIdByLabel = await createGraph(base, auth.authHeaders, pipeline.pipeline_id, nodeTypesByName, toolsByName);
-  console.log('[agent-e2e] graph created (ManualInput -> AgentCall with agent-configured tools)');
+  console.log('[agent-e2e] graph created (ManualInput -> AgentCall with explicit tool_refs over the edge)');
 
   for (let strictAttempt = 1; strictAttempt <= strictExecutionRetries; strictAttempt += 1) {
-    const execution = await executeAutonomousRun(base, auth.authHeaders, pipeline.pipeline_id, dataset.dataset_id);
+    const execution = await executeAutonomousRun(base, auth.authHeaders, pipeline.pipeline_id, dataset.dataset_id, toolRefs);
     console.log(`[agent-e2e] execution_id=${execution.execution_id}, status=${execution.status}`);
 
     const nodesResponse = await req(base, `/nodes?fk_pipeline_id=${pipeline.pipeline_id}`, {
@@ -591,12 +607,21 @@ async function run() {
     const toolCallsExecuted = Number(agentOutput.tool_calls_executed ?? 0);
     const toolTrace = Array.isArray(agentOutput.tool_call_trace) ? agentOutput.tool_call_trace : [];
     const completedToolCalls = toolTrace.filter((row) => row && row.status === 'completed');
+    const completedToolNames = completedToolCalls
+      .map((row) => trimName(row.tool_name ?? row.resolved_tool))
+      .filter((name) => name.length > 0);
 
     if (toolCallsExecuted <= 0) {
       fail('AgentCall did not execute any internal tool calls', agentOutput);
     }
     if (completedToolCalls.length <= 0) {
       fail('AgentCall has no completed tool calls in trace', toolTrace);
+    }
+    if (!completedToolNames.includes('DocumentLoader')) {
+      fail('AgentCall did not load dataset documents through DocumentLoader', {
+        tool_trace: toolTrace,
+        completed_tool_names: completedToolNames,
+      });
     }
 
     const providerSoftFailure = Boolean(agentOutput.provider_soft_failure);
@@ -605,6 +630,14 @@ async function run() {
     const providerUsage = agentOutput.usage && typeof agentOutput.usage === 'object' ? agentOutput.usage : null;
     const providerCallsAttempted = Number(agentOutput.provider_calls_attempted ?? 0);
     const unresolvedTools = Array.isArray(agentOutput.unresolved_tools) ? agentOutput.unresolved_tools : [];
+
+    if (unresolvedTools.length > 0) {
+      fail('AgentCall has unresolved tool refs', {
+        unresolved_tools: unresolvedTools,
+        tool_refs: toolRefs,
+        agent_output: agentOutput,
+      });
+    }
 
     const strictIssues = [];
     if (strictOpenRouter) {
@@ -622,9 +655,6 @@ async function run() {
       }
       if (!Number.isFinite(providerCallsAttempted) || providerCallsAttempted <= 0) {
         strictIssues.push('provider_calls_attempted_invalid');
-      }
-      if (unresolvedTools.length > 0) {
-        strictIssues.push('unresolved_tools');
       }
     }
 

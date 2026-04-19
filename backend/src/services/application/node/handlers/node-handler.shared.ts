@@ -20,7 +20,7 @@ export type ResolvedToolBinding = {
   tool_id: number | null;
   name: string;
   config_json: any;
-  source: 'node.tool' | 'node.tool_id' | 'agent.inputs' | 'agent.config';
+  source: 'node.tool' | 'node.tool_id' | 'agent.inputs';
 };
 
 type ResolvedToolExecutorConfig = {
@@ -41,7 +41,7 @@ export type AgentToolBinding = {
   schema?: Record<string, any>;
   tool_id?: number;
   config_json?: Record<string, any>;
-  source?: 'agent.inputs' | 'agent.config';
+  source?: 'agent.inputs';
 };
 
 export type AgentDirective =
@@ -675,92 +675,124 @@ function buildAgentBindingKey(binding: AgentToolBinding): string {
   return '';
 }
 
-function listAgentConfiguredToolBindings(runtime: RuntimeNode): AgentToolBinding[] {
-  const agentConfig = resolveNodeSectionConfig(runtime, 'agent');
-  const out: AgentToolBinding[] = [];
-  const seen = new Set<string>();
+function pushDistinctAgentBinding(out: AgentToolBinding[], seen: Set<string>, binding: AgentToolBinding | null) {
+  if (!binding) return;
 
-  const pushBinding = (binding: AgentToolBinding) => {
-    const key = buildAgentBindingKey(binding);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    out.push(binding);
+  const key = buildAgentBindingKey(binding);
+  if (!key || seen.has(key)) return;
+
+  seen.add(key);
+  out.push(binding);
+}
+
+function toAgentToolBindingRecord(raw: Record<string, any>, fallbackDesc: string): AgentToolBinding | null {
+  const toolRecord = toObjectRecord(raw.tool);
+  const toolId = coerceOptionalPositiveInt(
+    raw.tool_id ?? raw.toolId ?? raw.fk_tool_id ?? toolRecord?.tool_id ?? toolRecord?.toolId ?? toolRecord?.fk_tool_id,
+  );
+
+  const toolNameRaw =
+    typeof raw.tool_name === 'string'
+      ? raw.tool_name
+      : typeof raw.toolName === 'string'
+      ? raw.toolName
+      : typeof raw.name === 'string'
+      ? raw.name
+      : typeof toolRecord?.name === 'string'
+      ? toolRecord.name
+      : '';
+
+  const toolName = toolNameRaw.trim();
+  if (!toolName && !toolId) return null;
+
+  const descRaw =
+    typeof raw.desc === 'string'
+      ? raw.desc
+      : typeof raw.description === 'string'
+      ? raw.description
+      : typeof toolRecord?.desc === 'string'
+      ? toolRecord.desc
+      : typeof toolRecord?.description === 'string'
+      ? toolRecord.description
+      : '';
+  const schemaRecord = toObjectRecord(
+    raw.schema ??
+      raw.input_schema ??
+      raw.inputSchema ??
+      toolRecord?.schema ??
+      toolRecord?.input_schema ??
+      toolRecord?.inputSchema,
+  );
+  const configRecord = toObjectRecord(raw.config_json ?? raw.config ?? toolRecord?.config_json ?? toolRecord?.config);
+
+  return {
+    name: toolName || `tool#${toolId}`,
+    ...(toolId ? { tool_id: toolId } : {}),
+    ...(descRaw.trim().length > 0 ? { desc: descRaw.trim() } : { desc: fallbackDesc }),
+    ...(schemaRecord ? { schema: schemaRecord } : {}),
+    ...(configRecord ? { config_json: configRecord } : {}),
+    source: 'agent.inputs',
   };
+}
 
-  const rawAllowedToolIds = Array.isArray(agentConfig.allowedToolIds) ? agentConfig.allowedToolIds : [];
-  for (const rawToolId of rawAllowedToolIds) {
-    const toolId = coerceOptionalPositiveInt(rawToolId);
-    if (!toolId) continue;
+function collectAgentInputToolBindings(
+  value: unknown,
+  out: AgentToolBinding[],
+  seen: Set<string>,
+  depth = 0,
+): void {
+  if (depth > 6 || value === undefined || value === null) return;
 
-    pushBinding({
-      name: `tool#${toolId}`,
-      tool_id: toolId,
-      desc: 'Agent-configured tool binding',
-      source: 'agent.config',
-    });
-  }
-
-  const rawAllowedToolNames = Array.isArray(agentConfig.allowedToolNames) ? agentConfig.allowedToolNames : [];
-  for (const rawToolName of rawAllowedToolNames) {
-    if (typeof rawToolName !== 'string') continue;
-
-    const toolName = rawToolName.trim();
-    if (!toolName) continue;
-
-    pushBinding({
-      name: toolName,
-      desc: 'Agent-configured tool binding',
-      source: 'agent.config',
-    });
-  }
-
-  const rawTools = Array.isArray(agentConfig.tools) ? agentConfig.tools : [];
-  for (const rawTool of rawTools) {
-    if (typeof rawTool === 'string') {
-      const toolName = rawTool.trim();
-      if (!toolName) continue;
-
-      pushBinding({
-        name: toolName,
-        desc: 'Agent-configured tool binding',
-        source: 'agent.config',
-      });
-      continue;
+  if (Array.isArray(value)) {
+    for (const entry of value.slice(0, 80)) {
+      collectAgentInputToolBindings(entry, out, seen, depth + 1);
     }
-
-    const toolId = coerceOptionalPositiveInt(rawTool);
-    if (toolId) {
-      pushBinding({
-        name: `tool#${toolId}`,
-        tool_id: toolId,
-        desc: 'Agent-configured tool binding',
-        source: 'agent.config',
-      });
-      continue;
-    }
-
-    const toolRecord = toObjectRecord(rawTool);
-    if (!toolRecord) continue;
-
-    const explicitName = typeof toolRecord.name === 'string' ? toolRecord.name.trim() : '';
-    const explicitToolId = coerceOptionalPositiveInt(toolRecord.tool_id ?? toolRecord.toolId ?? toolRecord.fk_tool_id);
-    if (!explicitName && !explicitToolId) continue;
-
-    const explicitSchema = toObjectRecord(toolRecord.schema);
-    const explicitConfig = toObjectRecord(toolRecord.config_json ?? toolRecord.config);
-    const explicitDesc = typeof toolRecord.desc === 'string' ? toolRecord.desc.trim() : '';
-
-    pushBinding({
-      name: explicitName || `tool#${explicitToolId}`,
-      ...(explicitToolId ? { tool_id: explicitToolId } : {}),
-      ...(explicitDesc ? { desc: explicitDesc } : { desc: 'Agent-configured tool binding' }),
-      ...(explicitSchema ? { schema: explicitSchema } : {}),
-      ...(explicitConfig ? { config_json: explicitConfig } : {}),
-      source: 'agent.config',
-    });
+    return;
   }
 
-  return out;
+  const record = toObjectRecord(value);
+  if (!record) return;
+
+  const kind = typeof record.kind === 'string' ? record.kind.trim().toLowerCase() : '';
+  const type = typeof record.type === 'string' ? record.type.trim().toLowerCase() : '';
+  const isToolRef = kind === 'tool_ref' || type === 'tool_ref';
+  const isToolRefCollection =
+    kind === 'tool_refs' ||
+    type === 'tool_refs' ||
+    kind === 'tool_catalog' ||
+    type === 'tool_catalog' ||
+    Array.isArray(record.tool_refs) ||
+    Array.isArray(record.toolRefs);
+
+  if (kind === 'tool_node') {
+    pushDistinctAgentBinding(out, seen, toAgentToolBindingRecord(record, 'Edge-derived ToolNode binding'));
+  }
+
+  if (isToolRef) {
+    pushDistinctAgentBinding(out, seen, toAgentToolBindingRecord(record, 'Explicit edge tool ref'));
+  }
+
+  if (isToolRefCollection) {
+    const items = Array.isArray(record.tool_refs)
+      ? record.tool_refs
+      : Array.isArray(record.toolRefs)
+      ? record.toolRefs
+      : Array.isArray(record.items)
+      ? record.items
+      : Array.isArray(record.tools)
+      ? record.tools
+      : [];
+
+    for (const entry of items.slice(0, 80)) {
+      collectAgentInputToolBindings(entry, out, seen, depth + 1);
+    }
+  }
+
+  const wrapperKeys = ['value', 'data', 'payload', 'output', 'contract_output'];
+  for (const key of wrapperKeys) {
+    if (!(key in record)) continue;
+    collectAgentInputToolBindings(record[key], out, seen, depth + 1);
+  }
 }
 
 function listAgentInputToolBindings(inputs: any[]): AgentToolBinding[] {
@@ -768,52 +800,7 @@ function listAgentInputToolBindings(inputs: any[]): AgentToolBinding[] {
   const seen = new Set<string>();
 
   for (const source of inputs.slice(0, 80)) {
-    const record = toObjectRecord(source);
-    if (!record) continue;
-
-    const toolRecord = toObjectRecord(record.tool);
-    const kind = typeof record.kind === 'string' ? record.kind.trim().toLowerCase() : '';
-    const looksLikeToolOutput =
-      kind === 'tool_node' ||
-      typeof record.contract_name === 'string' ||
-      typeof record.executor === 'string' ||
-      record.tool_name !== undefined ||
-      record.tool_id !== undefined ||
-      toolRecord !== null;
-
-    if (!looksLikeToolOutput) continue;
-
-    const toolId = coerceOptionalPositiveInt(
-      record.tool_id ?? record.toolId ?? record.fk_tool_id ?? toolRecord?.tool_id ?? toolRecord?.toolId ?? toolRecord?.fk_tool_id,
-    );
-
-    const toolNameRaw =
-      typeof record.tool_name === 'string'
-        ? record.tool_name
-        : typeof record.toolName === 'string'
-        ? record.toolName
-        : typeof toolRecord?.name === 'string'
-        ? toolRecord.name
-        : '';
-
-    const toolName = toolNameRaw.trim();
-    if (!toolName && !toolId) continue;
-
-    const configRecord = toObjectRecord(toolRecord?.config_json ?? toolRecord?.config);
-    const contractName = typeof record.contract_name === 'string' ? record.contract_name.trim() : '';
-
-    const binding: AgentToolBinding = {
-      name: toolName || `tool#${toolId}`,
-      ...(toolId ? { tool_id: toolId } : {}),
-      ...(configRecord ? { config_json: configRecord } : {}),
-      ...(contractName ? { desc: `Edge-derived tool (${contractName})` } : { desc: 'Edge-derived tool binding' }),
-      source: 'agent.inputs',
-    };
-
-    const key = buildAgentBindingKey(binding);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(binding);
+    collectAgentInputToolBindings(source, out, seen);
   }
 
   return out;
@@ -1148,9 +1135,8 @@ function buildAgentFallbackSequence(orderedBindings: AgentResolvedToolBinding[])
 }
 
 export async function resolveAgentToolBindings(runtime: RuntimeNode, inputs: any[] = []): Promise<AgentToolResolution> {
-  const configuredBindings = listAgentConfiguredToolBindings(runtime);
   const edgeBindings = listAgentInputToolBindings(inputs);
-  const requestedBindings = [...configuredBindings, ...edgeBindings];
+  const requestedBindings = [...edgeBindings];
   const advertised = listAdvertisedAgentTools(requestedBindings);
   if (requestedBindings.length === 0) {
     return {
@@ -1516,7 +1502,7 @@ export async function executeResolvedToolBinding(
     const responseContractOutput = toObjectRecord(toObjectRecord(responseBody)?.contract_output);
     const localContractOutput =
       ENABLE_LOCAL_SYNTHETIC_CONTRACT_OUTPUT && toolContract?.definition.buildHttpSuccessOutput
-        ? toolContract.definition.buildHttpSuccessOutput({
+        ? await toolContract.definition.buildHttpSuccessOutput({
             input: toolContract.input,
             status: response.status,
             response: responseBody,
