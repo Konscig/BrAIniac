@@ -1,5 +1,6 @@
 import { HttpError } from '../../../../common/http-error.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
+import { buildInlineArtifactManifest, listArtifactManifestItems } from './tool-artifact.manifest.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const MAX_VECTOR_UPSERT_ITEMS = 512;
@@ -10,6 +11,10 @@ type VectorItem = {
   vector: number[];
   chunk_id: string | null;
   document_id: string | null;
+  text: string | null;
+  provider: string | null;
+  model: string | null;
+  order: number | null;
 };
 
 function normalizeText(raw: string): string {
@@ -73,6 +78,10 @@ function toVectorItem(raw: unknown, index: number): VectorItem | undefined {
       vector,
       chunk_id: null,
       document_id: null,
+      text: null,
+      provider: null,
+      model: null,
+      order: null,
     };
   }
 
@@ -88,11 +97,22 @@ function toVectorItem(raw: unknown, index: number): VectorItem | undefined {
     readNonEmptyText(record.chunk_id) ??
     `vec_${index + 1}`;
 
+  const orderValue = Number(record.order);
+
   return {
     vector_id: vectorId,
     vector,
     chunk_id: readNonEmptyText(record.chunk_id) ?? null,
     document_id: readNonEmptyText(record.document_id) ?? null,
+    text:
+      readNonEmptyText(record.text) ??
+      readNonEmptyText(record.chunk_text) ??
+      readNonEmptyText(record.content) ??
+      readNonEmptyText(record.snippet) ??
+      null,
+    provider: readNonEmptyText(record.provider) ?? null,
+    model: readNonEmptyText(record.model) ?? null,
+    order: Number.isFinite(orderValue) ? Number(orderValue) : null,
   };
 }
 
@@ -112,6 +132,12 @@ function pushVector(out: VectorItem[], raw: unknown) {
 }
 
 function collectVectors(value: unknown, out: VectorItem[]) {
+  const manifestItems = listArtifactManifestItems(value, ['vectors']);
+  for (const item of manifestItems) {
+    if (out.length >= MAX_VECTOR_UPSERT_ITEMS) break;
+    pushVector(out, item);
+  }
+
   const unwrapped = unwrapPayload(value);
 
   if (Array.isArray(unwrapped)) {
@@ -169,35 +195,49 @@ function dedupeVectors(items: VectorItem[]): VectorItem[] {
   return Array.from(out.values());
 }
 
-/**
- * Формирует итог upsert-результат для контракта VectorUpsert.
- *
- * @param input Нормализованный вход контракта.
- * @returns Детерминированный результат операции upsert.
- */
+function buildStoredVectorRows(
+  vectors: VectorItem[],
+  indexName: string,
+  namespace: string,
+): Array<Record<string, any>> {
+  return vectors.map((entry, index) => ({
+    vector_id: entry.vector_id,
+    ...(entry.chunk_id ? { chunk_id: entry.chunk_id } : {}),
+    ...(entry.document_id ? { document_id: entry.document_id } : {}),
+    ...(entry.text ? { text: entry.text } : {}),
+    vector: entry.vector,
+    order: entry.order ?? index + 1,
+    index_name: indexName,
+    namespace,
+    ...(entry.provider ? { provider: entry.provider } : {}),
+    ...(entry.model ? { model: entry.model } : {}),
+  }));
+}
+
 function buildVectorUpsertContractOutput(input: Record<string, any>): Record<string, any> {
   const vectors = dedupeVectors(normalizeInputVectors(input.vectors));
+  const indexName = readNonEmptyText(input.index_name) ?? 'default-index';
+  const namespace = readNonEmptyText(input.namespace) ?? 'default';
   const upsertIds = vectors.map((entry) => entry.vector_id);
+  const storedVectors = buildStoredVectorRows(vectors, indexName, namespace);
 
   return {
-    index_name: readNonEmptyText(input.index_name) ?? 'default-index',
-    namespace: readNonEmptyText(input.namespace) ?? 'default',
+    index_name: indexName,
+    namespace,
     upserted_count: upsertIds.length,
-    vector_size: vectors[0]?.vector.length ?? 0,
+    vector_size: storedVectors[0]?.vector.length ?? 0,
     upsert_ids: upsertIds,
     status: 'upserted',
+    storage_backend: 'artifact-manifest',
+    stored_vector_count: storedVectors.length,
+    vectors_manifest: buildInlineArtifactManifest('vectors', storedVectors, {
+      storage_backend: 'artifact-manifest',
+      index_name: indexName,
+      namespace,
+    }),
   };
 }
 
-/**
- * Нормализует вход VectorUpsert, собирает векторы из разных оберток
- * и проверяет, что после дедупликации есть хотя бы один валидный элемент.
- *
- * @param inputs Выходы предыдущих узлов пайплайна.
- * @param context Контекст выполнения текущего узла.
- * @returns Нормализованный вход для executor-а.
- * @throws {HttpError} Если не найдено ни одного валидного вектора.
- */
 export function resolveVectorUpsertContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? (context.input_json as Record<string, unknown>) : {};
 
@@ -236,9 +276,6 @@ export function resolveVectorUpsertContractInput(inputs: any[], context: NodeExe
   };
 }
 
-/**
- * Определяет контракт VectorUpsert, его алиасы и допустимые executor-ы.
- */
 export const vectorUpsertToolContractDefinition: ToolContractDefinition = {
   name: 'VectorUpsert',
   aliases: ['vectorupsert', 'vector-upsert', 'vector_upsert'],

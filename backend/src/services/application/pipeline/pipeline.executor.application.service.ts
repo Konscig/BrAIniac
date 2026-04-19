@@ -12,6 +12,7 @@ import { listNodesByPipeline } from '../../data/node.service.js';
 import { getNodeTypeById } from '../../data/node_type.service.js';
 import { getPipelineById, updatePipeline } from '../../data/pipeline.service.js';
 import { getToolById } from '../../data/tool.service.js';
+import { externalizeNodeStateArtifacts } from './pipeline.executor.artifact-store.js';
 import { buildPipelineReport, buildSummary, executeGraph, persistNodeOutputs } from './pipeline.executor.graph.js';
 import type {
   DatasetContext,
@@ -354,7 +355,16 @@ async function runExecutionJob(job: ExecutionJob) {
       preflight.metrics.estimatedMaxSteps,
     );
 
-    nodeStates = result.nodeStates;
+    nodeStates = await Promise.all(
+      result.nodeStates.map((nodeState) =>
+        externalizeNodeStateArtifacts(nodeState, {
+          executionId: job.execution_id,
+          nodeId: nodeState.node_id,
+          section: 'node-output',
+        }),
+      ),
+    );
+    result.nodeStates = nodeStates;
     await persistNodeOutputs(job.execution_id, nodeStates);
 
     job.warnings.push(...result.warnings);
@@ -365,8 +375,12 @@ async function runExecutionJob(job: ExecutionJob) {
     job.summary = buildSummary(result);
     job.status = result.status === 'failed' ? 'failed' : 'succeeded';
 
+    const persistedReport = await externalizeNodeStateArtifacts(buildPipelineReport(job, result, preflight), {
+      executionId: job.execution_id,
+      section: 'pipeline-report',
+    });
     await updatePipeline(job.pipeline_id, {
-      report_json: buildPipelineReport(job, result, preflight),
+      report_json: persistedReport,
     });
   } catch (error) {
     const normalized = normalizeUnknownError(error);
@@ -380,21 +394,44 @@ async function runExecutionJob(job: ExecutionJob) {
     }
 
     try {
+      const failureReport =
+        nodeStates.length > 0
+          ? await externalizeNodeStateArtifacts(
+              {
+                execution: {
+                  execution_id: job.execution_id,
+                  status: 'failed',
+                  worker_pid: process.pid,
+                  started_at: job.started_at?.toISOString() ?? null,
+                  finished_at: nowIso(),
+                  preset: job.request.preset,
+                },
+                ...(preflight ? { preflight } : {}),
+                ...(nodeStates.length > 0 ? { nodes: nodeStates } : {}),
+                error: normalized,
+                generated_at: nowIso(),
+              },
+              {
+                executionId: job.execution_id,
+                section: 'pipeline-report',
+              },
+            )
+          : {
+              execution: {
+                execution_id: job.execution_id,
+                status: 'failed',
+                worker_pid: process.pid,
+                started_at: job.started_at?.toISOString() ?? null,
+                finished_at: nowIso(),
+                preset: job.request.preset,
+              },
+              ...(preflight ? { preflight } : {}),
+              error: normalized,
+              generated_at: nowIso(),
+            };
+
       await updatePipeline(job.pipeline_id, {
-        report_json: {
-          execution: {
-            execution_id: job.execution_id,
-            status: 'failed',
-            worker_pid: process.pid,
-            started_at: job.started_at?.toISOString() ?? null,
-            finished_at: nowIso(),
-            preset: job.request.preset,
-          },
-          ...(preflight ? { preflight } : {}),
-          ...(nodeStates.length > 0 ? { nodes: nodeStates } : {}),
-          error: normalized,
-          generated_at: nowIso(),
-        },
+        report_json: failureReport,
       });
     } catch (persistError) {
       console.error('[executor] failed to persist pipeline report', persistError);

@@ -1,220 +1,234 @@
-# План Доведения Backend До Functional Real RAG (2026-04-19)
+# Real RAG Agent Backend Plan (2026-04-19)
 
-## Назначение
-Этот документ фиксирует практический план доведения текущего backend MVP от `contract-ready orchestration` до functional real RAG backend, пригодного для построения knowledge-backed агента.
+## Purpose
+This document fixes the target architecture for the first real RAG agent backend in BrAIniac.
 
-Граница документа:
-- Только backend-слой.
-- Только путь к первому functional RAG-агенту.
-- Без детального продуктового scope beyond MVP+.
+The goal is not "a backend specialized only for RAG products".
+The goal is "a general agent-building backend that can support a real RAG agent without polluting the core domain model".
 
-## Текущая Оценка
-- Graph/runtime orchestration: готово на хорошем MVP-уровне.
-- Agent runtime (`AgentCall`): частично готово, пригодно для bounded tool-calling.
-- Tool contracts: готовы для contract-mode.
-- Functional real RAG backend: не готов.
+## Architecture Corrections
+- `AgentCall` must not receive callable tools from `agent.allowedToolIds`, `agent.allowedToolNames`, or `agent.tools`.
+- `AgentCall` may orchestrate tools internally, but the tool set available to it must come only through graph edges.
+- We must not introduce RAG-only database entities into the core service schema.
+- We must not solve RAG persistence by adding tables such as `DatasetDocument`, `DatasetChunk`, or `DatasetVector`.
+- RAG knowledge artifacts must be stored in a schema-free way.
 
-Практическая формулировка:
-- Сегодня backend умеет правдоподобно оркестрировать RAG-цепочку.
-- Сегодня backend не умеет полноценно обслуживать persistent knowledge base и real retrieval path end-to-end.
-
-## Целевая Архитектура
-Целевая архитектура первого релиза фиксируется как:
-- ingest/indexing слой = pipeline;
-- query-time слой = true RAG agent.
-
-Это означает:
-- индексация знаний может оставаться заранее заданной последовательностью шагов;
-- обработка пользовательского запроса не должна быть жестко зафиксированным прямым pipeline;
-- `AgentCall` должен сам решать, какие инструменты RAG-контура вызывать, в каком порядке и сколько раз в пределах лимитов.
-
-Целевой вид:
+## Target Shape
+- Ingest/indexing remains a pipeline.
+- Query-time remains an agent.
+- Tool availability for the agent is edge-only.
+- Knowledge artifacts are stored as JSON artifacts and/or external blobs referenced by JSON manifests.
 
 ```text
+Ingest side
 DatasetInput -> DocumentLoader -> Chunker -> Embedder -> VectorUpsert
-                        |
-                        v
-                 Knowledge / Vector Store
+                                           |
+                                           v
+                             artifact manifest / blob storage
 
-ManualInput -> AgentCall
-                 |
-                 +--> QueryBuilder
-                 +--> HybridRetriever
-                 +--> ContextAssembler
-                 +--> LLMAnswer / LLMCall
-                 +--> CitationFormatter
-                 +--> optional repeat / stop
+Query side
+ManualInput -> upstream tool-ref/tool-artifact nodes -> AgentCall
+                                                   |
+                                                   +--> QueryBuilder
+                                                   +--> HybridRetriever
+                                                   +--> ContextAssembler
+                                                   +--> LLMAnswer / LLMCall
+                                                   +--> CitationFormatter
+                                                   +--> repeat / stop
 ```
 
-## Что Считать "Готово" Для Первого Functional RAG-Агента
-Функциональная готовность считается достигнутой, когда одновременно выполняются все условия:
-- query-time путь реализован как автономный agent runtime, а не как жестко зафиксированный linear workflow;
-- `AgentCall` сам выбирает инструменты RAG-контура и последовательность их вызовов;
-- `DocumentLoader` действительно загружает документы из backend-managed источника, а не только нормализует `dataset_id`/`uri`.
-- Документы, чанки и векторные представления живут в постоянном backend-managed storage или в явном внешнем knowledge backend.
-- `VectorUpsert` делает реальный upsert в knowledge/vector backend.
-- `HybridRetriever` возвращает кандидатов из реального индекса, а не синтетически строит их из текста запроса.
-- Генерация ответа использует реальную модель (`LLMCall`, `AgentCall` или real executor для `LLMAnswer`) и строится по retrieved context.
-- Strict e2e проходит без подмешивания `documents/chunks/vectors/candidates/context_bundle/answer` в `input_json`.
-- Execution state доступен независимо от worker-процесса и не теряется при обычном multi-worker deployment.
+## Non-Negotiable Constraints
+1. `AgentCall` is edge-only for tool access.
+2. The product schema stays general-purpose.
+3. RAG artifacts must fit into existing generic persistence surfaces first.
+4. If artifacts become too large for DB JSON fields, they move to blob/object storage, not to new core RAG tables.
 
-## Ключевые Разрывы Текущей Реализации
-1. Data plane отсутствует:
-- в backend schema нет сущностей документов, чанков и векторов;
-- knowledge state не живет в backend как в постоянной системе.
+## Canonical Edge Tool Artifacts
+Phase 1 standardizes explicit edge contracts for agent-callable tools.
 
-2. Инструменты в основном работают как contract stubs:
-- `DocumentLoader`, `VectorUpsert`, `HybridRetriever`, `LLMAnswer` по default path не подтверждают реальную интеграцию.
+Accepted baseline shapes:
+- single ref:
+```json
+{
+  "kind": "tool_ref",
+  "tool_name": "HybridRetriever",
+  "tool_id": 7,
+  "desc": "Retrieve top-k candidates"
+}
+```
+- collection:
+```json
+{
+  "kind": "tool_refs",
+  "tool_refs": [
+    { "kind": "tool_ref", "tool_name": "QueryBuilder" },
+    { "kind": "tool_ref", "tool_name": "HybridRetriever" }
+  ]
+}
+```
 
-3. "Realistic" e2e пока проверяет runtime-chain, но не весь knowledge lifecycle:
-- промежуточные артефакты не подмешиваются;
-- исходные `documents` все еще могут передаваться в `input_json`.
+Compatibility note:
+- direct `tool_node` outputs connected by edges remain acceptable as explicit callable tool artifacts.
+- arbitrary payloads that merely contain `tool_name`-like fields should not be treated as callable tools.
 
-4. Query-time агент пока недостаточно автономен:
-- без real tools и knowledge backend AgentCall все еще ограничен по практической полезности;
-- первым классом должна стать модель "AgentCall orchestrates RAG tools", а не "graph hardcodes query flow".
+## What "Ready" Means
+A first real RAG agent is considered ready when all of the following are true:
+- `AgentCall` chooses which RAG tools to call and in what order.
+- The tools available to `AgentCall` come only from upstream graph-connected artifacts.
+- `DocumentLoader` loads real document content from a schema-free source, not only synthetic URI normalization.
+- `Chunker`, `Embedder`, `VectorUpsert`, and `HybridRetriever` operate on persisted artifacts, not only inline `input_json`.
+- Strict e2e can run without inline `documents`, `chunks`, `vectors`, `candidates`, `context_bundle`, or final `answer`.
+- Execution state is safe in multi-worker deployment.
 
-5. Execution state process-local:
-- execution snapshots и in-flight bookkeeping живут в памяти процесса;
-- это риск для cluster/load-balanced режима.
+## Storage Strategy Without New Tables
+Preferred order:
+1. Store small and medium artifacts in existing JSON fields such as node `output_json` and pipeline/report manifests.
+2. For larger artifacts, store only a JSON manifest/pointer in DB and place the payload in blob/object storage.
+3. Keep the format generic: artifact type, producer node, execution id, pointer, checksums, token counts, and metadata.
 
-6. Tool catalog глобально изменяем:
-- конфиг tools не изолирован по project/pipeline;
-- это мешает безопасному multi-project evolution инструментов.
+Recommended artifact model:
+- `artifact_kind`: `documents`, `chunks`, `vectors`, `retrieval_candidates`, `context_bundle`
+- `owner_scope`: pipeline id, node id, execution id, dataset id when relevant
+- `storage_mode`: `inline-json` or `external-blob`
+- `pointer`: null for inline artifacts, URL/key/path for external artifacts
+- `meta`: token counts, model ids, chunking params, timestamps, provenance
 
-## Рекомендуемый Порядок Работ
-Главный принцип:
-- сначала обеспечить автономный query-time `AgentCall`, который может сам вызывать RAG tools;
-- затем довести сами инструменты до real integration-ready состояния;
-- ingest/indexing слой развивать как отдельный pipeline знаний;
-- не начинать с Branch/Merge/LoopGate, пока knowledge path не стал реальным.
+Current implementation status:
+- inline manifests are already wired into contract outputs for `documents`, `chunks`, `vectors`, `retrieval_candidates`, and `context_bundle`
+- downstream contracts can already consume those inline manifests on the baseline path
+- oversized manifests can now be externalized into `external-blob` local-file payloads through the pipeline artifact store
+- manifest consumers can already reload `external-blob` payloads through `local-file` pointers
 
-Почему так:
-- если query-time слой остается жестким pipeline, то это workflow, а не агент;
-- пользователю нужен именно RAG-agent, значит first-class целью должен быть agent orchestration layer;
-- без real ingest/retrieve/answer AgentCall будет оркестрировать в основном синтетические инструменты, поэтому autonomy и tool readiness нужно развивать совместно.
+## Main Gaps
+1. Tool access model is not aligned yet.
+- We need an edge-based way to advertise callable tools to `AgentCall` without hidden agent-config catalogs.
 
-## Фаза 0. Truth Alignment И Guardrails
-Цель:
-- перестать смешивать `contract-ready` и `integration-ready`.
+2. Knowledge persistence is not aligned yet.
+- We need schema-free artifact storage and manifest conventions.
 
-Работы:
-- зафиксировать distinction в SDD и README;
-- пометить strict сценарии как proof of runtime/provenance, а не proof of full integration;
-- в e2e явно разделить `contract`, `realistic-contract`, `real-rag-agent`.
+3. Real ingest path is missing.
+- `DocumentLoader` still needs a real source of document text that does not depend on new DB entities.
 
-Критерий выхода:
-- документы и тестовые профили больше не создают ложное ощущение production-ready RAG.
+4. Real vector path is only partially aligned.
+- `VectorUpsert` and `HybridRetriever` now have a local artifact-backed baseline, but not a production-grade backend boundary.
 
-## Фаза 1. Agent Autonomy Baseline
-Цель:
-- сделать query-time слой именно агентом.
+5. Runtime hardening is still missing.
+- Execution state is still process-local.
 
-Работы:
-- поддержать explicit tool selection policy в `AgentCall` через agent-config;
-- разрешить `AgentCall` вызывать RAG tools без обязательной отдельной цепочки `ToolNode -> AgentCall`;
-- зафиксировать bounded limits и fallback policy для agent-orchestrated tool-calls;
-- обновить e2e так, чтобы базовый сценарий проверял `ManualInput -> AgentCall`, а не замаскированный linear tool-chain.
+## Recommended Implementation Order
+### Phase 1. Edge-Only Agent Tool Access
+- Remove agent-configured tool catalogs from `AgentCall`.
+- Define the edge-level mechanism that advertises tools to `AgentCall`.
+- Update e2e so that tool availability is proven by edges, not by node-local agent config.
 
-Критерий выхода:
-- query-time сценарий может быть запущен как `ManualInput -> AgentCall`, и `AgentCall` сам выбирает дальнейшие tool-calls.
+Current implementation status:
+- `AgentCall` resolves callable tools from explicit `tool_ref` / `tool_refs` edge artifacts.
+- `AgentCall` also accepts direct `tool_node` outputs as explicit edge-provided callable tools.
 
-## Фаза 2. Knowledge Storage Baseline
-Цель:
-- добавить persistent knowledge layer.
+Exit condition:
+- `AgentCall` can run only with edge-provided tool refs/artifacts.
 
-Работы:
-- расширить schema сущностями для документов, чанков и векторных записей либо ввести явный storage adapter boundary;
-- определить связь `Dataset -> Documents`;
-- определить canonical identifiers для `document_id`, `chunk_id`, `vector_id`;
-- определить minimal provenance schema для ingest/update.
+### Phase 2. Schema-Free Artifact Layer
+- Define artifact manifests for `documents`, `chunks`, `vectors`, `candidates`, and `context`.
+- Reuse existing JSON persistence surfaces where possible.
+- Add blob/object storage pointers for oversized artifacts.
 
-Критерий выхода:
-- backend способен хранить knowledge artifacts без передачи их через `input_json`.
+Current implementation status:
+- generic inline manifests are already in place for `documents`, `chunks`, `vectors`, `retrieval_candidates`, and `context_bundle`
+- the executor can externalize oversized manifests into `.artifacts/.../*.json` and keep only a pointer manifest in runtime state
+- contract consumers can reload `external-blob` manifests when `pointer.kind = local-file`
+- retrieval candidates and context bundles now also have manifest treatment on the contract path
 
-## Фаза 3. Real Ingest Path
-Цель:
-- сделать реальный ingest-контур.
+Exit condition:
+- The backend can persist and reload RAG artifacts without new RAG-specific tables.
 
-Работы:
-- реализовать real `DocumentLoader`;
-- определить поддерживаемые источники первого MVP: `dataset storage`, `memory dataset seed`, `uri fetch adapter` или иной один выбранный baseline;
-- сохранить загруженный текст/метаданные в persistent knowledge layer;
-- сделать `Chunker` работающим по persisted docs, а не только по inline payload.
+### Phase 3. Real DocumentLoader
+- Implement `DocumentLoader` over schema-free storage and/or dataset URI adapters.
+- Allow `DocumentLoader` to produce a manifest plus loaded document content.
 
-Критерий выхода:
-- pipeline может стартовать с `dataset_id` и построить chunks без inline `documents`.
+Current implementation status:
+- `DocumentLoader` already supports a first real local-source path:
+  - `workspace://...`
+  - `file://...`
+  - plain local paths resolved under the configured workspace root
+- `.json` document bundles and plain text files are supported on that path
+- unsupported URIs still fall back to synthetic contract behavior
 
-## Фаза 4. Real Vector Path
-Цель:
-- сделать реальный embedding/upsert/retrieve.
+Exit condition:
+- `DocumentLoader` can load real text for downstream chunking without inline `documents`.
 
-Работы:
-- оставить `Embedder -> openrouter-embeddings` как реальный baseline path;
-- реализовать реальный `VectorUpsert` adapter;
-- реализовать реальный `HybridRetriever` adapter поверх knowledge/vector backend;
-- определить минимальный retrieval policy: `top_k`, `mode`, `namespace`, `filters`.
+### Phase 4. Real Artifact-Backed Chunk/Vector Flow
+- Make `Chunker` read/write artifact manifests.
+- Keep `Embedder` on the existing real embedding path when possible.
+- Make `VectorUpsert` persist vectors through the artifact layer and chosen vector backend boundary.
 
-Критерий выхода:
-- retrieval candidates появляются из persisted index, а не из синтетического contract output.
+Current implementation status:
+- `Chunker` and `Embedder` already read/write manifests on the contract path
+- `Embedder` now carries chunk text/document metadata forward into vector artifacts
+- `VectorUpsert` now emits persisted-ready vector manifests with index/namespace metadata
+- the current persistence boundary is still local artifact storage rather than a dedicated vector backend
 
-## Фаза 5. Real Answer Path
-Цель:
-- сделать реальную grounded answer generation.
+Exit condition:
+- A dataset can be ingested without stuffing all artifacts into `input_json`.
 
-Работы:
-- выбрать канонический путь первого real answer внутри автономного agent runtime:
-- вариант A: `AgentCall -> QueryBuilder -> HybridRetriever -> ContextAssembler -> LLMCall -> CitationFormatter`;
-- вариант B: `AgentCall -> QueryBuilder -> HybridRetriever -> ContextAssembler -> LLMAnswer(real executor) -> CitationFormatter`;
-- сохранить связку ответа с retrieved sources;
-- гарантировать, что cited answer строится только из реальных retrieved chunk ids.
+### Phase 5. Real Retrieval Path
+- Make `HybridRetriever` read from a real persisted index or vector backend.
+- Return artifact-backed retrieval candidates.
 
-Критерий выхода:
-- ответ получается от реальной модели и имеет проверяемую связь с retrieved context.
+Current implementation status:
+- `HybridRetriever` can now rank persisted vector artifacts coming from manifest/pointer storage
+- when no artifact-backed records are available, it still falls back to synthetic retrieval for compatibility
+- dense similarity is still a local baseline and not yet a dedicated retrieval backend
 
-## Фаза 6. Runtime Hardening
-Цель:
-- сделать execution path безопасным для эксплуатации.
+Exit condition:
+- Retrieval is no longer synthetic.
 
-Работы:
-- вынести execution job state из памяти процесса в persistent/shared storage;
-- обеспечить корректный polling в multi-worker режиме;
-- выровнять retry/backoff policy для `LLMCall` и `AgentCall`;
-- добавить явные execution diagnostics: provenance, attempts, latency, token/cost usage.
+### Phase 6. Real Answer Path
+- Keep the answer grounded in retrieved artifacts.
+- Decide the canonical answer path:
+  - `AgentCall -> ... -> LLMCall`
+  - or `AgentCall -> ... -> LLMAnswer(real executor)`
 
-Критерий выхода:
-- strict execution и polling устойчивы в обычном deployment режиме.
+Exit condition:
+- Final answers are grounded and traceable to retrieved artifacts.
 
-## Фаза 7. Real RAG E2E
-Цель:
-- получить честный end-to-end proof.
+### Phase 7. Runtime Hardening
+- Move execution state out of process-local memory.
+- Make strict polling safe in multi-worker mode.
 
-Работы:
-- добавить `real-rag-agent` e2e-профиль без inline knowledge artifacts;
-- запретить передачу `documents/chunks/vectors/candidates/context_bundle/answer` в strict real-rag сценарии;
-- проверять, что knowledge lifecycle прошел через backend-managed storage/integration path.
+Exit condition:
+- Execution and polling are deployment-safe.
 
-Критерий выхода:
-- strict real-rag e2e проходит на свежем backend-процессе и доказывает functional knowledge path.
+### Phase 8. Real RAG Agent E2E
+- Add a strict e2e profile that proves:
+  - edge-only tool access
+  - schema-free artifact persistence
+  - real retrieval path
+  - grounded answer path
 
-## Что Не Является Первым Приоритетом
-- `Branch`, `Merge`, `RetryGate`, `LoopGate` не являются blocker для первого functional RAG-agent.
-- `GroundingChecker`, `BudgetGuard`, `TraceLogger` важны, но их имеет смысл доводить после появления real retrieval/answer path.
-- Расширение универсального tool catalog имеет смысл после стабилизации knowledge baseline.
+Exit condition:
+- One strict e2e proves a real RAG agent path end to end.
 
-## Рекомендуемая Первая Реализационная Цель
-Рекомендуемый first target:
-- ingest pipeline `DatasetInput -> ToolNode(DocumentLoader) -> ToolNode(Chunker) -> ToolNode(Embedder) -> ToolNode(VectorUpsert)`;
-- query-time agent `ManualInput -> AgentCall`, где `AgentCall` сам оркестрирует `QueryBuilder`, `HybridRetriever`, `ContextAssembler`, `LLMAnswer/LLMCall`, `CitationFormatter`.
+## What Is Not First Priority
+- New control nodes such as `Branch`, `Merge`, `LoopGate`, `RetryGate`
+- RAG-only database entities
+- Any design that makes `AgentCall` depend on a hidden node-local tool catalog
 
-Почему именно так:
-- это соответствует требованию "строим именно агента, а не прямой query-pipeline";
-- ingest и query-time responsibilities не смешиваются;
-- этот путь максимально переиспользует уже существующий runtime и позволяет постепенно включать real integrations за каждым tool.
+## Working Assumption
+Yes, storing chunks and similar artifacts in JSON outputs is possible.
 
-## Definition Of Done Для Этой Фазы
-Фаза считается завершенной, когда:
-- backend не требует inline `documents` для ingest;
-- backend не требует inline `vectors/candidates/context_bundle` для retrieval/generation;
-- хотя бы один strict e2e использует реальный knowledge path end-to-end;
-- SDD и runtime truth snapshot подтверждают integration-ready статус для `DocumentLoader`, `Embedder`, `VectorUpsert`, `HybridRetriever` и выбранного answer path.
+It is acceptable for:
+- prototypes
+- small and medium corpora
+- short-lived execution artifacts
+- manifests that point to larger payloads
+
+It is not ideal for:
+- large vector payloads inline in DB JSON
+- long-term high-volume storage without blob offloading
+- heavy retrieval workloads that need dedicated indexing infrastructure
+
+So the right direction is:
+- JSON manifest first
+- blob/object payload second when size demands it
+- dedicated vector backend only where retrieval actually needs it

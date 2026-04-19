@@ -1,5 +1,6 @@
 import { HttpError } from '../../../../common/http-error.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
+import { buildInlineArtifactManifest, listArtifactManifestItems } from './tool-artifact.manifest.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const MAX_CHUNKER_DOCUMENTS = 64;
@@ -107,6 +108,12 @@ function pushDistinctDocument(out: ChunkerDocument[], raw: unknown) {
 }
 
 function collectDocuments(value: unknown, out: ChunkerDocument[]) {
+  const manifestItems = listArtifactManifestItems(value, ['documents']);
+  for (const item of manifestItems) {
+    if (out.length >= MAX_CHUNKER_DOCUMENTS) break;
+    pushDistinctDocument(out, item);
+  }
+
   const unwrapped = unwrapPayload(value);
 
   if (Array.isArray(unwrapped)) {
@@ -216,6 +223,11 @@ function buildChunkerContractOutput(input: Record<string, any>): Record<string, 
     overlap,
     chunk_count: chunks.length,
     chunks,
+    chunks_manifest: buildInlineArtifactManifest('chunks', chunks, {
+      strategy: 'word-window',
+      chunk_size: chunkSize,
+      overlap,
+    }),
   };
 }
 

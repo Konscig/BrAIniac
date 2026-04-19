@@ -12,6 +12,7 @@ import edgeRouter from './routes/resources/edge/edge.routes.js';
 import toolRouter from './routes/resources/tool/tool.routes.js';
 import pipelineRouter from './routes/resources/pipeline/pipeline.routes.js';
 import nodeTypeRouter from './routes/resources/node_type/node_type.routes.js';
+import { isHttpError } from './common/http-error.js';
 import { getOpenRouterConfig } from './services/core/openrouter/openrouter.config.js';
 import { resolveToolContractDefinition } from './services/application/tool/contracts/index.js';
 
@@ -63,7 +64,7 @@ function createApp() {
 
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-  app.post('/tool-executor/contracts', (req, res) => {
+  app.post('/tool-executor/contracts', async (req, res) => {
     const payload = req.body && typeof req.body === 'object' ? req.body : {};
     const tool = payload.tool && typeof payload.tool === 'object' ? payload.tool : {};
     const contract = payload.contract && typeof payload.contract === 'object' ? payload.contract : {};
@@ -84,13 +85,29 @@ function createApp() {
       !Array.isArray(contractInput)
     ) {
       try {
-        contractOutput = resolvedContractDefinition.buildHttpSuccessOutput({
+        contractOutput = await resolvedContractDefinition.buildHttpSuccessOutput({
           input: contractInput as Record<string, any>,
           status: 200,
           response: null,
         });
-      } catch {
-        contractOutput = null;
+      } catch (error) {
+        if (isHttpError(error)) {
+          return res.status(error.status).json({
+            ok: false,
+            executor: 'backend-contract-http-json',
+            tool_name: requestedToolName || null,
+            contract_name: (resolvedContractDefinition?.name ?? resolvedContractName) || null,
+            ...error.body,
+          });
+        }
+
+        return res.status(500).json({
+          ok: false,
+          executor: 'backend-contract-http-json',
+          tool_name: requestedToolName || null,
+          contract_name: (resolvedContractDefinition?.name ?? resolvedContractName) || null,
+          error: error instanceof Error ? error.message : 'contract output builder failed',
+        });
       }
     }
 

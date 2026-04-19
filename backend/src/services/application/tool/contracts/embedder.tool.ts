@@ -1,5 +1,6 @@
 import { HttpError } from '../../../../common/http-error.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
+import { buildInlineArtifactManifest, listArtifactManifestItems } from './tool-artifact.manifest.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const MAX_EMBEDDER_CHUNKS = 256;
@@ -10,6 +11,7 @@ const MAX_VECTOR_SIZE = 64;
 
 type EmbedderChunk = {
   chunk_id: string;
+  document_id: string | null;
   text: string;
 };
 
@@ -66,6 +68,7 @@ function toEmbedderChunk(raw: unknown, index: number): EmbedderChunk | undefined
   if (directText) {
     return {
       chunk_id: `chunk_${index + 1}`,
+      document_id: null,
       text: directText,
     };
   }
@@ -86,9 +89,15 @@ function toEmbedderChunk(raw: unknown, index: number): EmbedderChunk | undefined
     readNonEmptyText(record.id) ??
     readNonEmptyText(record.document_id) ??
     `chunk_${index + 1}`;
+  const documentId =
+    readNonEmptyText(record.document_id) ??
+    readNonEmptyText(record.doc_id) ??
+    readNonEmptyText(record.parent_document_id) ??
+    null;
 
   return {
     chunk_id: chunkId,
+    document_id: documentId,
     text,
   };
 }
@@ -107,6 +116,12 @@ function pushDistinctChunk(out: EmbedderChunk[], raw: unknown) {
 }
 
 function collectChunks(value: unknown, out: EmbedderChunk[]) {
+  const manifestItems = listArtifactManifestItems(value, ['chunks']);
+  for (const item of manifestItems) {
+    if (out.length >= MAX_EMBEDDER_CHUNKS) break;
+    pushDistinctChunk(out, item);
+  }
+
   const unwrapped = unwrapPayload(value);
 
   if (Array.isArray(unwrapped)) {
@@ -182,18 +197,29 @@ function buildEmbedderContractOutputFromInput(input: Record<string, any>, provid
   const chunks = normalizeInputChunks(input.chunks);
   const requestedVectorSize = coercePositiveInt(input.vector_size) ?? DEFAULT_VECTOR_SIZE;
   const vectorSize = clampInteger(requestedVectorSize, 2, MAX_VECTOR_SIZE);
+  const model = readNonEmptyText(input.model) ?? null;
 
   const vectors = chunks.map((chunk, index) => ({
     chunk_id: chunk.chunk_id,
+    ...(chunk.document_id ? { document_id: chunk.document_id } : {}),
+    text: chunk.text,
     vector: buildDeterministicVector(chunk.text, vectorSize),
     order: index + 1,
+    provider,
+    ...(model ? { model } : {}),
   }));
 
   return {
     provider,
+    ...(model ? { model } : {}),
     vector_size: vectorSize,
     vector_count: vectors.length,
     vectors,
+    vectors_manifest: buildInlineArtifactManifest('vectors', vectors, {
+      provider,
+      ...(model ? { model } : {}),
+      vector_size: vectorSize,
+    }),
   };
 }
 
@@ -271,8 +297,12 @@ export const embedderToolContractDefinition: ToolContractDefinition = {
 
       vectors.push({
         chunk_id: chunk.chunk_id,
+        ...(chunk.document_id ? { document_id: chunk.document_id } : {}),
+        text: chunk.text,
         vector,
         order: index + 1,
+        provider: 'openrouter-embeddings',
+        model,
       });
     }
 
@@ -282,6 +312,11 @@ export const embedderToolContractDefinition: ToolContractDefinition = {
       vector_size: vectors[0]?.vector?.length ?? 0,
       vector_count: vectors.length,
       vectors,
+      vectors_manifest: buildInlineArtifactManifest('vectors', vectors, {
+        provider: 'openrouter-embeddings',
+        model,
+        vector_size: vectors[0]?.vector?.length ?? 0,
+      }),
     };
   },
 };

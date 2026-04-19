@@ -1,5 +1,6 @@
 import { HttpError } from '../../../../common/http-error.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
+import { buildInlineArtifactManifest, listArtifactManifestItems } from './tool-artifact.manifest.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const DEFAULT_MAX_CONTEXT_TOKENS = 256;
@@ -106,6 +107,12 @@ function pushCandidate(out: RetrievalCandidate[], raw: unknown) {
 }
 
 function collectCandidates(value: unknown, out: RetrievalCandidate[]) {
+  const manifestItems = listArtifactManifestItems(value, ['retrieval_candidates']);
+  for (const item of manifestItems) {
+    if (out.length >= MAX_CANDIDATES) break;
+    pushCandidate(out, item);
+  }
+
   const unwrapped = unwrapPayload(value);
 
   if (Array.isArray(unwrapped)) {
@@ -191,6 +198,11 @@ function buildContextAssemblerContractOutput(input: Record<string, any>): Record
     chunk_id: entry.chunk_id,
     ...(entry.score !== null ? { score: entry.score } : {}),
   }));
+  const contextBundle = {
+    text: contextText,
+    token_estimate: usedTokens,
+    sources,
+  };
 
   return {
     strategy: readNonEmptyText(input.strategy) ?? 'topk-pack',
@@ -198,11 +210,12 @@ function buildContextAssemblerContractOutput(input: Record<string, any>): Record
     candidate_count: candidates.length,
     selected_count: selected.length,
     truncated: selected.length < candidates.length,
-    context_bundle: {
-      text: contextText,
-      token_estimate: usedTokens,
-      sources,
-    },
+    context_bundle: contextBundle,
+    context_bundle_manifest: buildInlineArtifactManifest('context_bundle', [contextBundle], {
+      strategy: readNonEmptyText(input.strategy) ?? 'topk-pack',
+      max_context_tokens: maxTokens,
+      selected_count: selected.length,
+    }),
   };
 }
 
