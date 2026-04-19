@@ -357,7 +357,7 @@ async function resolveNodeTypes(base, authHeaders) {
   const nodeTypes = mustOk('list node types', response);
   const byName = new Map(nodeTypes.map((row) => [trimName(row.name), row]));
 
-  const required = ['ManualInput', 'AgentCall'];
+  const required = ['ManualInput', 'ToolNode', 'AgentCall'];
   for (const name of required) {
     if (!byName.get(name)) {
       throw new Error(`required node type missing: ${name}`);
@@ -372,7 +372,7 @@ async function resolveNodeTypes(base, authHeaders) {
   return byName;
 }
 
-async function createGraph(base, authHeaders, pipelineId, nodeTypesByName) {
+async function createGraph(base, authHeaders, pipelineId, nodeTypesByName, toolsByName) {
   async function createNode(payload) {
     const response = await req(base, '/nodes', {
       method: 'POST',
@@ -392,6 +392,7 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName) {
   }
 
   const manualType = nodeTypesByName.get('ManualInput');
+  const toolNodeType = nodeTypesByName.get('ToolNode');
   const agentType = nodeTypesByName.get('AgentCall');
 
   const nManual = await createNode({
@@ -409,7 +410,6 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName) {
       x: 420,
       y: 180,
       label: 'AgentCall',
-      tools: autonomousAgentTools.map((name) => ({ name, desc: `Autonomous agent tool ${name}` })),
       agent: {
         maxToolCalls: 4,
         maxAttempts: 3,
@@ -419,11 +419,39 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName) {
     },
   });
 
-  await createEdge(nManual.node_id, nAgent.node_id);
+  let previousNodeId = nManual.node_id;
+  let x = 250;
+  const toolNodeIds = [];
+
+  for (const toolName of autonomousAgentTools) {
+    const tool = toolsByName.get(toolName);
+    if (!tool) {
+      throw new Error(`tool not found while creating graph: ${toolName}`);
+    }
+
+    const toolNode = await createNode({
+      fk_pipeline_id: pipelineId,
+      fk_type_id: toolNodeType.type_id,
+      top_k: 1,
+      ui_json: {
+        x,
+        y: 180,
+        label: toolName,
+        tool_id: tool.tool_id,
+      },
+    });
+
+    toolNodeIds.push(toolNode.node_id);
+    await createEdge(previousNodeId, toolNode.node_id);
+    await createEdge(toolNode.node_id, nAgent.node_id);
+    previousNodeId = toolNode.node_id;
+    x += 150;
+  }
 
   return {
     ManualInput: nManual.node_id,
     AgentCall: nAgent.node_id,
+    ToolNodes: toolNodeIds,
   };
 }
 
@@ -536,8 +564,8 @@ async function run() {
   console.log(`[agent-e2e] project=${project.project_id}, pipeline=${pipeline.pipeline_id}, dataset=${dataset.dataset_id}`);
 
   const nodeTypesByName = await resolveNodeTypes(base, auth.authHeaders);
-  const nodeIdByLabel = await createGraph(base, auth.authHeaders, pipeline.pipeline_id, nodeTypesByName);
-  console.log('[agent-e2e] graph created (ManualInput -> AgentCall)');
+  const nodeIdByLabel = await createGraph(base, auth.authHeaders, pipeline.pipeline_id, nodeTypesByName, toolsByName);
+  console.log('[agent-e2e] graph created (ManualInput -> ToolNode chain, each ToolNode -> AgentCall)');
 
   for (let strictAttempt = 1; strictAttempt <= strictExecutionRetries; strictAttempt += 1) {
     const execution = await executeAutonomousRun(base, auth.authHeaders, pipeline.pipeline_id, dataset.dataset_id);

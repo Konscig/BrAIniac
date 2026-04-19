@@ -729,7 +729,6 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName, tools
       x: 820,
       y: 80,
       label: 'AgentCall',
-      tools: requiredContractTools.map((name) => ({ name, desc: `Contract tool ${name}` })),
       agent: {
         ...(ragAgentModel ? { modelId: ragAgentModel } : {}),
         maxToolCalls: 2,
