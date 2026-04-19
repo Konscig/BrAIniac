@@ -1,10 +1,10 @@
-# Backend Runtime Truth Snapshot (2026-04-19)
+# Снимок Текущей Правды Backend Runtime (2026-04-19)
 
-## Purpose
-This document records the current backend truth and replaces outdated assumptions.
+## Назначение
+Этот документ фиксирует текущее фактическое состояние backend и заменяет устаревшие предположения.
 
-## Current Truth
-- The backend runtime has implemented node handlers for:
+## Текущая Правда
+- В backend runtime реализованы node handlers для:
   - `Trigger`
   - `ManualInput`
   - `DatasetInput`
@@ -16,67 +16,69 @@ This document records the current backend truth and replaces outdated assumption
   - `ToolNode`
   - `Parser`
   - `SaveResult`
-- `ToolNode` currently supports `http-json` and `openrouter-embeddings`.
-- `ToolNode` requires an explicit tool binding on the node itself.
-- The backend contract endpoint `POST /tool-executor/contracts` can return `contract_output`.
-- Local synthetic contract output is still optional and controlled by runtime config.
+- `ToolNode` сейчас поддерживает `http-json` и `openrouter-embeddings`.
+- `ToolNode` требует явный binding инструмента на самой ноде.
+- Backend endpoint `POST /tool-executor/contracts` умеет возвращать `contract_output`.
+- Локальный synthetic contract output по-прежнему опционален и управляется runtime-config.
 
-## AgentCall Truth
-- `AgentCall` has an internal bounded loop and can orchestrate tool calls.
-- `AgentCall` returns execution diagnostics such as provider info and `tool_call_trace`.
-- `AgentCall` tool access must be treated as edge-derived only.
-- `AgentCall` must not depend on hidden node-local tool catalogs such as `allowedToolIds`, `allowedToolNames`, or `agent.tools`.
-- Canonical edge contracts for callable tools are explicit `tool_ref` / `tool_refs` artifacts.
-- Direct `tool_node` outputs connected by edges are still accepted as explicit callable tool artifacts.
+## Правда Про AgentCall
+- `AgentCall` имеет внутренний bounded loop и умеет оркестрировать tool calls.
+- `AgentCall` возвращает execution diagnostics, включая provider info и `tool_call_trace`.
+- Доступ `AgentCall` к инструментам должен считаться только edge-derived.
+- `AgentCall` не должен зависеть от скрытых node-local catalog'ов инструментов, таких как `allowedToolIds`, `allowedToolNames` или `agent.tools`.
+- Канонический edge-контракт для callable tools — это явные артефакты `tool_ref` / `tool_refs`.
+- Прямые `tool_node` outputs, подключённые рёбрами, по-прежнему допустимы как явные callable tool artifacts.
 
-## RAG Truth
-- `DocumentLoader` is still mostly contract-ready, but it now has a first real local-source path.
-- `DocumentLoader` can already load local text and JSON bundle sources from:
+## Правда Про RAG
+- `DocumentLoader` всё ещё в основном находится в состоянии contract-ready, но уже имеет первый реальный local-source path.
+- `DocumentLoader` уже умеет загружать локальные text и JSON bundle источники из:
   - `workspace://...`
   - `file://...`
-  - plain local paths under the configured workspace root
-- Unsupported URIs still fall back to synthetic contract behavior.
-- `VectorUpsert` now writes artifact-backed vector payloads with chunk/document metadata into manifest-friendly outputs.
-- `HybridRetriever` can now rank persisted vector artifacts when those artifacts include chunk text/metadata.
-- `HybridRetriever` still keeps a synthetic fallback path when no retrievable artifact-backed records are available.
-- `LLMAnswer` in ToolNode contract mode is still deterministic on the default path.
-- Real strict RAG should not be claimed yet.
+  - plain local paths внутри настроенного workspace root
+- Неподдержанные URI по-прежнему уходят в synthetic contract fallback.
+- `VectorUpsert` теперь пишет artifact-backed vector payloads с chunk/document metadata в manifest-friendly outputs.
+- `HybridRetriever` теперь умеет ранжировать persisted vector artifacts, если в них есть chunk text/metadata.
+- `HybridRetriever` по-прежнему сохраняет synthetic fallback path, если retrievable artifact-backed records недоступны.
+- Realistic RAG e2e path теперь использует workspace-backed dataset JSON bundle вместо inline `documents` в query-time input.
+- `LLMAnswer` в ToolNode contract mode по default path всё ещё детерминированный.
+- Утверждать, что strict real RAG уже готов, пока нельзя.
 
-## Storage Truth
-- The backend should not introduce RAG-specific core DB entities for documents, chunks, and vectors.
-- The preferred direction is schema-free artifact storage:
-  - existing JSON outputs/manifests first
-  - blob/object storage pointers second
-  - dedicated vector backend only where retrieval actually needs it
-- Contract outputs already expose inline manifests for the baseline artifact flow:
+## Правда Про Storage
+- Backend не должен вводить RAG-specific core DB entities для документов, чанков и векторов.
+- Предпочтительное направление — schema-free artifact storage:
+  - сначала существующие JSON outputs/manifests
+  - затем blob/object storage pointers
+  - dedicated vector backend только там, где retrieval реально этого требует
+- Contract outputs уже отдают inline manifests для базового artifact flow:
   - `documents_manifest`
   - `chunks_manifest`
   - `vectors_manifest`
-- Downstream contracts can now also emit and consume:
+- Downstream contracts теперь также умеют отдавать и принимать:
   - `retrieval_candidates` manifests
   - `context_bundle` manifests
-- Oversized manifests can now be externalized into `external-blob` payloads with `pointer.kind = local-file`.
-- Manifest consumers can already reload those local-file `external-blob` payloads.
+- Oversized manifests теперь могут externalize'иться в `external-blob` payloads с `pointer.kind = local-file`.
+- Consumers manifests уже умеют читать такие local-file `external-blob` payloads обратно.
 
-## Still Not Ready For A Real RAG Agent
-- Edge-based tool advertising is partially productized via explicit `tool_ref` / `tool_refs`, but still needs stronger validation and broader runtime adoption.
-- Real document loading is only partially implemented.
-- Vector persistence and retrieval now have a local artifact-backed baseline, but not a production-grade dedicated backend.
-- Execution state is still process-local, which is risky for multi-worker deployment.
+## Что Всё Ещё Не Готово Для Реального RAG Agent
+- Edge-based tool advertising частично продуктализирован через явные `tool_ref` / `tool_refs`, но всё ещё требует более строгой валидации и более широкого внедрения в runtime.
+- Реальная загрузка документов реализована только частично.
+- Vector persistence и retrieval уже имеют локальный artifact-backed baseline, но ещё не имеют production-grade dedicated backend.
+- Realistic e2e path стал ближе к реальному artifact-backed flow, но полноценный strict end-to-end proof всё ещё зависит от живого backend и стабильности provider path.
+- Execution state всё ещё process-local, что рискованно для multi-worker deployment.
 
-## Obsolete Assumptions
-- "AgentCall can receive tools from node-local agent config" is obsolete.
-- "We should solve RAG persistence by adding new RAG tables to the main schema" is obsolete.
-- "A passing contract-mode flow proves a real RAG backend" is false.
+## Устаревшие Предположения
+- «AgentCall может получать tools из node-local agent config» — устарело.
+- «RAG persistence нужно решать через новые RAG-таблицы в основной схеме» — устарело.
+- «Успешный contract-mode flow доказывает готовый real RAG backend» — неверно.
 
-## Canonical Sources In Code
+## Канонические Источники В Коде
 - Runtime registry:
   - `backend/src/services/application/node/handlers/node-handler.registry.ts`
 - Runtime handlers:
   - `backend/src/services/application/node/handlers/*.node-handler.ts`
-- Shared node runtime logic:
+- Общая runtime-логика нод:
   - `backend/src/services/application/node/handlers/node-handler.shared.ts`
-- Tool contract registry:
+- Реестр tool contracts:
   - `backend/src/services/application/tool/contracts/index.ts`
-- Tool contract logic:
+- Логика tool contracts:
   - `backend/src/services/application/tool/contracts/*.tool.ts`

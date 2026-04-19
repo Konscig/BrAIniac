@@ -1,18 +1,18 @@
-# Node Role Profiles
+# Профили Ролей Узлов
 
-## Canonical Roles
+## Канонические Роли
 - `source`
 - `transform`
 - `control`
 - `sink`
 
-## Layer Separation
-- Node: executable graph unit in the pipeline/runtime layer.
-- Tool: reusable capability with input/output/config contracts.
-- Executor kind: technical execution mode for a tool.
-- Provider/adapter: low-level integration transport, not a node and not a tool.
+## Разделение Слоёв
+- Node: исполняемая единица графа на уровне pipeline/runtime.
+- Tool: переиспользуемая capability с контрактами input/output/config.
+- Executor kind: технический режим исполнения инструмента.
+- Provider/adapter: низкоуровневая интеграция и транспорт, а не нода и не инструмент.
 
-## Recommended Default Matrix
+## Рекомендуемая Базовая Матрица
 | role | input.min | input.max | output.min | output.max |
 |---|---:|---:|---:|---:|
 | source | 0 | 2 | 1 | 5 |
@@ -20,9 +20,9 @@
 | control | 0 | 8 | 0 | 8 |
 | sink | 0 | 10 | 0 | 2 |
 
-These are recommended defaults, not hard constraints by themselves.
+Это рекомендуемые дефолты, а не жёсткие ограничения сами по себе.
 
-## AgentCall Profile
+## Профиль AgentCall
 - role: `transform`
 - internalRuntime: enabled
 - bounded limits:
@@ -40,39 +40,39 @@ These are recommended defaults, not hard constraints by themselves.
   - `toolCallsUsed`
   - `timing`
 
-Important:
-- `AgentCall` may orchestrate tool calls internally.
-- The tool set available to `AgentCall` must come through inbound graph edges only.
-- `AgentCall` must not define its own hidden callable tool catalog in node config.
-- The preferred edge artifacts are explicit `tool_ref` / `tool_refs` payloads; direct `ToolNode` outputs are also acceptable when connected by edges.
+Важно:
+- `AgentCall` может оркестрировать tool-calls внутри себя.
+- Набор инструментов, доступных `AgentCall`, должен приходить только через входящие рёбра графа.
+- `AgentCall` не должен иметь скрытый локальный каталог callable tools в config ноды.
+- Предпочтительный формат edge-артефактов: явные payloads `tool_ref` / `tool_refs`; прямые outputs `ToolNode` тоже допустимы, если они подключены рёбрами.
 
-## ToolNode Profile
+## Профиль ToolNode
 - role: `transform`
-- purpose: execute one explicit tool as a graph step
-- required tool binding: `ui_json.tool_id` or `ui_json.tool`
-- required executor kind: one of the supported runtime kinds
+- назначение: выполнить один явный инструмент как шаг графа
+- обязательный binding инструмента: `ui_json.tool_id` или `ui_json.tool`
+- обязательный executor kind: один из поддерживаемых runtime kinds
 
-## Layer Choice Rule
-- Use `LLMCall` for a direct single model call.
-- Use `ToolNode` when a reusable tool contract should be executed as a graph step.
-- Use `AgentCall` when a bounded multi-step strategy is needed.
+## Правило Выбора Слоя
+- Использовать `LLMCall`, если нужен прямой одиночный вызов модели.
+- Использовать `ToolNode`, если переиспользуемый tool contract должен исполняться как шаг графа.
+- Использовать `AgentCall`, если нужна ограниченная по ресурсам многошаговая стратегия.
 
 ## Loop Policy
-- Loops are allowed only with explicit loop policy.
-- Recommended loop policy fields:
+- Циклы допустимы только при явной loop policy.
+- Рекомендуемые поля loop policy:
   - `enabled`
   - `maxIterations`
   - `stopCondition`
   - `onLimit`
 
 ## Fallback Policy
-If `NodeType.config_json` is missing or incomplete:
-- default role: `transform`
-- default input range: `0..10`
-- default output range: `0..10`
-- validator returns a warning, not a hard failure, unless stricter project rules say otherwise
+Если `NodeType.config_json` отсутствует или неполный:
+- роль по умолчанию: `transform`
+- диапазон input по умолчанию: `0..10`
+- диапазон output по умолчанию: `0..10`
+- валидатор возвращает warning, а не hard failure, если только проект не требует более строгого режима
 
-## Example NodeType.config_json
+## Пример NodeType.config_json
 ```json
 {
   "role": "transform",
@@ -82,7 +82,6 @@ If `NodeType.config_json` is missing or incomplete:
   "loop": {
     "enabled": true,
     "maxIterations": 3,
-    "stopCondition": "quality >= 0.8",
     "onLimit": "break"
   },
   "agent": {
