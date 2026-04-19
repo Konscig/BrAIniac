@@ -20,7 +20,7 @@ export type ResolvedToolBinding = {
   tool_id: number | null;
   name: string;
   config_json: any;
-  source: 'node.tool' | 'node.tool_id' | 'agent.inputs';
+  source: 'node.tool' | 'node.tool_id' | 'agent.inputs' | 'agent.config';
 };
 
 type ResolvedToolExecutorConfig = {
@@ -41,7 +41,7 @@ export type AgentToolBinding = {
   schema?: Record<string, any>;
   tool_id?: number;
   config_json?: Record<string, any>;
-  source?: 'agent.inputs';
+  source?: 'agent.inputs' | 'agent.config';
 };
 
 export type AgentDirective =
@@ -675,6 +675,94 @@ function buildAgentBindingKey(binding: AgentToolBinding): string {
   return '';
 }
 
+function listAgentConfiguredToolBindings(runtime: RuntimeNode): AgentToolBinding[] {
+  const agentConfig = resolveNodeSectionConfig(runtime, 'agent');
+  const out: AgentToolBinding[] = [];
+  const seen = new Set<string>();
+
+  const pushBinding = (binding: AgentToolBinding) => {
+    const key = buildAgentBindingKey(binding);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(binding);
+  };
+
+  const rawAllowedToolIds = Array.isArray(agentConfig.allowedToolIds) ? agentConfig.allowedToolIds : [];
+  for (const rawToolId of rawAllowedToolIds) {
+    const toolId = coerceOptionalPositiveInt(rawToolId);
+    if (!toolId) continue;
+
+    pushBinding({
+      name: `tool#${toolId}`,
+      tool_id: toolId,
+      desc: 'Agent-configured tool binding',
+      source: 'agent.config',
+    });
+  }
+
+  const rawAllowedToolNames = Array.isArray(agentConfig.allowedToolNames) ? agentConfig.allowedToolNames : [];
+  for (const rawToolName of rawAllowedToolNames) {
+    if (typeof rawToolName !== 'string') continue;
+
+    const toolName = rawToolName.trim();
+    if (!toolName) continue;
+
+    pushBinding({
+      name: toolName,
+      desc: 'Agent-configured tool binding',
+      source: 'agent.config',
+    });
+  }
+
+  const rawTools = Array.isArray(agentConfig.tools) ? agentConfig.tools : [];
+  for (const rawTool of rawTools) {
+    if (typeof rawTool === 'string') {
+      const toolName = rawTool.trim();
+      if (!toolName) continue;
+
+      pushBinding({
+        name: toolName,
+        desc: 'Agent-configured tool binding',
+        source: 'agent.config',
+      });
+      continue;
+    }
+
+    const toolId = coerceOptionalPositiveInt(rawTool);
+    if (toolId) {
+      pushBinding({
+        name: `tool#${toolId}`,
+        tool_id: toolId,
+        desc: 'Agent-configured tool binding',
+        source: 'agent.config',
+      });
+      continue;
+    }
+
+    const toolRecord = toObjectRecord(rawTool);
+    if (!toolRecord) continue;
+
+    const explicitName = typeof toolRecord.name === 'string' ? toolRecord.name.trim() : '';
+    const explicitToolId = coerceOptionalPositiveInt(toolRecord.tool_id ?? toolRecord.toolId ?? toolRecord.fk_tool_id);
+    if (!explicitName && !explicitToolId) continue;
+
+    const explicitSchema = toObjectRecord(toolRecord.schema);
+    const explicitConfig = toObjectRecord(toolRecord.config_json ?? toolRecord.config);
+    const explicitDesc = typeof toolRecord.desc === 'string' ? toolRecord.desc.trim() : '';
+
+    pushBinding({
+      name: explicitName || `tool#${explicitToolId}`,
+      ...(explicitToolId ? { tool_id: explicitToolId } : {}),
+      ...(explicitDesc ? { desc: explicitDesc } : { desc: 'Agent-configured tool binding' }),
+      ...(explicitSchema ? { schema: explicitSchema } : {}),
+      ...(explicitConfig ? { config_json: explicitConfig } : {}),
+      source: 'agent.config',
+    });
+  }
+
+  return out;
+}
+
 function listAgentInputToolBindings(inputs: any[]): AgentToolBinding[] {
   const out: AgentToolBinding[] = [];
   const seen = new Set<string>();
@@ -1060,9 +1148,11 @@ function buildAgentFallbackSequence(orderedBindings: AgentResolvedToolBinding[])
 }
 
 export async function resolveAgentToolBindings(runtime: RuntimeNode, inputs: any[] = []): Promise<AgentToolResolution> {
+  const configuredBindings = listAgentConfiguredToolBindings(runtime);
   const edgeBindings = listAgentInputToolBindings(inputs);
-  const advertised = listAdvertisedAgentTools(edgeBindings);
-  if (edgeBindings.length === 0) {
+  const requestedBindings = [...configuredBindings, ...edgeBindings];
+  const advertised = listAdvertisedAgentTools(requestedBindings);
+  if (requestedBindings.length === 0) {
     return {
       advertised,
       orderedBindings: [],
@@ -1091,41 +1181,41 @@ export async function resolveAgentToolBindings(runtime: RuntimeNode, inputs: any
   const byKey = new Map<string, ResolvedToolBinding>();
   const unresolvedTools: string[] = [];
 
-  for (const edgeBinding of edgeBindings) {
-    const bindingKey = normalizeToolLookupKey(edgeBinding.name);
+  for (const requestedBinding of requestedBindings) {
+    const bindingKey = normalizeToolLookupKey(requestedBinding.name);
     if (!bindingKey) continue;
 
-    const fromId = edgeBinding.tool_id ? byId.get(edgeBinding.tool_id) : undefined;
+    const fromId = requestedBinding.tool_id ? byId.get(requestedBinding.tool_id) : undefined;
     const linked = fromId ?? byNameKey.get(bindingKey);
 
     if (!linked) {
-      unresolvedTools.push(edgeBinding.name);
+      unresolvedTools.push(requestedBinding.name);
       continue;
     }
 
     const linkedRecord = linked as Record<string, any>;
-    const linkedName = typeof linkedRecord.name === 'string' ? linkedRecord.name.trim() : edgeBinding.name;
+    const linkedName = typeof linkedRecord.name === 'string' ? linkedRecord.name.trim() : requestedBinding.name;
     const linkedId = coerceOptionalPositiveInt(linkedRecord.tool_id) ?? null;
     const linkedConfig = toObjectRecord(linkedRecord.config_json) ?? {};
-    const edgeConfig = edgeBinding.config_json ?? {};
+    const requestedConfig = requestedBinding.config_json ?? {};
 
     const resolvedBinding: ResolvedToolBinding = {
       tool_id: linkedId,
       name: linkedName,
       config_json: {
         ...linkedConfig,
-        ...edgeConfig,
+        ...requestedConfig,
       },
-      source: 'agent.inputs',
+      source: requestedBinding.source ?? 'agent.inputs',
     };
 
     const resolved: AgentResolvedToolBinding = {
       key: bindingKey,
       binding: resolvedBinding,
       advertised: {
-        name: edgeBinding.name,
-        ...(edgeBinding.desc ? { desc: edgeBinding.desc } : {}),
-        ...(edgeBinding.schema ? { schema: edgeBinding.schema } : {}),
+        name: requestedBinding.name,
+        ...(requestedBinding.desc ? { desc: requestedBinding.desc } : {}),
+        ...(requestedBinding.schema ? { schema: requestedBinding.schema } : {}),
       },
     };
 

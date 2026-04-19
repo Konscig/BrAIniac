@@ -17,7 +17,7 @@
 - `ToolNode` требует явный binding инструмента (`ui_json.tool` или `ui_json.tool_id`), implicit fallback отсутствует.
 - Контрактный endpoint backend `POST /tool-executor/contracts` возвращает provenance-поля `executor=backend-contract-http-json`, `contract_output_source` и `contract_output` (при успешной сборке).
 - По умолчанию локальный synthetic `contract_output` выключен (`EXECUTOR_ALLOW_LOCAL_CONTRACT_OUTPUT=0`), и используется только как debug opt-in.
-- В `AgentCall` работает только edge-derived binding инструментов: callable инструменты берутся исключительно из входных tool-артефактов по ребрам (`agent.inputs`).
+- В `AgentCall` работают config-derived и edge-derived binding инструменты: callable инструменты могут приходить из `agent.allowedToolIds`, `agent.allowedToolNames`, `agent.tools` и из входных tool-артефактов по ребрам (`agent.inputs`).
 - `AgentCall` возвращает расширенную provider-диагностику: `provider_response_id`, `provider_usage_complete`, `provider_calls_attempted`, `provider_soft_failures`, `provider_last_error`, `tool_call_trace`.
 - `seed-tool-contracts` по умолчанию настраивает `http-json` executor как `POST .../tool-executor/contracts`, а не `GET .../health`.
 
@@ -33,7 +33,7 @@
 - Утверждение, что `test:agent:e2e` проходит только в forced `/health`-режиме: устарело.
 - Утверждение, что строгие прогоны обязательно допускают `provider_soft_failure`: ложь для strict-политики.
 - Утверждение, что default executor контрактов это `GET /health`: устарело.
-- Утверждение, что `AgentCall` может резолвить инструменты из `agent.tools` без edge-входов: устарело.
+- Утверждение, что `AgentCall` ограничен только edge-derived tool bindings: устарело.
 
 ## Реализованные runtime-ноды
 

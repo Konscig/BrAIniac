@@ -18,8 +18,38 @@
 - Сегодня backend умеет правдоподобно оркестрировать RAG-цепочку.
 - Сегодня backend не умеет полноценно обслуживать persistent knowledge base и real retrieval path end-to-end.
 
+## Целевая Архитектура
+Целевая архитектура первого релиза фиксируется как:
+- ingest/indexing слой = pipeline;
+- query-time слой = true RAG agent.
+
+Это означает:
+- индексация знаний может оставаться заранее заданной последовательностью шагов;
+- обработка пользовательского запроса не должна быть жестко зафиксированным прямым pipeline;
+- `AgentCall` должен сам решать, какие инструменты RAG-контура вызывать, в каком порядке и сколько раз в пределах лимитов.
+
+Целевой вид:
+
+```text
+DatasetInput -> DocumentLoader -> Chunker -> Embedder -> VectorUpsert
+                        |
+                        v
+                 Knowledge / Vector Store
+
+ManualInput -> AgentCall
+                 |
+                 +--> QueryBuilder
+                 +--> HybridRetriever
+                 +--> ContextAssembler
+                 +--> LLMAnswer / LLMCall
+                 +--> CitationFormatter
+                 +--> optional repeat / stop
+```
+
 ## Что Считать "Готово" Для Первого Functional RAG-Агента
 Функциональная готовность считается достигнутой, когда одновременно выполняются все условия:
+- query-time путь реализован как автономный agent runtime, а не как жестко зафиксированный linear workflow;
+- `AgentCall` сам выбирает инструменты RAG-контура и последовательность их вызовов;
 - `DocumentLoader` действительно загружает документы из backend-managed источника, а не только нормализует `dataset_id`/`uri`.
 - Документы, чанки и векторные представления живут в постоянном backend-managed storage или в явном внешнем knowledge backend.
 - `VectorUpsert` делает реальный upsert в knowledge/vector backend.
@@ -40,23 +70,29 @@
 - промежуточные артефакты не подмешиваются;
 - исходные `documents` все еще могут передаваться в `input_json`.
 
-4. Execution state process-local:
+4. Query-time агент пока недостаточно автономен:
+- без real tools и knowledge backend AgentCall все еще ограничен по практической полезности;
+- первым классом должна стать модель "AgentCall orchestrates RAG tools", а не "graph hardcodes query flow".
+
+5. Execution state process-local:
 - execution snapshots и in-flight bookkeeping живут в памяти процесса;
 - это риск для cluster/load-balanced режима.
 
-5. Tool catalog глобально изменяем:
+6. Tool catalog глобально изменяем:
 - конфиг tools не изолирован по project/pipeline;
 - это мешает безопасному multi-project evolution инструментов.
 
 ## Рекомендуемый Порядок Работ
 Главный принцип:
-- сначала сделать real ToolNode-chain;
-- затем строить поверх нее autonomous AgentCall;
+- сначала обеспечить автономный query-time `AgentCall`, который может сам вызывать RAG tools;
+- затем довести сами инструменты до real integration-ready состояния;
+- ingest/indexing слой развивать как отдельный pipeline знаний;
 - не начинать с Branch/Merge/LoopGate, пока knowledge path не стал реальным.
 
 Почему так:
-- пользователю важнее функциональность инструментов и нод knowledge-контура, чем раннее усложнение control-flow;
-- без real ingest/retrieve/answer AgentCall будет оркестрировать в основном синтетические инструменты.
+- если query-time слой остается жестким pipeline, то это workflow, а не агент;
+- пользователю нужен именно RAG-agent, значит first-class целью должен быть agent orchestration layer;
+- без real ingest/retrieve/answer AgentCall будет оркестрировать в основном синтетические инструменты, поэтому autonomy и tool readiness нужно развивать совместно.
 
 ## Фаза 0. Truth Alignment И Guardrails
 Цель:
@@ -65,12 +101,25 @@
 Работы:
 - зафиксировать distinction в SDD и README;
 - пометить strict сценарии как proof of runtime/provenance, а не proof of full integration;
-- в e2e явно разделить `contract`, `realistic-contract`, `real-rag`.
+- в e2e явно разделить `contract`, `realistic-contract`, `real-rag-agent`.
 
 Критерий выхода:
 - документы и тестовые профили больше не создают ложное ощущение production-ready RAG.
 
-## Фаза 1. Knowledge Storage Baseline
+## Фаза 1. Agent Autonomy Baseline
+Цель:
+- сделать query-time слой именно агентом.
+
+Работы:
+- поддержать explicit tool selection policy в `AgentCall` через agent-config;
+- разрешить `AgentCall` вызывать RAG tools без обязательной отдельной цепочки `ToolNode -> AgentCall`;
+- зафиксировать bounded limits и fallback policy для agent-orchestrated tool-calls;
+- обновить e2e так, чтобы базовый сценарий проверял `ManualInput -> AgentCall`, а не замаскированный linear tool-chain.
+
+Критерий выхода:
+- query-time сценарий может быть запущен как `ManualInput -> AgentCall`, и `AgentCall` сам выбирает дальнейшие tool-calls.
+
+## Фаза 2. Knowledge Storage Baseline
 Цель:
 - добавить persistent knowledge layer.
 
@@ -83,7 +132,7 @@
 Критерий выхода:
 - backend способен хранить knowledge artifacts без передачи их через `input_json`.
 
-## Фаза 2. Real Ingest Path
+## Фаза 3. Real Ingest Path
 Цель:
 - сделать реальный ingest-контур.
 
@@ -96,7 +145,7 @@
 Критерий выхода:
 - pipeline может стартовать с `dataset_id` и построить chunks без inline `documents`.
 
-## Фаза 3. Real Vector Path
+## Фаза 4. Real Vector Path
 Цель:
 - сделать реальный embedding/upsert/retrieve.
 
@@ -109,22 +158,21 @@
 Критерий выхода:
 - retrieval candidates появляются из persisted index, а не из синтетического contract output.
 
-## Фаза 4. Real Answer Path
+## Фаза 5. Real Answer Path
 Цель:
 - сделать реальную grounded answer generation.
 
 Работы:
-- выбрать канонический путь первого real answer:
-- вариант A: `ContextAssembler -> LLMCall -> CitationFormatter`;
-- вариант B: `ContextAssembler -> AgentCall`;
-- вариант C: real executor для `LLMAnswer`.
+- выбрать канонический путь первого real answer внутри автономного agent runtime:
+- вариант A: `AgentCall -> QueryBuilder -> HybridRetriever -> ContextAssembler -> LLMCall -> CitationFormatter`;
+- вариант B: `AgentCall -> QueryBuilder -> HybridRetriever -> ContextAssembler -> LLMAnswer(real executor) -> CitationFormatter`;
 - сохранить связку ответа с retrieved sources;
 - гарантировать, что cited answer строится только из реальных retrieved chunk ids.
 
 Критерий выхода:
 - ответ получается от реальной модели и имеет проверяемую связь с retrieved context.
 
-## Фаза 5. Runtime Hardening
+## Фаза 6. Runtime Hardening
 Цель:
 - сделать execution path безопасным для эксплуатации.
 
@@ -137,12 +185,12 @@
 Критерий выхода:
 - strict execution и polling устойчивы в обычном deployment режиме.
 
-## Фаза 6. Real RAG E2E
+## Фаза 7. Real RAG E2E
 Цель:
 - получить честный end-to-end proof.
 
 Работы:
-- добавить `real-rag` e2e-профиль без inline knowledge artifacts;
+- добавить `real-rag-agent` e2e-профиль без inline knowledge artifacts;
 - запретить передачу `documents/chunks/vectors/candidates/context_bundle/answer` в strict real-rag сценарии;
 - проверять, что knowledge lifecycle прошел через backend-managed storage/integration path.
 
@@ -156,12 +204,13 @@
 
 ## Рекомендуемая Первая Реализационная Цель
 Рекомендуемый first target:
-- real pipeline `DatasetInput -> ToolNode(DocumentLoader) -> ToolNode(Chunker) -> ToolNode(Embedder) -> ToolNode(VectorUpsert) -> ToolNode(QueryBuilder) -> ToolNode(HybridRetriever) -> ToolNode(ContextAssembler) -> AgentCall`.
+- ingest pipeline `DatasetInput -> ToolNode(DocumentLoader) -> ToolNode(Chunker) -> ToolNode(Embedder) -> ToolNode(VectorUpsert)`;
+- query-time agent `ManualInput -> AgentCall`, где `AgentCall` сам оркестрирует `QueryBuilder`, `HybridRetriever`, `ContextAssembler`, `LLMAnswer/LLMCall`, `CitationFormatter`.
 
 Почему именно так:
-- этот путь минимально меняет текущую архитектуру;
-- максимально переиспользует уже существующий runtime;
-- позволяет сначала сделать инструменты действительно функциональными, а уже потом расширять agent intelligence.
+- это соответствует требованию "строим именно агента, а не прямой query-pipeline";
+- ingest и query-time responsibilities не смешиваются;
+- этот путь максимально переиспользует уже существующий runtime и позволяет постепенно включать real integrations за каждым tool.
 
 ## Definition Of Done Для Этой Фазы
 Фаза считается завершенной, когда:
