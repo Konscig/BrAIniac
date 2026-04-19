@@ -8,6 +8,9 @@
 - Только текущая ветка `tools-for-agents`.
 - Только backend-слой исполнения графа.
 
+Связанные документы:
+- План доведения до functional real RAG: `./10-real-rag-backend-plan.md`
+
 ## Что правда сейчас
 - Реестр runtime-обработчиков нод содержит 11 реализованных типов: `Trigger`, `ManualInput`, `DatasetInput`, `PromptBuilder`, `Filter`, `Ranker`, `LLMCall`, `AgentCall`, `ToolNode`, `Parser`, `SaveResult`.
 - `ToolNode` поддерживает только `http-json` и `openrouter-embeddings`.
@@ -17,6 +20,14 @@
 - В `AgentCall` работает только edge-derived binding инструментов: callable инструменты берутся исключительно из входных tool-артефактов по ребрам (`agent.inputs`).
 - `AgentCall` возвращает расширенную provider-диагностику: `provider_response_id`, `provider_usage_complete`, `provider_calls_attempted`, `provider_soft_failures`, `provider_last_error`, `tool_call_trace`.
 - `seed-tool-contracts` по умолчанию настраивает `http-json` executor как `POST .../tool-executor/contracts`, а не `GET .../health`.
+
+## Что Еще Не Готово Для Functional Real RAG
+- `DocumentLoader` по default path не является реальной загрузкой документов из backend-managed storage.
+- `VectorUpsert` и `HybridRetriever` по default path не подтверждают реальный knowledge/vector backend.
+- `LLMAnswer` как ToolNode-контракт остается deterministic answer path, а не реальным model executor.
+- `realistic` RAG e2e проверяет runtime-chain, но не является полным доказательством backend-managed knowledge lifecycle, если исходные `documents` приходят через `input_json`.
+- Execution state остается process-local; это риск для multi-worker/cluster deployment.
+- Tool catalog остается глобально изменяемым и не изолирован по project/pipeline.
 
 ## Что ложь или устарело
 - Утверждение, что `test:agent:e2e` проходит только в forced `/health`-режиме: устарело.

@@ -2,6 +2,7 @@
 
 ## Актуализация (2026-04-19)
 - Актуальным источником фактического состояния backend-runtime и контрактных инструментов считать `./09-backend-runtime-truth-snapshot.md`.
+- Актуальным планом доведения backend до functional real RAG считать `./10-real-rag-backend-plan.md`.
 - Этот документ сохраняет расширенный продуктовый roadmap и historical notes.
 
 ## Назначение
@@ -131,6 +132,11 @@
 - LLMAnswer
 - CitationFormatter
 
+## Актуальная Оценка Готовности К Real RAG (2026-04-19)
+- Текущий MVP-набор инструментов готов для `contract-mode` и runtime-orchestration, но не эквивалентен real RAG backend.
+- Для functional real RAG критично отсутствуют: реальный `DocumentLoader`, постоянное хранилище документов/чанков/векторов, реальный `VectorUpsert`, реальный `HybridRetriever`, production-safe execution state.
+- До завершения плана из `./10-real-rag-backend-plan.md` формулировку "RAG реализован" в этом документе читать как "RAG contract-mode реализован".
+
 ## Статус Реализации (На 2026-04-18)
 
 ### MVP RAG
@@ -145,12 +151,12 @@
 - [x] CitationFormatter
 
 Практический вывод по готовности:
-- Индексация (DocumentLoader -> Chunker -> Embedder -> VectorUpsert) реализована.
-- Retrieval-контур до кандидатов (QueryBuilder -> HybridRetriever) реализован.
+- Индексация (DocumentLoader -> Chunker -> Embedder -> VectorUpsert) реализована на уровне contract-mode; реальная загрузка документов и запись в vector backend не завершены.
+- Retrieval-контур до кандидатов (QueryBuilder -> HybridRetriever) реализован на уровне contract-mode; real retrieval из persisted index не подтвержден.
 - Контур сборки контекста и пост-обработки цитат (ContextAssembler -> CitationFormatter) реализован.
 - Контур контрактов инструментов завершен (contract-mode), включая `LLMAnswer` как ToolNode-контракт.
 - Генерация ответа через `LLMCall` остается поддерживаемым runtime-путем на уровне кода, но эксплуатационно нестабильна в e2e из-за OpenRouter upstream/rate-limit ошибок (`OPENROUTER_UPSTREAM_ERROR`).
-- Для AgentCall подтвержден автономный внутренний tool-calling путь (без отдельной цепочки ToolNode в графе) через e2e сценарий `ManualInput -> AgentCall`.
+- Для AgentCall подтвержден автономный внутренний tool-calling путь, но в текущих e2e/strict-проверках инструменты подаются через edge-derived tool-артефакты, а не через независимый runtime-catalog.
 - Команда проверки: `npm --prefix backend run test:agent:e2e`.
 
 Known issue (требует фикса):
@@ -175,8 +181,9 @@ MVP-инструменты (фактический статус):
 - CitationFormatter: Contract-ready, Integration-ready: не требуется как локальная трансформация.
 
 Критичные расхождения, влияющие на восприятие "готово":
-- По seed-конфигу contract tools используют `http-json` GET на `/health` как default executor, то есть тест может подтвердить orchestration, но не реальную внешнюю бизнес-интеграцию.
+- По seed-конфигу contract tools по умолчанию используют `http-json` POST на `/tool-executor/contracts`, то есть тест подтверждает contract execution/provenance, но не реальную внешнюю бизнес-интеграцию.
 - Для ветки `http-json` большинство контрактов строят `contract_output` детерминированно из нормализованного входа; это корректно для contract-mode, но не эквивалент production-интеграции.
+- `test:rag:e2e:realistic` не подмешивает `chunks/vectors/candidates/context_bundle/answer`, но все еще может передавать `documents` через `input_json`; это не является доказательством готового backend-loader слоя.
 - `test:rag:e2e` и `test:rag:e2e:realistic` могут завершаться `SUCCESS` при soft OpenRouter failure в non-strict режиме.
 
 ### MVP Runtime Ноды (RAG-связанный срез)
