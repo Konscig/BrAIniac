@@ -14,6 +14,16 @@ import { getPipelineById, updatePipeline } from '../../data/pipeline.service.js'
 import { getToolById } from '../../data/tool.service.js';
 import { externalizeNodeStateArtifacts } from './pipeline.executor.artifact-store.js';
 import { buildPipelineReport, buildSummary, executeGraph, persistNodeOutputs } from './pipeline.executor.graph.js';
+import {
+  deleteInFlightExecutionRecord,
+  deleteIdempotencyExecutionRecord,
+  readExecutionSnapshot,
+  readIdempotencyExecutionRecord,
+  readInFlightExecutionRecord,
+  writeExecutionSnapshot,
+  writeIdempotencyExecutionRecord,
+  writeInFlightExecutionRecord,
+} from './pipeline.executor.snapshot-store.js';
 import type {
   DatasetContext,
   ExecutionJob,
@@ -43,6 +53,14 @@ const EXECUTION_CACHE_LIMIT = readPositiveInteger(process.env.EXECUTOR_JOB_CACHE
 const jobsById = new Map<string, ExecutionJob>();
 const inFlightByPipelineId = new Map<number, string>();
 const idempotencyIndex = new Map<string, string>();
+
+async function persistExecutionSnapshotBestEffort(job: ExecutionJob) {
+  try {
+    await writeExecutionSnapshot(toSnapshot(job));
+  } catch (error) {
+    console.error('[executor] failed to persist execution snapshot', error);
+  }
+}
 
 function touch(job: ExecutionJob) {
   job.updated_at = new Date();
@@ -145,6 +163,11 @@ export async function startPipelineExecutionForUser(
   const idempotencyIndexKey = idempotencyKey ? `${userId}:${pipelineId}:${idempotencyKey}` : undefined;
 
   if (idempotencyIndexKey) {
+    const resolvedIdempotencyKey = idempotencyKey;
+    if (!resolvedIdempotencyKey) {
+      throw new HttpError(500, { error: 'executor idempotency key state is inconsistent' });
+    }
+
     const existingId = idempotencyIndex.get(idempotencyIndexKey);
     if (existingId) {
       const existingJob = jobsById.get(existingId);
@@ -153,9 +176,18 @@ export async function startPipelineExecutionForUser(
       }
       idempotencyIndex.delete(idempotencyIndexKey);
     }
+
+    const persistedIdempotency = await readIdempotencyExecutionRecord(userId, pipelineId, resolvedIdempotencyKey);
+    if (persistedIdempotency) {
+      const persistedSnapshot = await readExecutionSnapshot(persistedIdempotency.execution_id);
+      if (persistedSnapshot && persistedSnapshot.pipeline_id === pipelineId) {
+        return persistedSnapshot;
+      }
+      await deleteIdempotencyExecutionRecord(userId, pipelineId, resolvedIdempotencyKey);
+    }
   }
 
-  const existingInFlight = inFlightByPipelineId.get(pipelineId);
+  const existingInFlight = inFlightByPipelineId.get(pipelineId) ?? (await readInFlightExecutionRecord(pipelineId))?.execution_id;
   if (existingInFlight) {
     const runningJob = jobsById.get(existingInFlight);
     if (runningJob && (runningJob.status === 'queued' || runningJob.status === 'running')) {
@@ -166,6 +198,18 @@ export async function startPipelineExecutionForUser(
         details: { execution_id: runningJob.execution_id },
       });
     }
+
+    const persistedSnapshot = await readExecutionSnapshot(existingInFlight);
+    if (persistedSnapshot && (persistedSnapshot.status === 'queued' || persistedSnapshot.status === 'running')) {
+      throw new HttpError(409, {
+        ok: false,
+        code: 'PIPELINE_EXECUTION_ALREADY_RUNNING',
+        error: 'pipeline execution is already running',
+        details: { execution_id: persistedSnapshot.execution_id },
+      });
+    }
+
+    await deleteInFlightExecutionRecord(pipelineId, existingInFlight);
   }
 
   const request = normalizeStartInput(input);
@@ -190,6 +234,12 @@ export async function startPipelineExecutionForUser(
     idempotencyIndex.set(idempotencyIndexKey, job.execution_id);
   }
 
+  await writeInFlightExecutionRecord(pipelineId, job.execution_id);
+  if (idempotencyKey) {
+    await writeIdempotencyExecutionRecord(userId, pipelineId, idempotencyKey, job.execution_id);
+  }
+  await persistExecutionSnapshotBestEffort(job);
+
   void runExecutionJob(job);
 
   return toSnapshot(job);
@@ -208,11 +258,16 @@ export async function getPipelineExecutionForUser(
   });
 
   const job = jobsById.get(executionId);
-  if (!job || job.pipeline_id !== pipelineId) {
+  if (job && job.pipeline_id === pipelineId) {
+    return toSnapshot(job);
+  }
+
+  const persistedSnapshot = await readExecutionSnapshot(executionId);
+  if (!persistedSnapshot || persistedSnapshot.pipeline_id !== pipelineId) {
     throw new HttpError(404, { error: 'execution not found' });
   }
 
-  return toSnapshot(job);
+  return persistedSnapshot;
 }
 
 async function resolveDatasetContext(pipelineId: number, datasetId?: number): Promise<DatasetContext | null> {
@@ -248,6 +303,7 @@ async function runExecutionJob(job: ExecutionJob) {
   job.status = 'running';
   job.started_at = new Date();
   touch(job);
+  await persistExecutionSnapshotBestEffort(job);
 
   let nodeStates: PipelineExecutionNodeState[] = [];
   let preflight: GraphValidationResult | undefined;
@@ -260,6 +316,7 @@ async function runExecutionJob(job: ExecutionJob) {
 
     preflight = await validatePipelineGraph(job.pipeline_id, job.request.preset ?? 'default');
     job.preflight = preflight;
+    await persistExecutionSnapshotBestEffort(job);
 
     if (!preflight.valid) {
       job.error = {
@@ -296,6 +353,8 @@ async function runExecutionJob(job: ExecutionJob) {
           generated_at: nowIso(),
         },
       });
+
+      await persistExecutionSnapshotBestEffort(job);
 
       return;
     }
@@ -374,6 +433,7 @@ async function runExecutionJob(job: ExecutionJob) {
 
     job.summary = buildSummary(result);
     job.status = result.status === 'failed' ? 'failed' : 'succeeded';
+    touch(job);
 
     const persistedReport = await externalizeNodeStateArtifacts(buildPipelineReport(job, result, preflight), {
       executionId: job.execution_id,
@@ -382,10 +442,12 @@ async function runExecutionJob(job: ExecutionJob) {
     await updatePipeline(job.pipeline_id, {
       report_json: persistedReport,
     });
+    await persistExecutionSnapshotBestEffort(job);
   } catch (error) {
     const normalized = normalizeUnknownError(error);
     job.status = 'failed';
     job.error = normalized;
+    touch(job);
 
     try {
       await persistNodeOutputs(job.execution_id, nodeStates);
@@ -436,13 +498,17 @@ async function runExecutionJob(job: ExecutionJob) {
     } catch (persistError) {
       console.error('[executor] failed to persist pipeline report', persistError);
     }
+
+    await persistExecutionSnapshotBestEffort(job);
   } finally {
     job.finished_at = new Date();
     touch(job);
+    await persistExecutionSnapshotBestEffort(job);
 
     if (inFlightByPipelineId.get(job.pipeline_id) === job.execution_id) {
       inFlightByPipelineId.delete(job.pipeline_id);
     }
+    await deleteInFlightExecutionRecord(job.pipeline_id, job.execution_id);
 
     cleanupExecutionStore();
   }
