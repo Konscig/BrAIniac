@@ -5,8 +5,8 @@
 
 ## Что уже подтверждено
 - Живой `strict realistic e2e` проходит на поднятом backend.
-- Query-time сценарий `ManualInput -> AgentCall` с edge-переданными `tool_refs` работает end-to-end.
-- `AgentCall` получает callable tools только через edge-артефакты.
+- Query-time сценарий `ManualInput -> AgentCall` с отдельными `ToolNode -> AgentCall` capability-edges работает end-to-end.
+- `AgentCall` получает callable tools только через входящие рёбра графа.
 - `DocumentLoader` читает dataset fixture через `workspace://...`.
 - `Chunker`, `Embedder`, `VectorUpsert`, `HybridRetriever`, `ContextAssembler`, `LLMAnswer` проходят в одном агентном цикле и фиксируются в `tool_call_trace`.
 - `HybridRetriever` в strict-сценарии действительно работает через `artifact-vectors`.
@@ -22,7 +22,8 @@
 - Базовые coordination индексы для `in-flight` execution и idempotency теперь тоже имеют filesystem-backed слой.
 
 ## Что есть для RAG
-- Канонический способ рекламы инструментов для агента: `tool_ref` и `tool_refs`.
+- Канонический способ рекламы инструментов для агента: upstream `ToolNode -> AgentCall` capability-edge.
+- `tool_ref` и `tool_refs` остаются совместимым backward-compatible путём, но больше не считаются основным target-профилем.
 - `DocumentLoader` поддерживает:
   - `workspace://...`
   - `file://...`
@@ -58,11 +59,16 @@
   - для idempotency по `userId:pipelineId:idempotencyKey`
 - Это снижает риск ложного параллельного запуска одного pipeline из разных worker-процессов.
 
+6. Восстановлен целевой edge-only путь для агентных инструментов.
+- `ToolNode` без входных данных работает как capability-advertisement нода и не исполняет реальный инструмент до явного agent tool-call.
+- `AgentCall` получает такие инструменты через входящие рёбра и не включает advertising-outputs в prompt.
+
 ## Что ещё не доведено
 - В `rag-agent-e2e-test.mjs` ещё могут оставаться legacy-следы прошлых строк, даже если фактическое выполнение уже идёт по корректным значениям.
 - Memory-индексы `inFlightByPipelineId` и idempotency state всё ещё существуют как быстрый локальный cache, но теперь уже не являются единственным источником координации.
 - `CitationFormatter` и `QueryBuilder` остаются доступными инструментами, но не считаются обязательными шагами строгого агентного сценария.
 - Текущий retrieval backend всё ещё artifact-backed baseline, а не выделенный production-grade vector service.
+- В runtime всё ещё остаётся backward-compatible поддержка `tool_ref` / `tool_refs`, хотя целевой профиль уже смещён на `ToolNode -> AgentCall`.
 
 ## Вывод
 - Backend уже можно считать подтверждённым true RAG agent runtime на уровне strict живого e2e.

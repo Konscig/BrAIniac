@@ -1015,7 +1015,9 @@ function tryRecoverToolDirectiveFromLooseText(rawText: string): Record<string, a
 
   const toolNameMatch =
     text.match(/"tool_name"\s*:\s*"([^"]+)"/i) ??
+    text.match(/"tool_name"\s*:\s*([A-Za-z0-9._:-]+)/i) ??
     text.match(/"toolName"\s*:\s*"([^"]+)"/i) ??
+    text.match(/"toolName"\s*:\s*([A-Za-z0-9._:-]+)/i) ??
     text.match(/"tool"\s*:\s*"([^"]+)"/i);
   const toolName = toolNameMatch?.[1]?.trim();
   if (!toolName) return null;
@@ -1124,6 +1126,33 @@ export function parseAgentDirective(rawText: string): AgentDirective {
       input: inputRecord,
       raw: parsed,
     };
+  }
+
+  const actionLooksLikeToolCall =
+    action === 'tool_call' ||
+    action === 'tool' ||
+    action === 'call' ||
+    /tool_call/i.test(text) ||
+    /<\s*\/?\s*tool_call\s*>/i.test(text);
+
+  if (actionLooksLikeToolCall) {
+    const recoveredToolDirective = tryRecoverToolDirectiveFromLooseText(text);
+    const recoveredRecord = toObjectRecord(recoveredToolDirective);
+    const recoveredToolName =
+      typeof recoveredRecord?.tool_name === 'string'
+        ? recoveredRecord.tool_name.trim()
+        : typeof recoveredRecord?.toolName === 'string'
+        ? recoveredRecord.toolName.trim()
+        : '';
+
+    if (recoveredToolName) {
+      return {
+        kind: 'tool_call',
+        toolName: recoveredToolName,
+        input: toObjectRecord(recoveredRecord?.input) ?? {},
+        raw: recoveredToolDirective,
+      };
+    }
   }
 
   const explicitFinal =

@@ -52,7 +52,14 @@ function isToolAdvertisingInput(value: unknown, depth = 0): boolean {
 
   const kind = typeof record.kind === 'string' ? record.kind.trim().toLowerCase() : '';
   const type = typeof record.type === 'string' ? record.type.trim().toLowerCase() : '';
-  if (kind === 'tool_ref' || type === 'tool_ref' || kind === 'tool_refs' || type === 'tool_refs') {
+  if (
+    kind === 'tool_ref' ||
+    type === 'tool_ref' ||
+    kind === 'tool_refs' ||
+    type === 'tool_refs' ||
+    kind === 'tool_node' ||
+    type === 'tool_node'
+  ) {
     return true;
   }
 

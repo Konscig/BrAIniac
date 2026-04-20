@@ -12,6 +12,7 @@
 
 ## Что уже достигнуто
 - Edge-only tool access для `AgentCall` реализован.
+- Целевой capability-путь `ToolNode -> AgentCall` подтверждён живым e2e.
 - Schema-free artifact layer реализован.
 - `DocumentLoader` читает локальные реальные источники.
 - Artifact-backed baseline для `VectorUpsert` и `HybridRetriever` реализован.
@@ -90,7 +91,7 @@
 - roadmap разделяет runtime readiness и infra scaling.
 
 ## Ближайший исполнимый план
-1. Дочистить `backend/scripts/rag-agent-e2e-test.mjs`.
+1. Удержать `backend/scripts/rag-agent-e2e-test.mjs` в целевой форме `ManualInput + ToolNode -> AgentCall`.
 2. Обновить SDD под новый факт: strict realistic e2e уже проходит.
 3. Решить канонический final answer path.
 4. После этого перейти к runtime hardening.

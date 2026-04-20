@@ -115,4 +115,5 @@ docker-compose.override.yml
 # -----------------------
 # Backend Runtime Artifacts
 # -----------------------
+backend/.artifacts/
 backend/.artifacts/executions/**/execution-snapshot.json

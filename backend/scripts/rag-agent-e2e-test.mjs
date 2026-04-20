@@ -654,7 +654,7 @@ async function resolveNodeTypes(base, authHeaders) {
   const nodeTypes = mustOk('list node types', response);
   const byName = new Map(nodeTypes.map((row) => [trimName(row.name), row]));
 
-  const required = ['ManualInput', 'AgentCall'];
+  const required = ['ManualInput', 'AgentCall', 'ToolNode'];
   for (const name of required) {
     if (!byName.get(name)) {
       throw new Error(`required node type missing: ${name}`);
@@ -696,6 +696,7 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName, tools
 
   const manualType = nodeTypesByName.get('ManualInput');
   const agentType = nodeTypesByName.get('AgentCall');
+  const toolNodeType = nodeTypesByName.get('ToolNode');
 
   const nManual = await createNode({
     fk_pipeline_id: pipelineId,
@@ -722,35 +723,41 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName, tools
     },
   });
 
+  const toolNodes = {};
   for (const toolName of requiredContractTools) {
     const tool = toolsByName.get(toolName);
     if (!tool) {
       throw new Error(`tool not found while creating graph: ${toolName}`);
     }
+    const resolvedToolName = trimName(tool.name) || toolName;
+
+    const toolNode = await createNode({
+      fk_pipeline_id: pipelineId,
+      fk_type_id: toolNodeType.type_id,
+      top_k: 1,
+      ui_json: {
+        label: `ToolNode(${resolvedToolName})`,
+        tool: {
+          tool_id: tool.tool_id,
+          name: resolvedToolName,
+          config_json: tool.config_json ?? {},
+        },
+      },
+    });
+
+    toolNodes[resolvedToolName] = toolNode;
   }
 
   await createEdge(nManual.node_id, nAgent.node_id);
+  for (const toolNode of Object.values(toolNodes)) {
+    await createEdge(toolNode.node_id, nAgent.node_id);
+  }
 
   return {
     ManualInput: nManual,
     AgentCall: nAgent,
+    ...toolNodes,
   };
-}
-
-function buildAgentToolRefs(toolsByName) {
-  return requiredContractTools.map((toolName) => {
-    const tool = toolsByName.get(toolName);
-    if (!tool) {
-      throw new Error(`tool not found while building tool refs: ${toolName}`);
-    }
-
-    return {
-      kind: 'tool_ref',
-      tool_name: tool.name,
-      tool_id: tool.tool_id,
-      desc: `Edge-advertised tool ref for ${tool.name}`,
-    };
-  });
 }
 
 function buildCompletedToolTraceMap(toolTrace) {
@@ -815,7 +822,7 @@ function buildAgentDiagnostics(outAgent) {
   };
 }
 
-async function executeQuestion(base, authHeaders, ids, datasetDocs, chunks, vectors, question, index, toolRefs) {
+async function executeQuestion(base, authHeaders, ids, datasetDocs, chunks, vectors, question, index) {
   const contractMode = e2eProfile === 'contract';
   const candidates = contractMode ? selectCandidates(question, chunks, 6) : [];
   const contextText = contractMode ? candidates.map((row, i) => `[${i + 1}] ${row.snippet}`).join('\n') : '';
@@ -832,7 +839,6 @@ async function executeQuestion(base, authHeaders, ids, datasetDocs, chunks, vect
     mode: 'hybrid',
     alpha: 0.5,
     require_artifact_backed_retrieval: !contractMode,
-    tool_refs: toolRefs,
     model: 'openai/gpt-oss-120b:free',
     temperature: 0.2,
     max_output_tokens: 220,
@@ -1045,15 +1051,14 @@ async function run() {
       console.log(`[rag-e2e] chunks prepared: ${chunks.length}`);
       console.log(`[rag-e2e] vectors prepared: ${vectors.length}`);
     } else {
-      console.log('[rag-e2e] realistic mode: intermediate artifacts are produced by ToolNode chain at runtime');
+      console.log('[rag-e2e] realistic mode: ToolNode capability edges advertise tools to AgentCall');
     }
 
     const auth = await createAuth(base);
     console.log(`[rag-e2e] auth created for ${auth.email}`);
 
-  const toolsByName = await ensureContractToolExecutors(base, auth.authHeaders);
-  const toolRefs = buildAgentToolRefs(toolsByName);
-  if (overrideToolExecutors) {
+    const toolsByName = await ensureContractToolExecutors(base, auth.authHeaders);
+    if (overrideToolExecutors) {
       console.log('[rag-e2e] contract tools configured to http-json /health');
     } else {
       console.log('[rag-e2e] contract tools left as-is (no executor override)');
@@ -1062,10 +1067,10 @@ async function run() {
     const { project, pipeline, dataset } = await createProjectPipelineDataset(base, auth.authHeaders, datasetFixture.datasetUri);
     console.log(`[rag-e2e] project=${project.project_id}, pipeline=${pipeline.pipeline_id}, dataset=${dataset.dataset_id}`);
 
-  const nodeTypesByName = await resolveNodeTypes(base, auth.authHeaders);
-  const nodeByLabel = await createGraph(base, auth.authHeaders, pipeline.pipeline_id, nodeTypesByName, toolsByName);
-  const nodeIdByLabel = Object.fromEntries(Object.entries(nodeByLabel).map(([label, node]) => [label, node.node_id]));
-  console.log('[rag-e2e] graph created (ManualInput -> AgentCall with edge-advertised tool_refs)');
+    const nodeTypesByName = await resolveNodeTypes(base, auth.authHeaders);
+    const nodeByLabel = await createGraph(base, auth.authHeaders, pipeline.pipeline_id, nodeTypesByName, toolsByName);
+    const nodeIdByLabel = Object.fromEntries(Object.entries(nodeByLabel).map(([label, node]) => [label, node.node_id]));
+    console.log('[rag-e2e] graph created (ManualInput + ToolNode -> AgentCall capability edges)');
 
     const results = [];
     for (let index = 0; index < questionsToRun.length; index += 1) {
@@ -1089,7 +1094,6 @@ async function run() {
               vectors,
               question,
               index,
-              toolRefs,
             ),
             index,
             question,
