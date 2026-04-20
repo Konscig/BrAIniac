@@ -35,9 +35,56 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function toObjectRecord(raw: unknown): Record<string, any> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return raw as Record<string, any>;
+}
+
+function isToolAdvertisingInput(value: unknown, depth = 0): boolean {
+  if (depth > 6 || value === undefined || value === null) return false;
+
+  if (Array.isArray(value)) {
+    return value.some((entry) => isToolAdvertisingInput(entry, depth + 1));
+  }
+
+  const record = toObjectRecord(value);
+  if (!record) return false;
+
+  const kind = typeof record.kind === 'string' ? record.kind.trim().toLowerCase() : '';
+  const type = typeof record.type === 'string' ? record.type.trim().toLowerCase() : '';
+  if (kind === 'tool_ref' || type === 'tool_ref' || kind === 'tool_refs' || type === 'tool_refs') {
+    return true;
+  }
+
+  const nestedKeys = ['value', 'data', 'payload', 'output', 'contract_output'];
+  return nestedKeys.some((key) => key in record && isToolAdvertisingInput(record[key], depth + 1));
+}
+
+function summarizeDirective(directive: AgentDirective): Record<string, any> {
+  if (directive.kind === 'tool_call') {
+    return {
+      kind: directive.kind,
+      tool_name: directive.toolName,
+      input_keys: Object.keys(directive.input ?? {}).slice(0, 24),
+    };
+  }
+
+  if (directive.kind === 'final') {
+    return {
+      kind: directive.kind,
+      text_preview: directive.text.trim().slice(0, 240),
+    };
+  }
+
+  return {
+    kind: directive.kind,
+  };
+}
+
 export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context) => {
   const adapter = getOpenRouterAdapter();
-  const prompt = buildPrompt(inputs, context.input_json).trim();
+  const promptInputs = inputs.filter((entry) => !isToolAdvertisingInput(entry));
+  const prompt = buildPrompt(promptInputs, context.input_json).trim();
   if (!prompt) {
     throw new HttpError(400, {
       code: 'EXECUTOR_AGENTCALL_INPUT_REQUIRED',
@@ -108,6 +155,10 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   let providerSoftFailures = 0;
   let providerSuccessfulResponses = 0;
   let plannerFallbackUsed = false;
+  let finalTextSource = '';
+  let finalTextOrigin = '';
+  let rawCompletionText = '';
+  let lastDirectiveSummary: Record<string, any> | null = null;
   const toolCallTrace: Array<Record<string, any>> = [];
 
   const workingInputs = [...inputs];
@@ -256,6 +307,7 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
     }
 
     if (completionText.length > 0) {
+      rawCompletionText = completionText;
       messages.push({
         role: 'assistant',
         content: completionText,
@@ -264,6 +316,7 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
 
     const hasToolBudget = toolCallsExecuted < maxToolCalls;
     const directive: AgentDirective = completionText ? parseAgentDirective(completionText) : { kind: 'none', raw: null };
+    lastDirectiveSummary = summarizeDirective(directive);
 
     if (directive.kind === 'tool_call' && hasToolBudget) {
       await runToolCall(directive.toolName, directive.input, 'model');
@@ -272,6 +325,8 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
 
     if (directive.kind === 'final' && directive.text.trim().length > 0) {
       finalText = directive.text.trim();
+      finalTextSource = 'directive.final';
+      finalTextOrigin = 'model';
       break;
     }
 
@@ -287,11 +342,15 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
     const fallbackAnswer = extractAgentArtifactAnswer(workingInputs);
     if (fallbackAnswer) {
       finalText = fallbackAnswer;
+      finalTextSource = 'artifact.answer';
+      finalTextOrigin = 'tool-artifact';
       break;
     }
 
     if (completionText.length > 0) {
       finalText = completionText;
+      finalTextSource = 'raw.completion';
+      finalTextOrigin = directive.kind === 'tool_call' ? 'model-tool-call-markup' : 'model';
       break;
     }
 
@@ -300,6 +359,8 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
 
   if (!finalText) {
     finalText = extractAgentArtifactAnswer(workingInputs) ?? 'AgentCall completed with empty answer.';
+    finalTextSource = finalText === 'AgentCall completed with empty answer.' ? 'fallback.empty' : 'artifact.answer';
+    finalTextOrigin = finalText === 'AgentCall completed with empty answer.' ? 'runtime' : 'tool-artifact';
   }
 
   const structuredOutput = tryParseJsonFromText(finalText);
@@ -312,6 +373,12 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
       model: finalModel,
       provider_response_id: finalProviderResponseId || null,
       text: finalText,
+      final_text_source: finalTextSource || null,
+      final_text_origin: finalTextOrigin || null,
+      raw_completion_text: rawCompletionText || null,
+      last_directive: lastDirectiveSummary,
+      last_directive_kind: typeof lastDirectiveSummary?.kind === 'string' ? lastDirectiveSummary.kind : null,
+      last_directive_tool_name: typeof lastDirectiveSummary?.tool_name === 'string' ? lastDirectiveSummary.tool_name : null,
       usage: finalUsage ?? null,
       provider_usage_complete: hasPositiveUsageTokens(finalUsage),
       provider_calls_attempted: providerCallsAttempted,

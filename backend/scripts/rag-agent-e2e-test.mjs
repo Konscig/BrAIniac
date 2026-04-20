@@ -1,3 +1,7 @@
+﻿import { mkdir, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 const envBaseUrl = process.env.BASE_URL;
 const strictOpenRouter = process.env.RAG_E2E_STRICT_OPENROUTER !== '0';
 const requestTimeoutMs = Number(process.env.RAG_E2E_HTTP_TIMEOUT_MS || 30000);
@@ -33,12 +37,34 @@ const requiredContractTools = [
   'CitationFormatter',
 ];
 
+const requiredRagToolSequence = [
+  'DocumentLoader',
+  'Chunker',
+  'Embedder',
+  'VectorUpsert',
+  'HybridRetriever',
+  'ContextAssembler',
+  'LLMAnswer',
+];
+
+const realisticInstruction =
+  'First build the knowledge path from the dataset: load documents, create chunks, create embeddings, perform vector upsert, then run artifact-backed retrieval, assemble context, and only then answer.';
+
+const realisticSystemPrompt =
+  'You are a RAG agent. For knowledge questions, first build the dataset-backed knowledge path, then run artifact-backed retrieval, and only then produce the final answer. Never return raw tool-call JSON as the final answer. If you need a tool, emit exactly one tool_call JSON object. If you are done, emit exactly one final JSON object.';
+
 const questions = [
   'What is the main purpose of Artemis II before future lunar landing missions?',
   'List two high-priority mission risks for long-duration lunar operations.',
   'What is 17 * 23?',
   'Suggest a quick 20-minute dinner idea.',
 ];
+
+const scriptPath = fileURLToPath(import.meta.url);
+const scriptDir = path.dirname(scriptPath);
+const backendRoot = path.resolve(scriptDir, '..');
+const repoRoot = path.resolve(backendRoot, '..');
+const datasetFixtureRoot = path.join(backendRoot, '.tmp', 'rag-e2e-datasets');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -65,6 +91,10 @@ function tokenize(raw) {
 
 function trimName(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeToolTraceName(entry) {
+  return trimName(entry?.resolved_tool || entry?.requested_tool || entry?.tool_name);
 }
 
 function usageHasPositiveTokens(usage) {
@@ -422,6 +452,27 @@ function fail(msg, details) {
   process.exit(2);
 }
 
+async function createDatasetBundleFixture(documents) {
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  await mkdir(datasetFixtureRoot, { recursive: true });
+  const absolutePath = path.join(datasetFixtureRoot, `rag-e2e-${suffix}.json`);
+  const relativeToRepo = path.relative(repoRoot, absolutePath).replace(/\\/g, '/');
+
+  const payload = {
+    documents: documents.map((doc) => ({
+      document_id: doc.document_id,
+      uri: doc.uri,
+      text: doc.text,
+    })),
+  };
+
+  await writeFile(absolutePath, JSON.stringify(payload, null, 2), 'utf8');
+  return {
+    absolutePath,
+    datasetUri: `workspace://${relativeToRepo}`,
+  };
+}
+
 function withQuestionTimeout(promise, questionIndex, questionText) {
   let timer;
   const timeoutPromise = new Promise((_, reject) => {
@@ -475,58 +526,6 @@ async function loadExecutionReportNodes(base, authHeaders, pipelineId, execution
     reportSource: 'pipeline-fallback',
     executionSnapshot: lastExecutionSnapshot,
   };
-}
-
-function assertStrictToolOutput(toolName, output) {
-  if (!output || typeof output !== 'object') {
-    throw new Error(`strict mode requires non-empty output for ${toolName}`);
-  }
-
-  const executor = trimName(output.executor).toLowerCase();
-  if (toolName === 'Embedder') {
-    if (executor !== 'openrouter-embeddings') {
-      throw new Error(`strict mode requires openrouter-embeddings executor for ${toolName}`);
-    }
-
-    const embedderModel = trimName(output.model);
-    if (!embedderModel) {
-      throw new Error(`strict mode requires non-empty model for ${toolName}`);
-    }
-
-    const embeddings = Array.isArray(output.embeddings) ? output.embeddings : [];
-    if (embeddings.length <= 0) {
-      throw new Error(`strict mode requires non-empty embeddings for ${toolName}`);
-    }
-
-    return;
-  }
-
-  if (executor !== 'http-json') {
-    throw new Error(`strict mode requires http-json executor for ${toolName}`);
-  }
-
-  const status = Number(output.status);
-  if (!isOk(status)) {
-    throw new Error(`strict mode requires successful HTTP status for ${toolName}, got ${output.status}`);
-  }
-
-  const response = output.response && typeof output.response === 'object' ? output.response : null;
-  if (!response) {
-    throw new Error(`strict mode requires response payload for ${toolName}`);
-  }
-
-  if (trimName(response.executor) !== 'backend-contract-http-json') {
-    throw new Error(`strict mode requires backend-contract-http-json provenance for ${toolName}`);
-  }
-
-  if (trimName(response.contract_name) !== toolName) {
-    throw new Error(`strict mode requires matching contract_name for ${toolName}`);
-  }
-
-  const responseContractOutput = response.contract_output && typeof response.contract_output === 'object' ? response.contract_output : null;
-  if (!responseContractOutput) {
-    throw new Error(`strict mode requires response.contract_output provenance for ${toolName}`);
-  }
 }
 
 async function createAuth(base) {
@@ -612,7 +611,7 @@ async function ensureContractToolExecutors(base, authHeaders) {
   return byName;
 }
 
-async function createProjectPipelineDataset(base, authHeaders, docs) {
+async function createProjectPipelineDataset(base, authHeaders, datasetUri) {
   const suffix = Date.now();
 
   let response = await req(base, '/projects', {
@@ -641,7 +640,7 @@ async function createProjectPipelineDataset(base, authHeaders, docs) {
     headers: authHeaders,
     body: JSON.stringify({
       fk_pipeline_id: pipeline.pipeline_id,
-      uri: `memory://rag-e2e-dataset-${suffix}`,
+      uri: datasetUri,
       desc: 'RAG e2e dataset loaded from remote source with fallback corpus',
     }),
   });
@@ -655,7 +654,7 @@ async function resolveNodeTypes(base, authHeaders) {
   const nodeTypes = mustOk('list node types', response);
   const byName = new Map(nodeTypes.map((row) => [trimName(row.name), row]));
 
-  const required = ['ManualInput', 'PromptBuilder', 'ToolNode', 'AgentCall'];
+  const required = ['ManualInput', 'AgentCall'];
   for (const name of required) {
     if (!byName.get(name)) {
       throw new Error(`required node type missing: ${name}`);
@@ -696,29 +695,13 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName, tools
   }
 
   const manualType = nodeTypesByName.get('ManualInput');
-  const promptType = nodeTypesByName.get('PromptBuilder');
-  const toolNodeType = nodeTypesByName.get('ToolNode');
   const agentType = nodeTypesByName.get('AgentCall');
 
-  const nDocument = await createNode({
+  const nManual = await createNode({
     fk_pipeline_id: pipelineId,
     fk_type_id: manualType.type_id,
     top_k: 1,
-    ui_json: { x: 40, y: 20, label: 'DocumentInput' },
-  });
-
-  const nQuestion = await createNode({
-    fk_pipeline_id: pipelineId,
-    fk_type_id: manualType.type_id,
-    top_k: 1,
-    ui_json: { x: 40, y: 140, label: 'QuestionInput' },
-  });
-
-  const nPrompt = await createNode({
-    fk_pipeline_id: pipelineId,
-    fk_type_id: promptType.type_id,
-    top_k: 1,
-    ui_json: { x: 240, y: 80, label: 'PromptBuilder' },
+    ui_json: { x: 120, y: 180, label: 'ManualInput' },
   });
 
   const nAgent = await createNode({
@@ -726,52 +709,113 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName, tools
     fk_type_id: agentType.type_id,
     top_k: 1,
     ui_json: {
-      x: 820,
-      y: 80,
+      x: 420,
+      y: 180,
       label: 'AgentCall',
       agent: {
         ...(ragAgentModel ? { modelId: ragAgentModel } : {}),
-        maxToolCalls: 2,
-        maxAttempts: 2,
+        maxToolCalls: 10,
+        maxAttempts: 3,
         softRetryDelayMs: 1200,
+        systemPrompt: realisticSystemPrompt,
       },
     },
   });
 
-  await createEdge(nDocument.node_id, nPrompt.node_id);
-  await createEdge(nQuestion.node_id, nPrompt.node_id);
-
-  const nodeByLabel = {
-    DocumentInput: nDocument,
-    QuestionInput: nQuestion,
-    PromptBuilder: nPrompt,
-    AgentCall: nAgent,
-  };
-
-  let x = 420;
-  let previousNodeId = nPrompt.node_id;
   for (const toolName of requiredContractTools) {
     const tool = toolsByName.get(toolName);
-    if (!tool) throw new Error(`tool not found while creating graph: ${toolName}`);
-
-    const node = await createNode({
-      fk_pipeline_id: pipelineId,
-      fk_type_id: toolNodeType.type_id,
-      top_k: 1,
-      ui_json: { x, y: 80, label: toolName, tool_id: tool.tool_id },
-    });
-
-    nodeByLabel[toolName] = node;
-    await createEdge(previousNodeId, node.node_id);
-    await createEdge(node.node_id, nAgent.node_id);
-    previousNodeId = node.node_id;
-    x += 180;
+    if (!tool) {
+      throw new Error(`tool not found while creating graph: ${toolName}`);
+    }
   }
 
-  return nodeByLabel;
+  await createEdge(nManual.node_id, nAgent.node_id);
+
+  return {
+    ManualInput: nManual,
+    AgentCall: nAgent,
+  };
 }
 
-async function executeQuestion(base, authHeaders, ids, datasetDocs, chunks, vectors, question, index) {
+function buildAgentToolRefs(toolsByName) {
+  return requiredContractTools.map((toolName) => {
+    const tool = toolsByName.get(toolName);
+    if (!tool) {
+      throw new Error(`tool not found while building tool refs: ${toolName}`);
+    }
+
+    return {
+      kind: 'tool_ref',
+      tool_name: tool.name,
+      tool_id: tool.tool_id,
+      desc: `Edge-advertised tool ref for ${tool.name}`,
+    };
+  });
+}
+
+function buildCompletedToolTraceMap(toolTrace) {
+  const out = new Map();
+  for (const entry of toolTrace) {
+    if (!entry || entry.status !== 'completed') continue;
+    const name = normalizeToolTraceName(entry);
+    if (!name) continue;
+    if (!out.has(name)) {
+      out.set(name, entry);
+    }
+  }
+  return out;
+}
+
+function assertStrictAgentToolTrace(toolTrace, requireArtifactBackedRag) {
+  const completedByName = buildCompletedToolTraceMap(toolTrace);
+  const completedNames = Array.from(completedByName.keys());
+
+  if (requireArtifactBackedRag) {
+    for (const toolName of requiredRagToolSequence) {
+      if (!completedByName.has(toolName)) {
+        throw new Error(`strict realistic mode requires completed tool call for ${toolName}; completed=${JSON.stringify(completedNames)}`);
+      }
+    }
+
+    const documentLoaderOutput = completedByName.get('DocumentLoader')?.output ?? {};
+    const vectorUpsertOutput = completedByName.get('VectorUpsert')?.output ?? {};
+    const retrieverOutput = completedByName.get('HybridRetriever')?.output ?? {};
+    const contextAssemblerOutput = completedByName.get('ContextAssembler')?.output ?? {};
+
+    if (trimName(documentLoaderOutput.documents_manifest_source) !== 'document-loader-local-file') {
+      throw new Error('strict realistic mode requires DocumentLoader local-file artifact source');
+    }
+    if (trimName(vectorUpsertOutput.storage_backend) !== 'artifact-manifest') {
+      throw new Error('strict realistic mode requires VectorUpsert artifact-manifest storage backend');
+    }
+    if (trimName(retrieverOutput.retrieval_source) !== 'artifact-vectors') {
+      throw new Error('strict realistic mode requires HybridRetriever artifact-vectors retrieval source');
+    }
+    if (trimName(contextAssemblerOutput.context_bundle_manifest_artifact_kind) !== 'context_bundle') {
+      throw new Error('strict realistic mode requires ContextAssembler context_bundle manifest output');
+    }
+  }
+}
+
+function buildAgentDiagnostics(outAgent) {
+  if (!outAgent || typeof outAgent !== 'object') return null;
+
+  return {
+    text: trimName(outAgent.text),
+    final_text_source: trimName(outAgent.final_text_source),
+    final_text_origin: trimName(outAgent.final_text_origin),
+    raw_completion_text: trimName(outAgent.raw_completion_text),
+    last_directive_kind: trimName(outAgent.last_directive_kind),
+    last_directive_tool_name: trimName(outAgent.last_directive_tool_name),
+    provider_response_id: trimName(outAgent.provider_response_id),
+    provider_calls_attempted: Number(outAgent.provider_calls_attempted ?? 0),
+    provider_soft_failure: Boolean(outAgent.provider_soft_failure),
+    unresolved_tools: Array.isArray(outAgent.unresolved_tools) ? outAgent.unresolved_tools : [],
+    tool_trace: Array.isArray(outAgent.tool_call_trace) ? outAgent.tool_call_trace : [],
+  };
+}
+
+async function executeQuestion(base, authHeaders, ids, datasetDocs, chunks, vectors, question, index, toolRefs) {
   const contractMode = e2eProfile === 'contract';
   const candidates = contractMode ? selectCandidates(question, chunks, 6) : [];
   const contextText = contractMode ? candidates.map((row, i) => `[${i + 1}] ${row.snippet}`).join('\n') : '';
@@ -781,20 +825,22 @@ async function executeQuestion(base, authHeaders, ids, datasetDocs, chunks, vect
     question,
     user_query: question,
     retrieval_query: question,
-    instruction: 'Answer briefly and stay grounded in provided context whenever possible.',
-    uris: datasetDocs.map((doc) => doc.uri),
-    documents: datasetDocs.map((doc) => ({ document_id: doc.document_id, text: doc.text })),
+    instruction: contractMode ? 'Answer briefly and stay grounded in provided context whenever possible.' : realisticInstruction,
     prompt_template: 'Ground answer for question {{query}} using context below.\n\n{{context}}',
     max_context_tokens: 320,
     top_k: 6,
     mode: 'hybrid',
     alpha: 0.5,
+    require_artifact_backed_retrieval: !contractMode,
+    tool_refs: toolRefs,
     model: 'openai/gpt-oss-120b:free',
     temperature: 0.2,
     max_output_tokens: 220,
   };
 
   if (contractMode) {
+    inputJson.uris = datasetDocs.map((doc) => doc.uri);
+    inputJson.documents = datasetDocs.map((doc) => ({ document_id: doc.document_id, text: doc.text }));
     inputJson.chunks = chunks;
     inputJson.vectors = vectors;
     inputJson.candidates = candidates;
@@ -863,7 +909,7 @@ async function executeQuestion(base, authHeaders, ids, datasetDocs, chunks, vect
     Object.entries(ids.nodeIdByLabel).map(([label, nodeId]) => [label, reportById.get(nodeId)?.status ?? 'unknown']),
   );
 
-  const requiredCompleted = ['DocumentInput', 'QuestionInput', 'PromptBuilder', ...requiredContractTools];
+  const requiredCompleted = ['ManualInput', 'AgentCall'];
   for (const label of requiredCompleted) {
     if (statusByLabel[label] !== 'completed') {
       const reportNode = reportById.get(ids.nodeIdByLabel[label]);
@@ -894,16 +940,22 @@ async function executeQuestion(base, authHeaders, ids, datasetDocs, chunks, vect
     }
   }
 
-  const outCitation = toNodeOutput(nodeById.get(ids.nodeIdByLabel.CitationFormatter));
   const outAgent = toNodeOutput(nodeById.get(ids.nodeIdByLabel.AgentCall));
-
-  const citedAnswer = outCitation?.contract_output?.cited_answer ?? outCitation?.cited_answer ?? JSON.stringify(outCitation ?? null);
+  const agentDiagnostics = buildAgentDiagnostics(outAgent);
+  const citedAnswer =
+    trimName(outAgent?.structured_output?.text) ||
+    trimName(outAgent?.text) ||
+    JSON.stringify(outAgent ?? null);
   const agentText = outAgent?.text ?? JSON.stringify(outAgent ?? null);
+  const toolTrace = Array.isArray(outAgent?.tool_call_trace) ? outAgent.tool_call_trace : [];
 
   if (strictOpenRouter) {
-    for (const toolName of requiredContractTools) {
-      const toolOutput = toNodeOutput(nodeById.get(ids.nodeIdByLabel[toolName]));
-      assertStrictToolOutput(toolName, toolOutput);
+    const requireArtifactBackedRag = !contractMode && index < 2;
+    try {
+      assertStrictAgentToolTrace(toolTrace, requireArtifactBackedRag);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${message}; diagnostics=${JSON.stringify(agentDiagnostics)}`);
     }
 
     const providerModel = trimName(outAgent?.model);
@@ -929,7 +981,9 @@ async function executeQuestion(base, authHeaders, ids, datasetDocs, chunks, vect
       throw new Error('strict mode requires AgentCall provider_calls_attempted > 0');
     }
     if (unresolvedTools.length > 0) {
-      throw new Error(`strict mode requires all AgentCall tools resolved, unresolved=${JSON.stringify(unresolvedTools)}`);
+      throw new Error(
+        `strict mode requires all AgentCall tools resolved, unresolved=${JSON.stringify(unresolvedTools)}; diagnostics=${JSON.stringify(agentDiagnostics)}`,
+      );
     }
   }
 
@@ -944,6 +998,7 @@ async function executeQuestion(base, authHeaders, ids, datasetDocs, chunks, vect
     softOpenRouterFailure,
     citedAnswer,
     agentText,
+    agentDiagnostics,
   };
 }
 
@@ -971,132 +1026,140 @@ async function run() {
 
   const docs = await downloadDatasetDocs();
   console.log(`[rag-e2e] dataset docs: ${docs.length}`);
+  const datasetFixture = await createDatasetBundleFixture(docs);
+  console.log(`[rag-e2e] dataset fixture: ${datasetFixture.datasetUri}`);
 
-  const chunks = e2eProfile === 'contract' ? buildChunks(docs, 26) : [];
-  const vectors =
-    e2eProfile === 'contract'
-      ? chunks.slice(0, 40).map((chunk, index) => ({
-          vector_id: `vec_${index + 1}`,
-          chunk_id: chunk.chunk_id,
-          document_id: chunk.document_id,
-          vector: makeVector(chunk.text, 8),
-        }))
-      : [];
+  try {
+    const chunks = e2eProfile === 'contract' ? buildChunks(docs, 26) : [];
+    const vectors =
+      e2eProfile === 'contract'
+        ? chunks.slice(0, 40).map((chunk, index) => ({
+            vector_id: `vec_${index + 1}`,
+            chunk_id: chunk.chunk_id,
+            document_id: chunk.document_id,
+            vector: makeVector(chunk.text, 8),
+          }))
+        : [];
 
-  if (e2eProfile === 'contract') {
-    console.log(`[rag-e2e] chunks prepared: ${chunks.length}`);
-    console.log(`[rag-e2e] vectors prepared: ${vectors.length}`);
-  } else {
-    console.log('[rag-e2e] realistic mode: intermediate artifacts are produced by ToolNode chain at runtime');
-  }
+    if (e2eProfile === 'contract') {
+      console.log(`[rag-e2e] chunks prepared: ${chunks.length}`);
+      console.log(`[rag-e2e] vectors prepared: ${vectors.length}`);
+    } else {
+      console.log('[rag-e2e] realistic mode: intermediate artifacts are produced by ToolNode chain at runtime');
+    }
 
-  const auth = await createAuth(base);
-  console.log(`[rag-e2e] auth created for ${auth.email}`);
+    const auth = await createAuth(base);
+    console.log(`[rag-e2e] auth created for ${auth.email}`);
 
   const toolsByName = await ensureContractToolExecutors(base, auth.authHeaders);
+  const toolRefs = buildAgentToolRefs(toolsByName);
   if (overrideToolExecutors) {
-    console.log('[rag-e2e] contract tools configured to http-json /health');
-  } else {
-    console.log('[rag-e2e] contract tools left as-is (no executor override)');
-  }
+      console.log('[rag-e2e] contract tools configured to http-json /health');
+    } else {
+      console.log('[rag-e2e] contract tools left as-is (no executor override)');
+    }
 
-  const { project, pipeline, dataset } = await createProjectPipelineDataset(base, auth.authHeaders, docs);
-  console.log(`[rag-e2e] project=${project.project_id}, pipeline=${pipeline.pipeline_id}, dataset=${dataset.dataset_id}`);
+    const { project, pipeline, dataset } = await createProjectPipelineDataset(base, auth.authHeaders, datasetFixture.datasetUri);
+    console.log(`[rag-e2e] project=${project.project_id}, pipeline=${pipeline.pipeline_id}, dataset=${dataset.dataset_id}`);
 
   const nodeTypesByName = await resolveNodeTypes(base, auth.authHeaders);
   const nodeByLabel = await createGraph(base, auth.authHeaders, pipeline.pipeline_id, nodeTypesByName, toolsByName);
   const nodeIdByLabel = Object.fromEntries(Object.entries(nodeByLabel).map(([label, node]) => [label, node.node_id]));
-  console.log('[rag-e2e] graph created (DocumentInput + QuestionInput + PromptBuilder + ToolNodes -> AgentCall)');
+  console.log('[rag-e2e] graph created (ManualInput -> AgentCall with edge-advertised tool_refs)');
 
-  const results = [];
-  for (let index = 0; index < questionsToRun.length; index += 1) {
-    const question = questionsToRun[index];
-    console.log(`\n[rag-e2e] Q${index + 1}: ${question}`);
+    const results = [];
+    for (let index = 0; index < questionsToRun.length; index += 1) {
+      const question = questionsToRun[index];
+      console.log(`\n[rag-e2e] Q${index + 1}: ${question}`);
 
-    let result;
-    for (let strictAttempt = 1; strictAttempt <= strictQuestionRetries; strictAttempt += 1) {
-      try {
-        result = await withQuestionTimeout(
-          executeQuestion(
-            base,
-            auth.authHeaders,
-            {
-              pipelineId: pipeline.pipeline_id,
-              datasetId: dataset.dataset_id,
-              nodeIdByLabel,
-            },
-            docs,
-            chunks,
-            vectors,
-            question,
+      let result;
+      for (let strictAttempt = 1; strictAttempt <= strictQuestionRetries; strictAttempt += 1) {
+        try {
+          result = await withQuestionTimeout(
+            executeQuestion(
+              base,
+              auth.authHeaders,
+              {
+                pipelineId: pipeline.pipeline_id,
+                datasetId: dataset.dataset_id,
+                nodeIdByLabel,
+              },
+              docs,
+              chunks,
+              vectors,
+              question,
+              index,
+              toolRefs,
+            ),
             index,
-          ),
-          index,
-          question,
-        );
-        break;
-      } catch (error) {
-        const retryableStrict = strictOpenRouter && isRetryableStrictProviderError(error);
-        if (retryableStrict && strictAttempt < strictQuestionRetries) {
-          const message = error instanceof Error ? error.message : String(error);
-          console.log(
-            `[rag-e2e] strict provider checks failed on Q${index + 1} attempt ${strictAttempt}/${strictQuestionRetries}, retrying: ${message}`,
+            question,
           );
-          if (strictRetryDelayMs > 0) {
-            await sleep(strictRetryDelayMs);
+          break;
+        } catch (error) {
+          const retryableStrict = strictOpenRouter && isRetryableStrictProviderError(error);
+          if (retryableStrict && strictAttempt < strictQuestionRetries) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.log(
+              `[rag-e2e] strict provider checks failed on Q${index + 1} attempt ${strictAttempt}/${strictQuestionRetries}, retrying: ${message}`,
+            );
+            if (strictRetryDelayMs > 0) {
+              await sleep(strictRetryDelayMs);
+            }
+            continue;
           }
-          continue;
+
+          throw error;
+        }
+      }
+
+      if (!result) {
+        throw new Error(`question execution returned no result for Q${index + 1}`);
+      }
+
+      results.push(result);
+
+      console.log(`[rag-e2e] execution_id=${result.execution_id}, status=${result.execution_status}`);
+      console.log(`[rag-e2e] node statuses: ${Object.entries(result.statusByLabel).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+      console.log(`[rag-e2e] citation excerpt: ${excerpt(result.citedAnswer, 240)}`);
+      console.log(`[rag-e2e] agent excerpt: ${excerpt(result.agentText, 240)}`);
+
+      if (result.softOpenRouterFailure) {
+        const warningParts = [];
+        if (result.agentSoftOpenRouterFailure) {
+          warningParts.push(`AgentCall:${result.agentErrorCode || 'unknown'}${result.agentErrorHttpStatus ? `/${result.agentErrorHttpStatus}` : ''}`);
         }
 
-        throw error;
+        console.log(`[rag-e2e] warning: soft OpenRouter failure accepted (${warningParts.join(', ') || 'provider unavailable'})`);
       }
     }
 
-    if (!result) {
-      throw new Error(`question execution returned no result for Q${index + 1}`);
-    }
+    const openRouterWarnings = results.filter((row) => row.softOpenRouterFailure).length;
+    console.log('\n[rag-e2e] summary');
+    console.log(
+      JSON.stringify(
+        {
+          base,
+          profile: e2eProfile,
+          force_health_executor: overrideToolExecutors,
+          strict_openrouter: strictOpenRouter,
+          project_id: project.project_id,
+          pipeline_id: pipeline.pipeline_id,
+          dataset_id: dataset.dataset_id,
+          node_ids: nodeIdByLabel,
+          tools_used: requiredContractTools,
+          questions_count: questionsToRun.length,
+          openrouter_soft_failures: openRouterWarnings,
+        },
+        null,
+        2,
+      ),
+    );
 
-    results.push(result);
-
-    console.log(`[rag-e2e] execution_id=${result.execution_id}, status=${result.execution_status}`);
-    console.log(`[rag-e2e] node statuses: ${Object.entries(result.statusByLabel).map(([k, v]) => `${k}=${v}`).join(', ')}`);
-    console.log(`[rag-e2e] citation excerpt: ${excerpt(result.citedAnswer, 240)}`);
-    console.log(`[rag-e2e] agent excerpt: ${excerpt(result.agentText, 240)}`);
-
-    if (result.softOpenRouterFailure) {
-      const warningParts = [];
-      if (result.agentSoftOpenRouterFailure) {
-        warningParts.push(`AgentCall:${result.agentErrorCode || 'unknown'}${result.agentErrorHttpStatus ? `/${result.agentErrorHttpStatus}` : ''}`);
-      }
-
-      console.log(`[rag-e2e] warning: soft OpenRouter failure accepted (${warningParts.join(', ') || 'provider unavailable'})`);
-    }
+    console.log('[rag-e2e] SUCCESS');
+    process.exit(0);
+  } finally {
+    await rm(datasetFixture.absolutePath, { force: true });
   }
-
-  const openRouterWarnings = results.filter((row) => row.softOpenRouterFailure).length;
-  console.log('\n[rag-e2e] summary');
-  console.log(
-    JSON.stringify(
-      {
-        base,
-        profile: e2eProfile,
-        force_health_executor: overrideToolExecutors,
-        strict_openrouter: strictOpenRouter,
-        project_id: project.project_id,
-        pipeline_id: pipeline.pipeline_id,
-        dataset_id: dataset.dataset_id,
-        node_ids: nodeIdByLabel,
-        tools_used: requiredContractTools,
-        questions_count: questionsToRun.length,
-        openrouter_soft_failures: openRouterWarnings,
-      },
-      null,
-      2,
-    ),
-  );
-
-  console.log('[rag-e2e] SUCCESS');
-  process.exit(0);
 }
 
 run().catch((error) => {

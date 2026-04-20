@@ -857,6 +857,13 @@ export function summarizeAgentToolOutput(output: any): Record<string, any> {
 
   out.contract_output_keys = Object.keys(contractOutput).slice(0, 20);
 
+  const scalarTextKeys = ['retrieval_source', 'storage_backend', 'provider', 'model', 'strategy'];
+  for (const key of scalarTextKeys) {
+    if (typeof contractOutput[key] === 'string' && contractOutput[key].trim().length > 0) {
+      out[key] = contractOutput[key].trim();
+    }
+  }
+
   const scalarCountKeys = [
     'document_count',
     'chunk_count',
@@ -878,6 +885,30 @@ export function summarizeAgentToolOutput(output: any): Record<string, any> {
     const value = contractOutput[key];
     if (!Array.isArray(value)) continue;
     out[`${key}_count`] = value.length;
+  }
+
+  const manifestKeys = [
+    'documents_manifest',
+    'chunks_manifest',
+    'vectors_manifest',
+    'candidates_manifest',
+    'context_bundle_manifest',
+  ];
+  for (const key of manifestKeys) {
+    const manifest = toObjectRecord(contractOutput[key]);
+    if (!manifest) continue;
+
+    if (typeof manifest.artifact_kind === 'string' && manifest.artifact_kind.trim().length > 0) {
+      out[`${key}_artifact_kind`] = manifest.artifact_kind.trim();
+    }
+    if (typeof manifest.storage_mode === 'string' && manifest.storage_mode.trim().length > 0) {
+      out[`${key}_storage_mode`] = manifest.storage_mode.trim();
+    }
+
+    const manifestMeta = toObjectRecord(manifest.meta);
+    if (typeof manifestMeta?.source === 'string' && manifestMeta.source.trim().length > 0) {
+      out[`${key}_source`] = manifestMeta.source.trim();
+    }
   }
 
   const preview =
@@ -978,6 +1009,47 @@ function tryParseLeadingJsonObject(rawText: string): Record<string, any> | null 
   return null;
 }
 
+function tryRecoverToolDirectiveFromLooseText(rawText: string): Record<string, any> | null {
+  const text = rawText.trim();
+  if (!text) return null;
+
+  const toolNameMatch =
+    text.match(/"tool_name"\s*:\s*"([^"]+)"/i) ??
+    text.match(/"toolName"\s*:\s*"([^"]+)"/i) ??
+    text.match(/"tool"\s*:\s*"([^"]+)"/i);
+  const toolName = toolNameMatch?.[1]?.trim();
+  if (!toolName) return null;
+
+  const looksLikeToolCall =
+    /tool_call/i.test(text) ||
+    /<\s*tool_call\s*>/i.test(text) ||
+    /<\s*\/\s*tool_call\s*>/i.test(text) ||
+    /"type"\s*:\s*tool_call/i.test(text) ||
+    /"type"\s*:\s*"tool_call"/i.test(text);
+
+  if (!looksLikeToolCall) return null;
+
+  const inputMatch = text.match(/"input"\s*:\s*(\{[\s\S]*?\})/i);
+  let input: Record<string, any> = {};
+  if (inputMatch?.[1]) {
+    try {
+      const parsedInput = JSON.parse(inputMatch[1]);
+      const inputRecord = toObjectRecord(parsedInput);
+      if (inputRecord) {
+        input = inputRecord;
+      }
+    } catch {
+      input = {};
+    }
+  }
+
+  return {
+    type: 'tool_call',
+    tool_name: toolName,
+    input,
+  };
+}
+
 export function parseAgentDirective(rawText: string): AgentDirective {
   const text = rawText.trim();
   if (!text) {
@@ -995,6 +1067,14 @@ export function parseAgentDirective(rawText: string): AgentDirective {
     if (leadingObject) {
       parsed = leadingObject;
       record = leadingObject;
+    }
+  }
+
+  if (!record) {
+    const recoveredToolDirective = tryRecoverToolDirectiveFromLooseText(text);
+    if (recoveredToolDirective) {
+      parsed = recoveredToolDirective;
+      record = recoveredToolDirective;
     }
   }
 

@@ -127,6 +127,21 @@ function resolveAlpha(raw: unknown): number {
   return Number(clampNumber(numeric, 0, 1).toFixed(3));
 }
 
+function readBooleanFlag(raw: unknown): boolean | undefined {
+  if (typeof raw === 'boolean') return raw;
+  if (typeof raw === 'number') {
+    if (raw === 1) return true;
+    if (raw === 0) return false;
+    return undefined;
+  }
+
+  if (typeof raw !== 'string') return undefined;
+  const normalized = raw.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return undefined;
+}
+
 function toVector(raw: unknown): number[] {
   if (!Array.isArray(raw)) return [];
 
@@ -442,6 +457,18 @@ function buildArtifactBackedHybridRetrieverContractOutput(input: Record<string, 
 
 function buildHybridRetrieverContractOutput(input: Record<string, any>): Record<string, any> {
   const records = normalizeInputRecords(input.records);
+  const requireArtifactBacked = readBooleanFlag(input.require_artifact_backed_retrieval) === true;
+  if (requireArtifactBacked && records.length === 0) {
+    throw new HttpError(400, {
+      code: 'EXECUTOR_TOOLNODE_CONTRACT_INPUT_INVALID',
+      error: 'HybridRetriever requires artifact-backed records for this execution',
+      details: {
+        contract: 'HybridRetriever',
+        require_artifact_backed_retrieval: true,
+      },
+    });
+  }
+
   return records.length > 0
     ? buildArtifactBackedHybridRetrieverContractOutput(input)
     : buildSyntheticHybridRetrieverContractOutput(input);
@@ -475,6 +502,12 @@ export function resolveHybridRetrieverContractInput(inputs: any[], context: Node
     top_k: resolveTopK(inputRecord.top_k ?? inputRecord.topK),
     mode: resolveMode(inputRecord.mode),
     alpha: resolveAlpha(inputRecord.alpha),
+    ...(readBooleanFlag(inputRecord.require_artifact_backed_retrieval ?? inputRecord.requireArtifactBackedRetrieval) !== undefined
+      ? {
+          require_artifact_backed_retrieval:
+            readBooleanFlag(inputRecord.require_artifact_backed_retrieval ?? inputRecord.requireArtifactBackedRetrieval) === true,
+        }
+      : {}),
     ...(records.length > 0 ? { records } : {}),
   };
 }
