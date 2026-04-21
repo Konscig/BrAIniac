@@ -1,4 +1,4 @@
-# Снимок Текущего Состояния Backend Runtime (2026-04-20)
+# Снимок Текущего Состояния Backend Runtime (2026-04-21)
 
 ## Назначение
 Документ фиксирует фактическое состояние backend после живого strict-прогона `rag-agent-e2e`.
@@ -24,6 +24,7 @@
 ## Что есть для RAG
 - Канонический способ рекламы инструментов для агента: upstream `ToolNode -> AgentCall` capability-edge.
 - `tool_ref` и `tool_refs` остаются совместимым backward-compatible путём, но больше не считаются основным target-профилем.
+- Backend теперь поддерживает managed dataset upload path через `POST /datasets/upload` с `filename + content_base64`, который сохраняет source в `backend/.artifacts/datasets/...` и создаёт dataset с `workspace://...` URI.
 - `DocumentLoader` поддерживает:
   - `workspace://...`
   - `file://...`
@@ -69,6 +70,8 @@
 - `CitationFormatter` и `QueryBuilder` остаются доступными инструментами, но не считаются обязательными шагами строгого агентного сценария.
 - Текущий retrieval backend всё ещё artifact-backed baseline, а не выделенный production-grade vector service.
 - В runtime всё ещё остаётся backward-compatible поддержка `tool_ref` / `tool_refs`, хотя целевой профиль уже смещён на `ToolNode -> AgentCall`.
+- Upload path пока JSON/base64, а не `multipart/form-data`.
+- Upload path подтверждён живым smoke-тестом через backend route и последующее чтение файла через `DocumentLoader`.
 
 ## Вывод
 - Backend уже можно считать подтверждённым true RAG agent runtime на уровне strict живого e2e.

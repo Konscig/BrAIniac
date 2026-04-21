@@ -23,6 +23,7 @@
     "test:rag": "node ./scripts/rag-agent-smoke-test.mjs",
     "test:rag:smoke": "node ./scripts/rag-agent-smoke-test.mjs",
     "test:rag:artifacts": "node --loader ts-node/esm ./scripts/rag-artifact-contract-test.mjs",
+    "test:dataset:upload": "node ./scripts/dataset-upload-smoke-test.mjs",
     "test:rag:e2e": "node ./scripts/rag-agent-e2e-test.mjs",
     "test:rag:e2e:full": "node ./scripts/rag-agent-e2e-test.mjs",
     "test:rag:e2e:realistic": "node ./scripts/rag-agent-realistic-e2e-test.mjs",

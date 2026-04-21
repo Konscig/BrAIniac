@@ -1,6 +1,6 @@
 # RAG-Инструментарий (MVP -> v2)
 
-## Актуализация (2026-04-19)
+## Актуализация (2026-04-21)
 - Актуальным источником фактического состояния backend-runtime и контрактных инструментов считать `./09-backend-runtime-truth-snapshot.md`.
 - Актуальным планом доведения backend до functional real RAG считать `./10-real-rag-backend-plan.md`.
 - Этот документ сохраняет расширенный продуктовый roadmap и historical notes.
@@ -132,10 +132,11 @@
 - LLMAnswer
 - CitationFormatter
 
-## Актуальная Оценка Готовности К Real RAG (2026-04-19)
-- Текущий MVP-набор инструментов готов для `contract-mode` и runtime-orchestration, но не эквивалентен real RAG backend.
-- Для functional real RAG критично отсутствуют: реальный `DocumentLoader`, постоянное хранилище документов/чанков/векторов, реальный `VectorUpsert`, реальный `HybridRetriever`, production-safe execution state.
-- До завершения плана из `./10-real-rag-backend-plan.md` формулировку "RAG реализован" в этом документе читать как "RAG contract-mode реализован".
+## Актуальная Оценка Готовности К Real RAG (2026-04-21)
+- Текущий backend уже подтверждает рабочий reference RAG agent runtime на уровне strict e2e.
+- Для functional real RAG больше не отсутствует реальный `DocumentLoader` целиком: он умеет читать локальные/managed sources через `workspace://`, `file://` и backend-managed upload path.
+- При этом backend всё ещё не равен production-grade RAG platform: embeddings и retrieval живут в artifact-backed baseline, а не во внешнем vector service.
+- До завершения плана из `./10-real-rag-backend-plan.md` формулировку "real RAG полностью завершён" всё ещё не использовать. Корректная формулировка: "reference true RAG agent backend подтверждён, production retrieval infrastructure ещё не выделена".
 
 ## Статус Реализации (На 2026-04-18)
 
@@ -151,17 +152,23 @@
 - [x] CitationFormatter
 
 Практический вывод по готовности:
-- Индексация (DocumentLoader -> Chunker -> Embedder -> VectorUpsert) реализована на уровне contract-mode; реальная загрузка документов и запись в vector backend не завершены.
-- Retrieval-контур до кандидатов (QueryBuilder -> HybridRetriever) реализован на уровне contract-mode; real retrieval из persisted index не подтвержден.
+- Индексация (DocumentLoader -> Chunker -> Embedder -> VectorUpsert) реализована на уровне рабочего backend baseline:
+  - `DocumentLoader` реально читает uploaded/local sources;
+  - `Chunker` и `Embedder` работают;
+  - `VectorUpsert` сохраняет vectors в artifact-backed storage.
+- Retrieval-контур до кандидатов (QueryBuilder -> HybridRetriever) подтверждён в strict e2e, но остаётся artifact-backed baseline, а не external vector DB.
 - Контур сборки контекста и пост-обработки цитат (ContextAssembler -> CitationFormatter) реализован.
-- Контур контрактов инструментов завершен (contract-mode), включая `LLMAnswer` как ToolNode-контракт.
-- Генерация ответа через `LLMCall` остается поддерживаемым runtime-путем на уровне кода, но эксплуатационно нестабильна в e2e из-за OpenRouter upstream/rate-limit ошибок (`OPENROUTER_UPSTREAM_ERROR`).
-- Для AgentCall подтвержден автономный внутренний tool-calling путь, но в текущих e2e/strict-проверках инструменты подаются через edge-derived tool-артефакты, а не через независимый runtime-catalog.
-- Команда проверки: `npm --prefix backend run test:agent:e2e`.
+- Контур контрактов инструментов завершен, включая `LLMAnswer` как ToolNode-capability.
+- Генерация ответа через `LLMCall` остаётся поддерживаемым runtime-путём на уровне кода, но не является текущим каноническим strict baseline.
+- Для `AgentCall` подтвержден автономный внутренний tool-calling путь, а канонический способ подачи инструментов в актуальном runtime: `ToolNode -> AgentCall`.
+- Команды проверки:
+  - `npm --prefix backend run test:rag:artifacts`
+  - `node backend/scripts/rag-agent-e2e-test.mjs`
+  - `node backend/scripts/dataset-upload-smoke-test.mjs`
 
-Known issue (требует фикса):
-- `LLMCall` в изолированном и realistic e2e может завершаться `failed` из-за upstream-ошибок провайдера (`OPENROUTER_UPSTREAM_ERROR`, status 429/503).
-- Нужен отдельный фикс устойчивости: retry/backoff в runtime-обработчике `LLMCall` и выравнивание soft-failure политики в e2e.
+Known issues (требуют фикса):
+- `LLMCall` как отдельная runtime-нода не является текущим подтверждённым strict baseline и всё ещё зависит от устойчивости OpenRouter path.
+- Upload path пока реализован как JSON/base64 backend route, а не `multipart/form-data`.
 
 ## Аудит Эксплуатационной Готовности Инструментов (На 2026-04-18)
 
@@ -170,12 +177,12 @@ Known issue (требует фикса):
 - Integration-ready: подтверждена реальная внешняя интеграция (не только contract-mode).
 
 MVP-инструменты (фактический статус):
-- DocumentLoader: Contract-ready, Integration-ready: нет (по умолчанию deterministic contract output).
+- DocumentLoader: Contract-ready, Integration-ready: частично да (локальные и managed uploaded sources подтверждены; cloud/object ingest ещё не реализован).
 - Chunker: Contract-ready, Integration-ready: не требуется как локальная трансформация.
 - Embedder: Contract-ready; Integration-ready частично (`openrouter-embeddings` path есть, но по умолчанию seed ставит `http-json`).
-- VectorUpsert: Contract-ready, Integration-ready: нет (реальный upsert во внешний векторный backend не подтвержден по default path).
+- VectorUpsert: Contract-ready, Integration-ready: частично да (artifact-backed persisted path подтверждён; внешний vector DB path не реализован).
 - QueryBuilder: Contract-ready, Integration-ready: не требуется как локальная трансформация.
-- HybridRetriever: Contract-ready, Integration-ready: нет (default path формирует детерминированных кандидатов по контрактной логике).
+- HybridRetriever: Contract-ready, Integration-ready: частично да (artifact-backed retrieval path подтверждён; внешний vector search backend не реализован).
 - ContextAssembler: Contract-ready, Integration-ready: не требуется как локальная трансформация.
 - LLMAnswer: Contract-ready, Integration-ready: нет (в ToolNode-контракте используется deterministic answer path).
 - CitationFormatter: Contract-ready, Integration-ready: не требуется как локальная трансформация.
@@ -183,8 +190,8 @@ MVP-инструменты (фактический статус):
 Критичные расхождения, влияющие на восприятие "готово":
 - По seed-конфигу contract tools по умолчанию используют `http-json` POST на `/tool-executor/contracts`, то есть тест подтверждает contract execution/provenance, но не реальную внешнюю бизнес-интеграцию.
 - Для ветки `http-json` большинство контрактов строят `contract_output` детерминированно из нормализованного входа; это корректно для contract-mode, но не эквивалент production-интеграции.
-- `test:rag:e2e:realistic` не подмешивает `chunks/vectors/candidates/context_bundle/answer`, но все еще может передавать `documents` через `input_json`; это не является доказательством готового backend-loader слоя.
-- `test:rag:e2e` и `test:rag:e2e:realistic` могут завершаться `SUCCESS` при soft OpenRouter failure в non-strict режиме.
+- `test:rag:e2e:realistic` в актуальной канонической форме опирается на dataset/source path и `ToolNode -> AgentCall`, а не на inline knowledge artifacts.
+- Production-grade vector infrastructure всё ещё отсутствует: текущий retrieval baseline schema-free и artifact-backed.
 
 ### MVP Runtime Ноды (RAG-связанный срез)
 - [x] ManualInput

@@ -1,4 +1,4 @@
-# План Развития Backend Для True RAG Agent (2026-04-20)
+# План Развития Backend Для True RAG Agent (2026-04-21)
 
 ## Назначение
 Документ фиксирует целевую архитектуру и следующий порядок работ после того, как strict realistic e2e уже прошёл на живом backend.
@@ -15,9 +15,11 @@
 - Целевой capability-путь `ToolNode -> AgentCall` подтверждён живым e2e.
 - Schema-free artifact layer реализован.
 - `DocumentLoader` читает локальные реальные источники.
+- Backend-managed dataset upload path реализован без изменения product schema: source сохраняется в managed storage, а dataset получает канонический `workspace://...` URI.
 - Artifact-backed baseline для `VectorUpsert` и `HybridRetriever` реализован.
 - `AgentCall` проходит strict realistic e2e на живом backend.
 - Execution coordination больше не полностью process-local: polling, `in-flight` и idempotency уже имеют filesystem-backed baseline.
+- Managed upload path подтверждён отдельным backend smoke-тестом.
 
 ## Что теперь является следующим приоритетом
 
@@ -92,7 +94,7 @@
 
 ## Ближайший исполнимый план
 1. Удержать `backend/scripts/rag-agent-e2e-test.mjs` в целевой форме `ManualInput + ToolNode -> AgentCall`.
-2. Обновить SDD под новый факт: strict realistic e2e уже проходит.
+2. Удержать и документировать backend-managed upload path как канонический ingest baseline до появления `multipart/form-data`.
 3. Решить канонический final answer path.
 4. После этого перейти к runtime hardening.
 

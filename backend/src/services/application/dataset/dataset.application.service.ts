@@ -8,6 +8,7 @@ import {
   updateDataset,
 } from '../../data/dataset.service.js';
 import { ensurePipelineOwnedByUser } from '../../core/ownership.service.js';
+import { deleteManagedDatasetSourceIfOwned, persistDatasetUpload } from './dataset.upload.service.js';
 
 const PIPELINE_ACCESS_OPTIONS = {
   pipelineNotFoundMessage: 'pipeline not found',
@@ -20,6 +21,35 @@ export async function createDatasetForUser(
 ) {
   await ensurePipelineOwnedByUser(data.fk_pipeline_id, userId, PIPELINE_ACCESS_OPTIONS);
   return createDataset(data);
+}
+
+export async function uploadDatasetForUser(
+  data: {
+    fk_pipeline_id: number;
+    filename: string;
+    mime_type?: string;
+    content_base64: string;
+    desc?: string;
+  },
+  userId: number,
+) {
+  await ensurePipelineOwnedByUser(data.fk_pipeline_id, userId, PIPELINE_ACCESS_OPTIONS);
+  const uploaded = await persistDatasetUpload({
+    filename: data.filename,
+    contentBase64: data.content_base64,
+    ...(data.mime_type !== undefined ? { mimeType: data.mime_type } : {}),
+  });
+
+  try {
+    return await createDataset({
+      fk_pipeline_id: data.fk_pipeline_id,
+      uri: uploaded.uri,
+      ...(data.desc !== undefined ? { desc: data.desc } : {}),
+    });
+  } catch (error) {
+    await deleteManagedDatasetSourceIfOwned(uploaded.uri);
+    throw error;
+  }
 }
 
 export async function listDatasetsForPipelineForUser(pipelineId: number, userId: number) {
@@ -51,6 +81,7 @@ export async function updateDatasetForUser(
 }
 
 export async function deleteDatasetByIdForUser(datasetId: number, userId: number) {
-  await getDatasetByIdForUser(datasetId, userId);
+  const dataset = await getDatasetByIdForUser(datasetId, userId);
   await deleteDataset(datasetId);
+  await deleteManagedDatasetSourceIfOwned(dataset.uri);
 }
