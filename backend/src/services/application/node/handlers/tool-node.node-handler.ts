@@ -1,5 +1,5 @@
 import type { NodeHandler } from '../../pipeline/pipeline.executor.types.js';
-import { executeResolvedToolBinding, resolveToolNodeBinding } from './node-handler.shared.js';
+import { executeResolvedToolBinding, resolveToolNodeBinding } from './agent-tool-execution.js';
 
 export const toolNodeHandler: NodeHandler = async (runtime, inputs, context) => {
   const nodeUi = runtime.node.ui_json && typeof runtime.node.ui_json === 'object' ? runtime.node.ui_json : {};

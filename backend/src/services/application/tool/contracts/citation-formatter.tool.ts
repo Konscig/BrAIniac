@@ -1,6 +1,7 @@
 import { HttpError } from '../../../../common/http-error.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
+import { normalizeText, readNonEmptyText, unwrapPayload } from './tool-contract.input.js';
 
 const MAX_CITATIONS = 8;
 
@@ -9,41 +10,6 @@ type CitationCandidate = {
   chunk_id: string;
   snippet: string;
 };
-
-function normalizeText(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim();
-}
-
-function readNonEmptyText(raw: unknown): string | undefined {
-  if (typeof raw === 'string') {
-    const value = normalizeText(raw);
-    return value.length > 0 ? value : undefined;
-  }
-
-  if (typeof raw === 'number' || typeof raw === 'boolean') {
-    const value = normalizeText(String(raw));
-    return value.length > 0 ? value : undefined;
-  }
-
-  return undefined;
-}
-
-function unwrapPayload(value: unknown): unknown {
-  if (!value || typeof value !== 'object') return value;
-
-  const record = value as Record<string, unknown>;
-  const nestedKeys = ['value', 'data', 'payload', 'output', 'contract_output'];
-  for (const key of nestedKeys) {
-    if (!(key in record)) continue;
-
-    const nested = unwrapPayload(record[key]);
-    if (nested !== undefined && nested !== null) {
-      return nested;
-    }
-  }
-
-  return value;
-}
 
 function extractAnswer(value: unknown): string | undefined {
   const unwrapped = unwrapPayload(value);

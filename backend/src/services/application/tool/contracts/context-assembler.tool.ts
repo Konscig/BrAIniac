@@ -1,6 +1,7 @@
 import { HttpError } from '../../../../common/http-error.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
 import { buildInlineArtifactManifest, listArtifactManifestItems } from './tool-artifact.manifest.js';
+import { clampInt, coerceOptionalPositiveInt, countApproxTokens, normalizeText, readNonEmptyText, unwrapPayload } from './tool-contract.input.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const DEFAULT_MAX_CONTEXT_TOKENS = 256;
@@ -13,59 +14,6 @@ type RetrievalCandidate = {
   snippet: string;
   score: number | null;
 };
-
-function normalizeText(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim();
-}
-
-function readNonEmptyText(raw: unknown): string | undefined {
-  if (typeof raw === 'string') {
-    const value = normalizeText(raw);
-    return value.length > 0 ? value : undefined;
-  }
-
-  if (typeof raw === 'number' || typeof raw === 'boolean') {
-    const value = normalizeText(String(raw));
-    return value.length > 0 ? value : undefined;
-  }
-
-  return undefined;
-}
-
-function coerceOptionalPositiveInt(raw: unknown): number | undefined {
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value <= 0) return undefined;
-  return value;
-}
-
-function clampInt(value: number, min: number, max: number): number {
-  if (value < min) return min;
-  if (value > max) return max;
-  return value;
-}
-
-function countApproxTokens(text: string): number {
-  const normalized = normalizeText(text);
-  if (!normalized) return 0;
-  return normalized.split(' ').filter((part) => part.length > 0).length;
-}
-
-function unwrapPayload(value: unknown): unknown {
-  if (!value || typeof value !== 'object') return value;
-
-  const record = value as Record<string, unknown>;
-  const nestedKeys = ['value', 'data', 'payload', 'output', 'contract_output'];
-  for (const key of nestedKeys) {
-    if (!(key in record)) continue;
-
-    const nested = unwrapPayload(record[key]);
-    if (nested !== undefined && nested !== null) {
-      return nested;
-    }
-  }
-
-  return value;
-}
 
 function toCandidate(raw: unknown, index: number): RetrievalCandidate | undefined {
   const unwrapped = unwrapPayload(raw);

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { HttpError } from '../../../../common/http-error.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
 import { buildInlineArtifactManifest } from './tool-artifact.manifest.js';
+import { coerceOptionalPositiveInt, normalizeMultilineText, normalizeText, readNonEmptyText, unwrapPayload } from './tool-contract.input.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const MAX_DOCUMENT_LOADER_URIS = 64;
@@ -18,34 +19,6 @@ type LoadedDocument = {
   source: 'local-file' | 'synthetic-uri';
 };
 
-function normalizeText(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim();
-}
-
-function normalizeDocumentText(raw: string): string {
-  return raw.replace(/\r\n/g, '\n').trim();
-}
-
-function readNonEmptyText(raw: unknown): string | undefined {
-  if (typeof raw === 'string') {
-    const value = normalizeText(raw);
-    return value.length > 0 ? value : undefined;
-  }
-
-  if (typeof raw === 'number' || typeof raw === 'boolean') {
-    const value = normalizeText(String(raw));
-    return value.length > 0 ? value : undefined;
-  }
-
-  return undefined;
-}
-
-function coerceOptionalPositiveInt(raw: unknown): number | undefined {
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value <= 0) return undefined;
-  return value;
-}
-
 function pushDistinctString(out: string[], raw: unknown, maxItems = MAX_DOCUMENT_LOADER_URIS) {
   if (out.length >= maxItems) return;
 
@@ -57,23 +30,6 @@ function pushDistinctString(out: string[], raw: unknown, maxItems = MAX_DOCUMENT
   if (!exists) {
     out.push(text);
   }
-}
-
-function unwrapPayload(value: unknown): unknown {
-  if (!value || typeof value !== 'object') return value;
-
-  const record = value as Record<string, unknown>;
-  const nestedKeys = ['value', 'data', 'payload', 'output', 'contract_output'];
-  for (const key of nestedKeys) {
-    if (!(key in record)) continue;
-
-    const nested = unwrapPayload(record[key]);
-    if (nested !== undefined && nested !== null) {
-      return nested;
-    }
-  }
-
-  return value;
 }
 
 function collectUris(value: unknown, out: string[]) {
@@ -207,11 +163,11 @@ function mapLoadedDocumentRecord(
   const record = raw as Record<string, unknown>;
   const text =
     typeof record.text === 'string'
-      ? normalizeDocumentText(record.text)
+      ? normalizeMultilineText(record.text)
       : typeof record.content === 'string'
-      ? normalizeDocumentText(record.content)
+      ? normalizeMultilineText(record.content)
       : typeof record.body === 'string'
-      ? normalizeDocumentText(record.body)
+      ? normalizeMultilineText(record.body)
       : '';
 
   if (!text) return null;
@@ -254,7 +210,7 @@ async function readDocumentsFromLocalFile(uri: string, datasetId: number | null)
     });
   }
 
-  const normalizedText = normalizeDocumentText(fileText);
+  const normalizedText = normalizeMultilineText(fileText);
   const fallbackIdBase = sanitizeDocumentId(inferTitleFromPath(absolutePath));
   const extension = path.extname(absolutePath).toLowerCase();
 

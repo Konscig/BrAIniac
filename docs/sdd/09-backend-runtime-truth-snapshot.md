@@ -1,89 +1,78 @@
 # Снимок Текущего Состояния Backend Runtime (2026-04-21)
 
 ## Назначение
-Документ фиксирует фактическое состояние backend после живого strict-прогона `rag-agent-e2e`.
+Документ фиксирует фактическое состояние backend после cleanup legacy-paths и проверки канонического edge-only сценария.
 
-## Что уже подтверждено
+## Что подтверждено
 - Живой `strict realistic e2e` проходит на поднятом backend.
 - Query-time сценарий `ManualInput -> AgentCall` с отдельными `ToolNode -> AgentCall` capability-edges работает end-to-end.
 - `AgentCall` получает callable tools только через входящие рёбра графа.
-- `DocumentLoader` читает dataset fixture через `workspace://...`.
-- `Chunker`, `Embedder`, `VectorUpsert`, `HybridRetriever`, `ContextAssembler`, `LLMAnswer` проходят в одном агентном цикле и фиксируются в `tool_call_trace`.
-- `HybridRetriever` в strict-сценарии действительно работает через `artifact-vectors`.
-- `VectorUpsert` в strict-сценарии действительно работает через `artifact-manifest`.
-- `ContextAssembler` в strict-сценарии отдаёт `context_bundle_manifest`.
+- `tool_ref` / `tool_refs` как runtime-механика удалены.
+- `DocumentLoader`, `Chunker`, `Embedder`, `VectorUpsert`, `HybridRetriever`, `ContextAssembler`, `LLMAnswer`, `CitationFormatter` проходят в одном агентном цикле и фиксируются в `tool_call_trace`.
+- `DocumentLoader` читает dataset source через `workspace://...`.
+- `HybridRetriever` в strict-сценарии работает через `artifact-vectors`.
+- `VectorUpsert` в strict-сценарии работает через `artifact-manifest`.
+- `ContextAssembler` отдаёт `context_bundle_manifest`.
+- Managed upload path подтверждён живым smoke-тестом.
 
 ## Что есть в runtime
-- В backend реализованы handlers для `Trigger`, `ManualInput`, `DatasetInput`, `PromptBuilder`, `Filter`, `Ranker`, `LLMCall`, `AgentCall`, `ToolNode`, `Parser`, `SaveResult`.
-- `ToolNode` поддерживает `http-json` и `openrouter-embeddings`.
-- `POST /tool-executor/contracts` больше не скрывает `HttpError` в `200 OK`.
-- Oversized manifests и execution snapshots могут уходить в файловый слой `.artifacts`.
+- Реализованы handlers для `Trigger`, `ManualInput`, `DatasetInput`, `PromptBuilder`, `Filter`, `Ranker`, `LLMCall`, `AgentCall`, `ToolNode`, `Parser`, `SaveResult`.
+- `PromptBuilder` остаётся поддерживаемым runtime-узлом, но считается advanced-only.
+- `LLMCall` остаётся отдельной прямой runtime-нодой, но не является каноническим final answer path для strict RAG baseline.
+- `ToolNode` поддерживает capability-режим без входов и execution-режим с входами.
+- `POST /tool-executor/contracts` больше не маскирует `HttpError` в `200 OK`.
+- Oversized manifests и execution snapshots могут externalize'иться в файловый слой `.artifacts`.
 - Polling execution умеет читать persisted snapshot, если текущий worker не держит job в памяти.
-- Базовые coordination индексы для `in-flight` execution и idempotency теперь тоже имеют filesystem-backed слой.
+- `in-flight` и idempotency имеют filesystem-backed baseline.
 
 ## Что есть для RAG
-- Канонический способ рекламы инструментов для агента: upstream `ToolNode -> AgentCall` capability-edge.
-- `tool_ref` и `tool_refs` остаются совместимым backward-compatible путём, но больше не считаются основным target-профилем.
-- Backend теперь поддерживает managed dataset upload path через `POST /datasets/upload` с `filename + content_base64`, который сохраняет source в `backend/.artifacts/datasets/...` и создаёт dataset с `workspace://...` URI.
+- Канонический способ рекламы инструментов для агента: upstream `ToolNode -> AgentCall`.
+- Backend поддерживает managed dataset upload path через `POST /datasets/upload` с `filename + content_base64`.
+- Upload сохраняет source в `backend/.artifacts/datasets/...` и создаёт dataset с `workspace://...` URI.
 - `DocumentLoader` поддерживает:
   - `workspace://...`
   - `file://...`
   - локальные пути внутри workspace root
 - `DocumentLoader` умеет читать текстовые файлы и `.json` bundles.
-- Для schema-free artifact layer уже используются:
+- Для schema-free artifact layer используются:
   - `documents_manifest`
   - `chunks_manifest`
   - `vectors_manifest`
   - `candidates_manifest`
   - `context_bundle_manifest`
 - Артефакты могут externalize'иться в `external-blob` с `pointer.kind = local-file`.
-- `HybridRetriever` умеет запрещать synthetic fallback по флагу `require_artifact_backed_retrieval`.
 
-## Что было исправлено на этом этапе
-1. Исправлен strict realistic e2e.
-- Из обязательной strict-последовательности убраны шаги, которые не должны быть жёстко обязательными для true agent path:
-  - `QueryBuilder`
-  - `CitationFormatter`
+## Что изменилось на этом этапе
+1. Удалена legacy-совместимость по `tool_ref`.
+- В runtime остался только путь `ToolNode -> AgentCall`.
 
-2. Исправлен protocol handling для кривого tool-call markup.
-- `parseAgentDirective(...)` теперь умеет восстанавливать tool directive даже из нестрого сформированного ответа модели.
+2. Разрезан giant shared-файл agent runtime.
+- Логика разнесена по отдельным модулям:
+  - `node-handler.common`
+  - `agent-directive-parser`
+  - `agent-tool-discovery`
+  - `agent-tool-execution`
+  - `agent-output-summary`
 
-3. Добавлена runtime-диагностика `AgentCall`.
-- В output теперь есть сведения о происхождении финального текста, последней директиве и сыром completion-тексте.
+3. Добавлен общий toolkit для контрактов инструментов.
+- Повторяющиеся примитивы нормализации и распаковки payload вынесены в `tool-contract.input.ts`.
 
-4. Исправлен prompt surface realistic e2e.
-- Для realistic path добавлены нормальные ASCII-инструкции и system prompt без mojibake как канонический рабочий путь.
-
-5. Усилен runtime hardening для multi-worker сценария.
-- `startPipelineExecutionForUser(...)` теперь умеет смотреть не только в process-local `Map`, но и в filesystem-backed coordination store:
-  - для `in-flight` execution по `pipeline_id`
-  - для idempotency по `userId:pipelineId:idempotencyKey`
-- Это снижает риск ложного параллельного запуска одного pipeline из разных worker-процессов.
-
-6. Восстановлен целевой edge-only путь для агентных инструментов.
-- `ToolNode` без входных данных работает как capability-advertisement нода и не исполняет реальный инструмент до явного agent tool-call.
-- `AgentCall` получает такие инструменты через входящие рёбра и не включает advertising-outputs в prompt.
+4. Автономный `agent:e2e` больше не держит старую архитектуру.
+- Скрипт делегирует каноническому edge-only `rag-agent-e2e`.
 
 ## Что ещё не доведено
-- В `rag-agent-e2e-test.mjs` ещё могут оставаться legacy-следы прошлых строк, даже если фактическое выполнение уже идёт по корректным значениям.
-- Memory-индексы `inFlightByPipelineId` и idempotency state всё ещё существуют как быстрый локальный cache, но теперь уже не являются единственным источником координации.
-- `CitationFormatter` и `QueryBuilder` остаются доступными инструментами, но не считаются обязательными шагами строгого агентного сценария.
-- Текущий retrieval backend всё ещё artifact-backed baseline, а не выделенный production-grade vector service.
-- В runtime всё ещё остаётся backward-compatible поддержка `tool_ref` / `tool_refs`, хотя целевой профиль уже смещён на `ToolNode -> AgentCall`.
 - Upload path пока JSON/base64, а не `multipart/form-data`.
-- Upload path подтверждён живым smoke-тестом через backend route и последующее чтение файла через `DocumentLoader`.
+- Retrieval backend остаётся artifact-backed baseline, а не отдельным production-grade vector service.
+- В SDD ещё могут оставаться исторические заметки о старом поведении в документах, не относящихся к каноническому runtime snapshot.
 
-## Вывод
-- Backend уже можно считать подтверждённым true RAG agent runtime на уровне strict живого e2e.
-- Следующий основной фокус больше не в доказательстве работоспособности пути, а в cleanup, hardening и уточнении канонического answer path.
-
-## Текущая Фиксация Answer Path
-- На текущем этапе канонический final answer path для strict realistic сценария это `LLMAnswer`.
-- `CitationFormatter` остаётся доступным инструментом, но не считается обязательным шагом strict agent path.
-- `LLMCall` остаётся допустимым runtime-путём, но не считается текущим каноническим strict baseline.
+## Текущая фиксация answer path
+- Канонический final answer path для strict realistic сценария: `LLMAnswer`.
+- `CitationFormatter` остаётся доступным инструментом, но не считается обязательным шагом baseline.
+- `LLMCall` остаётся допустимым runtime-путём, но не считается каноническим strict baseline.
 
 ## Канонические источники в коде
 - `backend/src/services/application/node/handlers/agent-call.node-handler.ts`
-- `backend/src/services/application/node/handlers/node-handler.shared.ts`
-- `backend/src/services/application/tool/contracts/*.tool.ts`
+- `backend/src/services/application/node/handlers/agent-tool-discovery.ts`
+- `backend/src/services/application/node/handlers/agent-tool-execution.ts`
+- `backend/src/services/application/tool/contracts/tool-contract.input.ts`
 - `backend/scripts/rag-agent-e2e-test.mjs`

@@ -3,21 +3,22 @@ import { getOpenRouterAdapter } from '../../../core/openrouter/openrouter.adapte
 import type { NodeHandler } from '../../pipeline/pipeline.executor.types.js';
 import { buildPrompt, readBoundedInteger, tryParseJsonFromText } from '../../pipeline/pipeline.executor.utils.js';
 import {
+  mergeInputJson,
+  normalizeToolLookupKey,
+  resolveAgentChatModel,
+  resolveNodeSectionConfig,
+  stringifyForAgent,
+} from './node-handler.common.js';
+import {
   type AgentDirective,
-  executeResolvedToolBinding,
-  extractAgentArtifactAnswer,
   getHttpErrorCode,
   getHttpErrorStatus,
   isSoftOpenRouterError,
-  mergeInputJson,
-  normalizeToolLookupKey,
   parseAgentDirective,
-  resolveAgentChatModel,
-  resolveAgentToolBindings,
-  resolveNodeSectionConfig,
-  stringifyForAgent,
-  summarizeAgentToolOutput,
-} from './node-handler.shared.js';
+} from './agent-directive-parser.js';
+import { isToolAdvertisingInput, resolveAgentToolBindings } from './agent-tool-discovery.js';
+import { executeResolvedToolBinding } from './agent-tool-execution.js';
+import { extractAgentArtifactAnswer, summarizeAgentToolOutput } from './agent-output-summary.js';
 
 function hasPositiveUsageTokens(usage: Record<string, any> | undefined): boolean {
   if (!usage || typeof usage !== 'object') return false;
@@ -33,38 +34,6 @@ function hasPositiveUsageTokens(usage: Record<string, any> | undefined): boolean
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function toObjectRecord(raw: unknown): Record<string, any> | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  return raw as Record<string, any>;
-}
-
-function isToolAdvertisingInput(value: unknown, depth = 0): boolean {
-  if (depth > 6 || value === undefined || value === null) return false;
-
-  if (Array.isArray(value)) {
-    return value.some((entry) => isToolAdvertisingInput(entry, depth + 1));
-  }
-
-  const record = toObjectRecord(value);
-  if (!record) return false;
-
-  const kind = typeof record.kind === 'string' ? record.kind.trim().toLowerCase() : '';
-  const type = typeof record.type === 'string' ? record.type.trim().toLowerCase() : '';
-  if (
-    kind === 'tool_ref' ||
-    type === 'tool_ref' ||
-    kind === 'tool_refs' ||
-    type === 'tool_refs' ||
-    kind === 'tool_node' ||
-    type === 'tool_node'
-  ) {
-    return true;
-  }
-
-  const nestedKeys = ['value', 'data', 'payload', 'output', 'contract_output'];
-  return nestedKeys.some((key) => key in record && isToolAdvertisingInput(record[key], depth + 1));
 }
 
 function summarizeDirective(directive: AgentDirective): Record<string, any> {

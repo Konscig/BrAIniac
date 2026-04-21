@@ -1,118 +1,110 @@
 # План Развития Backend Для True RAG Agent (2026-04-21)
 
 ## Назначение
-Документ фиксирует целевую архитектуру и следующий порядок работ после того, как strict realistic e2e уже прошёл на живом backend.
+Документ фиксирует целевую архитектуру и следующий порядок работ после упрощения backend под каноническую модель агента.
 
 ## Непереговорные ограничения
 1. `AgentCall` получает callable tools только по рёбрам графа.
 2. `AgentCall` не использует hidden node-local tool catalog.
 3. Мы не добавляем RAG-specific core DB сущности в product schema.
-4. RAG-артефакты хранятся schema-free способом через manifests и pointers.
-5. Большие payloads уходят во внешний blob/file слой, а не в новые core-таблицы.
+4. RAG-артефакты хранятся schema-free через manifests и pointers.
+5. Большие payloads уходят во внешний blob/file слой.
 
 ## Что уже достигнуто
 - Edge-only tool access для `AgentCall` реализован.
-- Целевой capability-путь `ToolNode -> AgentCall` подтверждён живым e2e.
+- Канонический capability-путь `ToolNode -> AgentCall` подтверждён живым e2e.
+- Legacy-path по `tool_ref` удалён из backend runtime.
+- Giant shared-файл agent runtime разрезан на узкие модули.
+- Общий toolkit нормализации для tool contracts добавлен.
 - Schema-free artifact layer реализован.
-- `DocumentLoader` читает локальные реальные источники.
-- Backend-managed dataset upload path реализован без изменения product schema: source сохраняется в managed storage, а dataset получает канонический `workspace://...` URI.
+- `DocumentLoader` читает локальные и managed sources.
+- Backend-managed dataset upload path реализован без изменения product schema.
 - Artifact-backed baseline для `VectorUpsert` и `HybridRetriever` реализован.
 - `AgentCall` проходит strict realistic e2e на живом backend.
-- Execution coordination больше не полностью process-local: polling, `in-flight` и idempotency уже имеют filesystem-backed baseline.
-- Managed upload path подтверждён отдельным backend smoke-тестом.
+- Execution coordination больше не полностью process-local.
 
-## Что теперь является следующим приоритетом
+## Текущий канонический профиль
+- Граф для query-time сценария: `ManualInput + ToolNode -> AgentCall`.
+- Канонический ingest/runtime acceptance path:
+  - `DocumentLoader`
+  - `Chunker`
+  - `Embedder`
+  - `VectorUpsert`
+  - `HybridRetriever`
+  - `ContextAssembler`
+  - `LLMAnswer`
+- `CitationFormatter` допустим как дополнительный post-processing шаг.
+- `PromptBuilder` остаётся advanced-only и не входит в канонический агентный путь.
+- `LLMCall` остаётся отдельной прямой runtime-нодой вне канонического strict RAG baseline.
 
-### Фаза 1. Cleanup E2E И Prompt Surface
+## Следующие приоритеты
+
+### Фаза 1. Cleanup Contract Layer
 Цель:
-- убрать legacy-мусор и сделать e2e-скрипт чистым и однозначным.
+- закончить сокращение случайной сложности в инструментальных контрактах.
 
 Задачи:
-- удалить оставшиеся битые legacy-строки и дубли ключей из `rag-agent-e2e-test.mjs`;
-- оставить один канонический realistic prompt path;
-- синхронизировать strict assertions с истинной агентной моделью.
+- довести перевод контрактов на общий toolkit до конца;
+- убрать мусорные legacy-aliases, которые не нужны текущему продукту;
+- удалить битые комментарии и привести contract layer к одному стилю;
+- сохранить только реально используемые alias-формы входов.
 
 Критерий выхода:
-- e2e-скрипт не содержит дублирующихся `instruction`/`systemPrompt` и не содержит mojibake.
+- контракты не копируют одинаковые нормализаторы и payload-unwrapping;
+- входные формы контрактов описывают текущий продукт, а не историю миграций.
 
 ### Фаза 2. Cleanup AgentCall Runtime
 Цель:
-- привести runtime к чистой канонической модели после успешной стабилизации.
+- упростить внутреннюю структуру `AgentCall` без изменения публичного поведения.
 
 Задачи:
-- проверить, какие диагностические поля оставить как постоянные, а какие были временными;
-- решить, нужно ли сохранять lenient recovery для malformed tool-call markup как постоянную норму;
-- при необходимости оформить recovery-path как явную policy, а не как неявный обход.
+- при необходимости ещё сильнее развести provider loop, directive parsing, tool execution и finalization;
+- локализовать fallback/recovery-код для malformed tool-call markup;
+- удержать `tool_call_trace`, `final_text_source`, `raw_completion_text` как стабильный execution/debug contract.
 
 Критерий выхода:
-- `AgentCall` остаётся устойчивым, но без лишнего временного мусора.
+- `AgentCall` читается линейно и не тащит в себя лишнюю glue-логику.
 
-### Фаза 3. Канонический Answer Path
+### Фаза 3. Runtime Hardening
 Цель:
-- определить и зафиксировать рекомендованный финальный answer path.
+- довести execution lifecycle до более строгого multi-worker safe поведения.
 
 Задачи:
-- решить, что считать основным финальным шагом:
-  - `LLMAnswer`
-  - `LLMCall`
-  - опциональный `CitationFormatter`
-- зафиксировать, когда `CitationFormatter` обязателен, а когда нет;
-- зафиксировать ожидания к grounded final output.
+- проверить race-safety filesystem-backed `in-flight` и idempotency baseline;
+- формализовать cleanup policy для stale coordination records;
+- убедиться, что polling и старт execution не завязаны на process-local cache как на единственный источник истины.
 
 Критерий выхода:
-- в SDD есть однозначный canonical answer path для true RAG agent.
+- execution и polling безопасны для multi-worker deployment на текущем backend baseline.
 
-### Фаза 4. Runtime Hardening
+### Фаза 4. Retrieval Boundary Hardening
 Цель:
-- убрать остаточную process-local координацию.
+- чётко отделить доказанный artifact-backed baseline от будущего production retrieval backend.
 
 Задачи:
-- вынести `inFlightByPipelineId`;
-- вынести idempotency state;
-- довести execution lifecycle до multi-worker safe поведения.
+- описать, где заканчивается текущий baseline и где начинается будущая infra-эволюция;
+- не смешивать runtime readiness и масштабирование retrieval infrastructure;
+- при необходимости подготовить интерфейсную границу под внешний vector backend, не ломая текущий artifact path.
 
 Критерий выхода:
-- execution и polling безопасны для multi-worker deployment.
+- roadmap явно разделяет текущую рабочую платформу и будущий infra-scale path.
 
-Текущий статус:
-- execution snapshots уже persisted в shared filesystem store;
-- `in-flight` coordination уже имеет filesystem-backed baseline по `pipeline_id`;
-- idempotency уже имеет filesystem-backed baseline по `userId:pipelineId:idempotencyKey`;
-- следующим шагом runtime hardening остаётся не базовая координация, а доведение этой схемы до более строгой модели race-safety и cleanup policy.
+## Ближайший исполнимый порядок
+1. Дочистить contract layer вокруг `DocumentLoader`, `Chunker`, `Embedder`, `VectorUpsert`, `HybridRetriever`, `ContextAssembler`, `LLMAnswer`.
+2. Зафиксировать и удержать текущий execution/debug contract `AgentCall`.
+3. Проверить runtime hardening на race/idempotency сценариях.
+4. После этого переходить к boundary между artifact-backed retrieval и внешним retrieval backend.
 
-### Фаза 5. Retrieval Boundary Hardening
-Цель:
-- определить, где заканчивается artifact-backed baseline и начинается production retrieval backend.
-
-Задачи:
-- зафиксировать порог, после которого нужен выделенный vector backend;
-- описать boundary между contract/artifact baseline и production retrieval path;
-- не смешивать доказанный RAG runtime и будущую infra-эволюцию.
-
-Критерий выхода:
-- roadmap разделяет runtime readiness и infra scaling.
-
-## Ближайший исполнимый план
-1. Удержать `backend/scripts/rag-agent-e2e-test.mjs` в целевой форме `ManualInput + ToolNode -> AgentCall`.
-2. Удержать и документировать backend-managed upload path как канонический ingest baseline до появления `multipart/form-data`.
-3. Решить канонический final answer path.
-4. После этого перейти к runtime hardening.
-
-## Канонический Final Answer Path
+## Канонический final answer path
 Для текущего true RAG agent backend канонический final answer path фиксируется так:
 
 1. Основной финальный шаг: `LLMAnswer`.
-2. `LLMAnswer` считается основным способом получения финального grounded-ответа в strict realistic agent path.
-3. `CitationFormatter` не считается обязательным шагом strict agent path.
-4. `CitationFormatter` рассматривается как опциональный post-processing шаг, когда продуктовый сценарий действительно требует отдельного форматирования ссылок или цитат.
+2. `LLMAnswer` считается основным способом получения grounded-ответа в strict realistic agent path.
+3. `CitationFormatter` не считается обязательным шагом baseline.
+4. `CitationFormatter` рассматривается как опциональный post-processing.
 5. `LLMCall` не считается каноническим final answer path для текущего strict RAG baseline.
-
-Причины фиксации:
-- именно `LLMAnswer` уже подтверждён живым strict e2e;
-- `CitationFormatter` полезен, но не должен навязываться агенту как обязательный шаг;
-- `LLMCall` остаётся допустимым runtime-механизмом, но не является текущим эталонным путём для strict true RAG agent.
 
 Практическое правило:
 - если нужен доказанный strict baseline, считать целевым путь `DocumentLoader -> Chunker -> Embedder -> VectorUpsert -> HybridRetriever -> ContextAssembler -> LLMAnswer`;
-- если нужна дополнительная продуктовая полировка ответа, после `LLMAnswer` может добавляться `CitationFormatter`;
-- если используется `LLMCall`, это должно считаться альтернативным путём, а не основным baseline-профилем.
+- если нужна дополнительная полировка ответа, после `LLMAnswer` может добавляться `CitationFormatter`;
+- если используется `LLMCall`, это альтернативный runtime-путь, а не baseline-профиль.
