@@ -1447,7 +1447,7 @@ async function run() {
     headers: authHeaders,
     body: JSON.stringify({
       input_json: {
-        normalized_documents: [
+        documents: [
           {
             document_id: 'doc_alpha',
             text: 'alpha beta gamma delta epsilon zeta',
@@ -2113,7 +2113,7 @@ async function run() {
     headers: authHeaders,
     body: JSON.stringify({
       input_json: {
-        ranked_candidates: [
+        candidates: [
           { document_id: 'doc_1', chunk_id: 'chunk_1', snippet: 'rag uses retrieval context', score: 0.93 },
           { document_id: 'doc_2', chunk_id: 'chunk_2', snippet: 'citations improve trustworthiness', score: 0.88 },
           { document_id: 'doc_3', chunk_id: 'chunk_3', snippet: 'assemble compact context bundles', score: 0.83 },
@@ -2454,7 +2454,7 @@ async function run() {
     body: JSON.stringify({
       input_json: {
         answer: 'RAG combines retrieval with generation.',
-        ranked_candidates: [
+        candidates: [
           { document_id: 'doc_1', chunk_id: 'chunk_1', snippet: 'retrieval augments answer grounding' },
           { document_id: 'doc_2', chunk_id: 'chunk_2', snippet: 'citations help users verify source evidence' },
         ],

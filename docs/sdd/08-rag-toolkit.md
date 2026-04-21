@@ -42,7 +42,7 @@
 - purpose: разбиение документов на чанки
 - input: normalized_documents[]
 - output: chunks[]
-- config: strategy, chunkSize, overlap
+- config: strategy, chunk_size, overlap
 
 4. MetadataEnricher
 - purpose: обогащение чанков метаданными
@@ -53,13 +53,13 @@
 - purpose: построение эмбеддингов
 - input: chunks[]
 - output: vectors[]
-- config: model, batchSize
+- config: model, batch_size
 
 6. VectorUpsert
 - purpose: запись в векторный индекс
 - input: vectors[]
 - output: upsert_report
-- config: indexName, namespace
+- config: index_name, namespace
 
 ### 2) Retrieve / Generate
 1. QueryBuilder
@@ -83,7 +83,7 @@
 - purpose: сборка финального контекста под лимит токенов
 - input: ranked_candidates[]
 - output: context_bundle
-- config: maxContextTokens, strategy
+- config: max_context_tokens, strategy
 
 5. LLMAnswer
 - purpose: генерация ответа модели по контексту
@@ -286,7 +286,7 @@ MVP-инструменты (фактический статус):
 5. Все пороги качества и лимиты выносятся в параметры:
 - threshold
 - topK
-- maxContextTokens
+- max_context_tokens
 - maxIterations
 
 6. Наблюдаемость обязательна:

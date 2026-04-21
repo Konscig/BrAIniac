@@ -60,6 +60,11 @@
 4. Автономный `agent:e2e` больше не держит старую архитектуру.
 - Скрипт делегирует каноническому edge-only `rag-agent-e2e`.
 
+5. Contract layer очищен до канонического набора входов.
+- Повторяющиеся нормализаторы и payload-unwrapping вынесены в `tool-contract.input.ts`.
+- CamelCase и legacy-aliases удалены из канонического RAG contract path.
+- Интеграционные payload'ы переведены на канонические snake_case поля.
+
 ## Что ещё не доведено
 - Upload path пока JSON/base64, а не `multipart/form-data`.
 - Retrieval backend остаётся artifact-backed baseline, а не отдельным production-grade vector service.

@@ -1,7 +1,13 @@
 import { HttpError } from '../../../../common/http-error.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
 import { buildInlineArtifactManifest, listArtifactManifestItems } from './tool-artifact.manifest.js';
-import { clampInt as clampInteger, coerceOptionalPositiveInt as coercePositiveInt, normalizeText, readNonEmptyText, unwrapPayload } from './tool-contract.input.js';
+import {
+  clampInt as clampInteger,
+  coerceOptionalPositiveInt as coercePositiveInt,
+  normalizeText,
+  readNonEmptyText,
+  unwrapPayload,
+} from './tool-contract.input.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const MAX_EMBEDDER_CHUNKS = 256;
@@ -34,8 +40,7 @@ function toEmbedderChunk(raw: unknown, index: number): EmbedderChunk | undefined
     readNonEmptyText(record.text) ??
     readNonEmptyText(record.content) ??
     readNonEmptyText(record.body) ??
-    readNonEmptyText(record.chunk_text) ??
-    readNonEmptyText(record.chunkText);
+    readNonEmptyText(record.chunk_text);
   if (!text) return undefined;
 
   const chunkId =
@@ -43,11 +48,7 @@ function toEmbedderChunk(raw: unknown, index: number): EmbedderChunk | undefined
     readNonEmptyText(record.id) ??
     readNonEmptyText(record.document_id) ??
     `chunk_${index + 1}`;
-  const documentId =
-    readNonEmptyText(record.document_id) ??
-    readNonEmptyText(record.doc_id) ??
-    readNonEmptyText(record.parent_document_id) ??
-    null;
+  const documentId = readNonEmptyText(record.document_id) ?? null;
 
   return {
     chunk_id: chunkId,
@@ -139,14 +140,6 @@ function buildDeterministicVector(text: string, size: number): number[] {
   return vector.map((value) => Number((value / normalized.length).toFixed(6)));
 }
 
-/**
- * Формирует deterministic output Embedder для ветки http-json.
- * Вектора строятся локально, чтобы тесты не зависели от внешнего провайдера.
- *
- * @param input Нормализованный вход контракта.
- * @param provider Идентификатор провайдера, который записывается в output.
- * @returns Детерминированный набор векторов для contract_output.
- */
 function buildEmbedderContractOutputFromInput(input: Record<string, any>, provider: string): Record<string, any> {
   const chunks = normalizeInputChunks(input.chunks);
   const requestedVectorSize = coercePositiveInt(input.vector_size) ?? DEFAULT_VECTOR_SIZE;
@@ -177,15 +170,6 @@ function buildEmbedderContractOutputFromInput(input: Record<string, any>, provid
   };
 }
 
-/**
- * Нормализует вход Embedder: собирает чанки, валидирует наличие данных,
- * ограничивает batch_size/vector_size и извлекает модель при наличии.
- *
- * @param inputs Выходы предыдущих узлов пайплайна.
- * @param context Контекст выполнения текущего узла.
- * @returns Нормализованный вход для executor-а.
- * @throws {HttpError} Если не найдено ни одного чанка.
- */
 export function resolveEmbedderContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const chunks: EmbedderChunk[] = [];
   collectChunks(context.input_json, chunks);
@@ -203,19 +187,12 @@ export function resolveEmbedderContractInput(inputs: any[], context: NodeExecuti
   }
 
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? (context.input_json as Record<string, unknown>) : {};
-  const requestedBatchSize = coercePositiveInt(inputRecord.batch_size ?? inputRecord.batchSize) ?? DEFAULT_BATCH_SIZE;
+  const requestedBatchSize = coercePositiveInt(inputRecord.batch_size) ?? DEFAULT_BATCH_SIZE;
   const batchSize = clampInteger(requestedBatchSize, 1, MAX_BATCH_SIZE);
 
-  const requestedVectorSize =
-    coercePositiveInt(inputRecord.vector_size ?? inputRecord.vectorSize ?? inputRecord.embedding_size ?? inputRecord.embeddingSize) ??
-    DEFAULT_VECTOR_SIZE;
+  const requestedVectorSize = coercePositiveInt(inputRecord.vector_size ?? inputRecord.embedding_size) ?? DEFAULT_VECTOR_SIZE;
   const vectorSize = clampInteger(requestedVectorSize, 2, MAX_VECTOR_SIZE);
-
-  const model =
-    readNonEmptyText(inputRecord.model) ??
-    readNonEmptyText(inputRecord.model_id) ??
-    readNonEmptyText(inputRecord.embedding_model) ??
-    readNonEmptyText(inputRecord.embeddingModel);
+  const model = readNonEmptyText(inputRecord.model) ?? readNonEmptyText(inputRecord.embedding_model);
 
   return {
     chunks,
@@ -225,9 +202,6 @@ export function resolveEmbedderContractInput(inputs: any[], context: NodeExecuti
   };
 }
 
-/**
- * Определяет контракт Embedder, его алиасы и допустимые executor-ы.
- */
 export const embedderToolContractDefinition: ToolContractDefinition = {
   name: 'Embedder',
   aliases: ['embedder', 'text-embedder', 'text_embedder'],

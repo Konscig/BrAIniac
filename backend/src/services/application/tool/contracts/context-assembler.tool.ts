@@ -1,7 +1,7 @@
 import { HttpError } from '../../../../common/http-error.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
 import { buildInlineArtifactManifest, listArtifactManifestItems } from './tool-artifact.manifest.js';
-import { clampInt, coerceOptionalPositiveInt, countApproxTokens, normalizeText, readNonEmptyText, unwrapPayload } from './tool-contract.input.js';
+import { clampInt, coerceOptionalPositiveInt, countApproxTokens, readNonEmptyText, unwrapPayload } from './tool-contract.input.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const DEFAULT_MAX_CONTEXT_TOKENS = 256;
@@ -27,7 +27,7 @@ function toCandidate(raw: unknown, index: number): RetrievalCandidate | undefine
     readNonEmptyText(record.passage);
   if (!snippet) return undefined;
 
-  const documentId = readNonEmptyText(record.document_id) ?? readNonEmptyText(record.doc_id) ?? `doc_${index + 1}`;
+  const documentId = readNonEmptyText(record.document_id) ?? `doc_${index + 1}`;
   const chunkId = readNonEmptyText(record.chunk_id) ?? readNonEmptyText(record.id) ?? `chunk_${index + 1}`;
 
   const scoreRaw = Number(record.score);
@@ -77,7 +77,7 @@ function collectCandidates(value: unknown, out: RetrievalCandidate[]) {
   }
 
   const record = unwrapped as Record<string, unknown>;
-  const listKeys = ['ranked_candidates', 'rankedCandidates', 'candidates', 'items', 'records'];
+  const listKeys = ['candidates', 'items', 'records'];
   for (const key of listKeys) {
     const list = record[key];
     if (!Array.isArray(list)) continue;
@@ -105,13 +105,6 @@ function normalizeInputCandidates(raw: unknown): RetrievalCandidate[] {
   return out;
 }
 
-/**
- * Собирает итоговый context_bundle из ранжированных кандидатов,
- * ограничивая объем контекста по approximate token budget.
- *
- * @param input Нормализованный вход контракта.
- * @returns Детерминированный context_bundle и метрики отбора.
- */
 function buildContextAssemblerContractOutput(input: Record<string, any>): Record<string, any> {
   const candidates = normalizeInputCandidates(input.candidates);
   const maxTokens = clampInt(
@@ -167,15 +160,6 @@ function buildContextAssemblerContractOutput(input: Record<string, any>): Record
   };
 }
 
-/**
- * Нормализует вход ContextAssembler: извлекает кандидатов,
- * валидирует их наличие и ограничивает max_context_tokens.
- *
- * @param inputs Выходы предыдущих узлов пайплайна.
- * @param context Контекст выполнения текущего узла.
- * @returns Нормализованный вход для executor-а.
- * @throws {HttpError} Если не найдено ни одного кандидата.
- */
 export function resolveContextAssemblerContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const candidates: RetrievalCandidate[] = [];
   collectCandidates(context.input_json, candidates);
@@ -194,7 +178,7 @@ export function resolveContextAssemblerContractInput(inputs: any[], context: Nod
 
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? (context.input_json as Record<string, unknown>) : {};
   const maxContextTokens = clampInt(
-    coerceOptionalPositiveInt(inputRecord.max_context_tokens ?? inputRecord.maxContextTokens) ?? DEFAULT_MAX_CONTEXT_TOKENS,
+    coerceOptionalPositiveInt(inputRecord.max_context_tokens) ?? DEFAULT_MAX_CONTEXT_TOKENS,
     8,
     MAX_CONTEXT_TOKENS,
   );
@@ -206,9 +190,6 @@ export function resolveContextAssemblerContractInput(inputs: any[], context: Nod
   };
 }
 
-/**
- * Определяет контракт ContextAssembler, его алиасы и допустимые executor-ы.
- */
 export const contextAssemblerToolContractDefinition: ToolContractDefinition = {
   name: 'ContextAssembler',
   aliases: ['contextassembler', 'context-assembler', 'context_assembler'],

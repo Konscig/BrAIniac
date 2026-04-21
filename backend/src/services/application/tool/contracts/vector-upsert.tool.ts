@@ -1,7 +1,7 @@
 import { HttpError } from '../../../../common/http-error.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
 import { buildInlineArtifactManifest, listArtifactManifestItems } from './tool-artifact.manifest.js';
-import { normalizeText, readNonEmptyText, unwrapPayload } from './tool-contract.input.js';
+import { readNonEmptyText, unwrapPayload } from './tool-contract.input.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const MAX_VECTOR_UPSERT_ITEMS = 512;
@@ -161,11 +161,7 @@ function dedupeVectors(items: VectorItem[]): VectorItem[] {
   return Array.from(out.values());
 }
 
-function buildStoredVectorRows(
-  vectors: VectorItem[],
-  indexName: string,
-  namespace: string,
-): Array<Record<string, any>> {
+function buildStoredVectorRows(vectors: VectorItem[], indexName: string, namespace: string): Array<Record<string, any>> {
   return vectors.map((entry, index) => ({
     vector_id: entry.vector_id,
     ...(entry.chunk_id ? { chunk_id: entry.chunk_id } : {}),
@@ -231,9 +227,8 @@ export function resolveVectorUpsertContractInput(inputs: any[], context: NodeExe
   }
 
   const uniqueVectors = dedupeVectors(vectors);
-
-  const indexName = readNonEmptyText(inputRecord.index_name ?? inputRecord.indexName) ?? 'default-index';
-  const namespace = readNonEmptyText(inputRecord.namespace ?? inputRecord.tenant) ?? 'default';
+  const indexName = readNonEmptyText(inputRecord.index_name) ?? 'default-index';
+  const namespace = readNonEmptyText(inputRecord.namespace) ?? 'default';
 
   return {
     index_name: indexName,

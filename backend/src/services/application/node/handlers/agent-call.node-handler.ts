@@ -70,11 +70,13 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
 
   const agentConfig = resolveNodeSectionConfig(runtime, 'agent');
   const llmConfig = resolveNodeSectionConfig(runtime, 'llm');
+  const inputRecord = context.input_json && typeof context.input_json === 'object' ? (context.input_json as Record<string, unknown>) : {};
+  const runModel = typeof inputRecord.model === 'string' && inputRecord.model.trim().length > 0 ? inputRecord.model.trim() : undefined;
 
   const maxToolCalls = readBoundedInteger(agentConfig.maxToolCalls, 3, 1, 8);
   const maxAttempts = readBoundedInteger(agentConfig.maxAttempts, 1, 1, 5);
   const softRetryDelayMs = readBoundedInteger(agentConfig.softRetryDelayMs ?? llmConfig.softRetryDelayMs, 1200, 100, 15000);
-  const agentModel = resolveAgentChatModel(runtime);
+  const agentModel = resolveAgentChatModel(runtime) ?? runModel;
   const temperatureRaw = Number(agentConfig.temperature ?? llmConfig.temperature);
   const maxTokensRaw = Number(agentConfig.maxTokens ?? llmConfig.maxTokens);
   const configuredSystemPrompt = agentConfig.systemPrompt;

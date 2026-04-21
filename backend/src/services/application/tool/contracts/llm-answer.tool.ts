@@ -22,7 +22,7 @@ function extractCandidateSnippets(value: unknown): string[] {
   if (!unwrapped || typeof unwrapped !== 'object') return [];
 
   const record = unwrapped as Record<string, unknown>;
-  const listKeys = ['ranked_candidates', 'rankedCandidates', 'candidates', 'sources', 'items'];
+  const listKeys = ['candidates', 'sources', 'items'];
   const snippets: string[] = [];
 
   for (const key of listKeys) {
@@ -57,7 +57,7 @@ function extractContextText(value: unknown): string | undefined {
 
   const record = unwrapped as Record<string, unknown>;
 
-  const contextBundleRaw = unwrapPayload(record.context_bundle ?? record.contextBundle ?? record.bundle);
+  const contextBundleRaw = unwrapPayload(record.context_bundle ?? record.bundle);
   if (contextBundleRaw && typeof contextBundleRaw === 'object') {
     const contextBundle = contextBundleRaw as Record<string, unknown>;
     const contextBundleText =
@@ -67,7 +67,7 @@ function extractContextText(value: unknown): string | undefined {
     if (contextBundleText) return contextBundleText;
   }
 
-  const textKeys = ['context', 'context_text', 'contextText', 'content', 'text'];
+  const textKeys = ['context', 'context_text', 'content', 'text'];
   for (const key of textKeys) {
     const candidate = readNonEmptyText(record[key]);
     if (candidate) return candidate;
@@ -86,7 +86,7 @@ function extractPromptTemplate(value: unknown): string | undefined {
   if (!unwrapped || typeof unwrapped !== 'object') return undefined;
 
   const record = unwrapped as Record<string, unknown>;
-  const keys = ['prompt_template', 'promptTemplate', 'template'];
+  const keys = ['prompt_template', 'template'];
   for (const key of keys) {
     const resolved = readNonEmptyText(record[key]);
     if (resolved) return resolved;
@@ -100,7 +100,7 @@ function extractUserQuery(value: unknown): string | undefined {
   if (!unwrapped || typeof unwrapped !== 'object') return undefined;
 
   const record = unwrapped as Record<string, unknown>;
-  const keys = ['user_query', 'userQuery', 'query', 'question'];
+  const keys = ['user_query', 'query', 'question'];
   for (const key of keys) {
     const resolved = readNonEmptyText(record[key]);
     if (resolved) return resolved;
@@ -114,12 +114,12 @@ function extractModel(value: unknown): string | undefined {
   if (!unwrapped || typeof unwrapped !== 'object') return undefined;
 
   const record = unwrapped as Record<string, unknown>;
-  const direct = readNonEmptyText(record.model) ?? readNonEmptyText(record.model_id) ?? readNonEmptyText(record.modelId);
+  const direct = readNonEmptyText(record.model) ?? readNonEmptyText(record.model_id);
   if (direct) return direct;
 
   if (record.llm && typeof record.llm === 'object') {
     const llmRecord = record.llm as Record<string, unknown>;
-    const nested = readNonEmptyText(llmRecord.model) ?? readNonEmptyText(llmRecord.model_id) ?? readNonEmptyText(llmRecord.modelId);
+    const nested = readNonEmptyText(llmRecord.model) ?? readNonEmptyText(llmRecord.model_id);
     if (nested) return nested;
   }
 
@@ -148,12 +148,12 @@ function extractMaxOutputTokens(value: unknown): number | undefined {
   if (!unwrapped || typeof unwrapped !== 'object') return undefined;
 
   const record = unwrapped as Record<string, unknown>;
-  const direct = coerceOptionalPositiveInt(record.max_output_tokens ?? record.maxOutputTokens);
+  const direct = coerceOptionalPositiveInt(record.max_output_tokens);
   if (direct !== undefined) return direct;
 
   if (record.llm && typeof record.llm === 'object') {
     const llmRecord = record.llm as Record<string, unknown>;
-    const nested = coerceOptionalPositiveInt(llmRecord.maxTokens ?? llmRecord.max_tokens);
+    const nested = coerceOptionalPositiveInt(llmRecord.max_tokens);
     if (nested !== undefined) return nested;
   }
 
@@ -205,13 +205,6 @@ function buildDeterministicAnswer(contextText: string, userQuery?: string): stri
   return userQuery ? `Answer to "${userQuery}": ${seed}` : `Answer: ${seed}`;
 }
 
-/**
- * Формирует deterministic output для контракта LLMAnswer в ветке http-json.
- * Здесь собирается prompt, служебные метрики и предсказуемый grounded answer.
- *
- * @param input Нормализованный вход контракта.
- * @returns Детерминированный результат генерации ответа и метрики.
- */
 function buildLlmAnswerContractOutput(input: Record<string, any>): Record<string, any> {
   const contextText = normalizeText(String(input.context_text ?? ''));
   const promptTemplate = readNonEmptyText(input.prompt_template) ?? DEFAULT_PROMPT_TEMPLATE;
@@ -240,15 +233,6 @@ function buildLlmAnswerContractOutput(input: Record<string, any>): Record<string
   };
 }
 
-/**
- * Нормализует вход LLMAnswer: извлекает контекст, шаблон промпта,
- * параметры модели и ограничения генерации.
- *
- * @param inputs Выходы предыдущих узлов пайплайна.
- * @param context Контекст выполнения текущего узла.
- * @returns Нормализованный вход для executor-а.
- * @throws {HttpError} Если контекст для ответа отсутствует.
- */
 export function resolveLlmAnswerContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const contextText = extractContextText(context.input_json) ?? findFirstFromInputs(inputs, extractContextText);
   if (!contextText) {
@@ -278,9 +262,6 @@ export function resolveLlmAnswerContractInput(inputs: any[], context: NodeExecut
   };
 }
 
-/**
- * Определяет контракт LLMAnswer, его алиасы и допустимые executor-ы.
- */
 export const llmAnswerToolContractDefinition: ToolContractDefinition = {
   name: 'LLMAnswer',
   aliases: ['llmanswer', 'llm-answer', 'llm_answer'],

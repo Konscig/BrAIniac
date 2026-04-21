@@ -42,15 +42,7 @@ function extractRetrievalQuery(value: unknown): string | undefined {
   if (!unwrapped || typeof unwrapped !== 'object') return undefined;
 
   const record = unwrapped as Record<string, unknown>;
-  const textKeys = [
-    'retrieval_query',
-    'retrievalQuery',
-    'user_query',
-    'query',
-    'question',
-    'prompt',
-    'normalized_query',
-  ];
+  const textKeys = ['retrieval_query', 'user_query', 'query', 'question', 'normalized_query'];
   for (const key of textKeys) {
     const text = readNonEmptyText(record[key]);
     if (text) return text;
@@ -141,7 +133,7 @@ function toIndexedVectorRecord(raw: unknown, index: number): IndexedVectorRecord
   return {
     vector_id: vectorId,
     chunk_id: chunkId ?? null,
-    document_id: readNonEmptyText(record.document_id) ?? readNonEmptyText(record.doc_id) ?? null,
+    document_id: readNonEmptyText(record.document_id) ?? null,
     text,
     vector,
     provider: readNonEmptyText(record.provider) ?? null,
@@ -185,7 +177,7 @@ function collectIndexedVectorRecords(value: unknown, out: IndexedVectorRecord[])
   }
 
   const record = unwrapped as Record<string, unknown>;
-  const listKeys = ['vectors', 'items', 'records', 'indexed_vectors', 'indexedVectors'];
+  const listKeys = ['vectors', 'items', 'records', 'indexed_vectors'];
   for (const key of listKeys) {
     const list = record[key];
     if (!Array.isArray(list)) continue;
@@ -342,7 +334,9 @@ function buildArtifactBackedHybridRetrieverContractOutput(input: Record<string, 
   const scored = records.map((record, index) => {
     const sparseScore = scoreSparse(queryTerms, record.text);
     const denseScore = shouldUseDenseSimilarity(record)
-      ? Number(clampNumber((cosineSimilarity(buildDeterministicVector(retrievalQuery, record.vector.length), record.vector) + 1) / 2, 0, 1).toFixed(6))
+      ? Number(
+          clampNumber((cosineSimilarity(buildDeterministicVector(retrievalQuery, record.vector.length), record.vector) + 1) / 2, 0, 1).toFixed(6),
+        )
       : 0;
 
     let score = sparseScore;
@@ -458,13 +452,12 @@ export function resolveHybridRetrieverContractInput(inputs: any[], context: Node
 
   return {
     retrieval_query: retrievalQuery,
-    top_k: resolveTopK(inputRecord.top_k ?? inputRecord.topK),
+    top_k: resolveTopK(inputRecord.top_k),
     mode: resolveMode(inputRecord.mode),
     alpha: resolveAlpha(inputRecord.alpha),
-    ...(readBooleanFlag(inputRecord.require_artifact_backed_retrieval ?? inputRecord.requireArtifactBackedRetrieval) !== undefined
+    ...(readBooleanFlag(inputRecord.require_artifact_backed_retrieval) !== undefined
       ? {
-          require_artifact_backed_retrieval:
-            readBooleanFlag(inputRecord.require_artifact_backed_retrieval ?? inputRecord.requireArtifactBackedRetrieval) === true,
+          require_artifact_backed_retrieval: readBooleanFlag(inputRecord.require_artifact_backed_retrieval) === true,
         }
       : {}),
     ...(records.length > 0 ? { records } : {}),

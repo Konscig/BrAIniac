@@ -1,7 +1,13 @@
 import { HttpError } from '../../../../common/http-error.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
 import { buildInlineArtifactManifest, listArtifactManifestItems } from './tool-artifact.manifest.js';
-import { clampInt as clampInteger, coerceOptionalPositiveInt as coercePositiveInt, normalizeText, readNonEmptyText, unwrapPayload } from './tool-contract.input.js';
+import {
+  clampInt as clampInteger,
+  coerceOptionalPositiveInt as coercePositiveInt,
+  normalizeText,
+  readNonEmptyText,
+  unwrapPayload,
+} from './tool-contract.input.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const MAX_CHUNKER_DOCUMENTS = 64;
@@ -31,13 +37,11 @@ function toChunkerDocument(raw: unknown, index: number): ChunkerDocument | undef
     readNonEmptyText(record.text) ??
     readNonEmptyText(record.content) ??
     readNonEmptyText(record.body) ??
-    readNonEmptyText(record.normalized_text) ??
-    readNonEmptyText(record.normalizedText);
+    readNonEmptyText(record.normalized_text);
   if (!text) return undefined;
 
   const documentId =
     readNonEmptyText(record.document_id) ??
-    readNonEmptyText(record.doc_id) ??
     readNonEmptyText(record.id) ??
     readNonEmptyText(record.uri) ??
     `doc_${index + 1}`;
@@ -84,7 +88,7 @@ function collectDocuments(value: unknown, out: ChunkerDocument[]) {
   }
 
   const record = unwrapped as Record<string, unknown>;
-  const listKeys = ['normalized_documents', 'normalizedDocuments', 'documents', 'items', 'records'];
+  const listKeys = ['documents', 'items', 'records'];
 
   for (const key of listKeys) {
     const candidate = record[key];
@@ -138,13 +142,6 @@ function splitTextIntoChunks(text: string, chunkSize: number, overlap: number): 
   return out;
 }
 
-/**
- * Формирует deterministic output контракта Chunker.
- * Разбивает документы на окна слов с учетом chunk_size и overlap.
- *
- * @param input Нормализованный вход контракта.
- * @returns Детерминированный результат разбиения документов на чанки.
- */
 function buildChunkerContractOutput(input: Record<string, any>): Record<string, any> {
   const documents = normalizeInputDocuments(input.documents);
   const requestedChunkSize = coercePositiveInt(input.chunk_size) ?? DEFAULT_CHUNK_SIZE;
@@ -185,15 +182,6 @@ function buildChunkerContractOutput(input: Record<string, any>): Record<string, 
   };
 }
 
-/**
- * Нормализует и валидирует вход Chunker: собирает документы,
- * ограничивает размер чанка и пересечение по безопасным границам.
- *
- * @param inputs Выходы предыдущих узлов пайплайна.
- * @param context Контекст выполнения текущего узла.
- * @returns Нормализованный вход для executor-а.
- * @throws {HttpError} Если не удалось получить ни одного документа.
- */
 export function resolveChunkerContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const documents: ChunkerDocument[] = [];
   collectDocuments(context.input_json, documents);
@@ -205,16 +193,16 @@ export function resolveChunkerContractInput(inputs: any[], context: NodeExecutio
   if (documents.length === 0) {
     throw new HttpError(400, {
       code: 'EXECUTOR_TOOLNODE_CONTRACT_INPUT_INVALID',
-      error: 'Chunker contract requires non-empty normalized_documents or documents',
+      error: 'Chunker contract requires non-empty documents',
       details: { contract: 'Chunker' },
     });
   }
 
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? (context.input_json as Record<string, unknown>) : {};
-  const requestedChunkSize = coercePositiveInt(inputRecord.chunk_size ?? inputRecord.chunkSize) ?? DEFAULT_CHUNK_SIZE;
+  const requestedChunkSize = coercePositiveInt(inputRecord.chunk_size) ?? DEFAULT_CHUNK_SIZE;
   const chunkSize = clampInteger(requestedChunkSize, 2, MAX_CHUNK_SIZE);
 
-  const requestedOverlap = Number(inputRecord.overlap ?? inputRecord.chunk_overlap ?? inputRecord.chunkOverlap);
+  const requestedOverlap = Number(inputRecord.overlap ?? inputRecord.chunk_overlap);
   const overlapBase = Number.isInteger(requestedOverlap) ? requestedOverlap : Math.floor(chunkSize * 0.2);
   const overlap = clampInteger(overlapBase, 0, Math.max(0, chunkSize - 1));
 
@@ -226,9 +214,6 @@ export function resolveChunkerContractInput(inputs: any[], context: NodeExecutio
   };
 }
 
-/**
- * Определяет контракт Chunker, его алиасы и допустимые executor-ы.
- */
 export const chunkerToolContractDefinition: ToolContractDefinition = {
   name: 'Chunker',
   aliases: ['chunker', 'text-chunker', 'text_chunker'],

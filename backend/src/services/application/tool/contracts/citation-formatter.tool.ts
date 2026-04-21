@@ -41,7 +41,7 @@ function toCandidate(raw: unknown, index: number): CitationCandidate | undefined
     readNonEmptyText(record.passage);
   if (!snippet) return undefined;
 
-  const documentId = readNonEmptyText(record.document_id) ?? readNonEmptyText(record.doc_id) ?? `doc_${index + 1}`;
+  const documentId = readNonEmptyText(record.document_id) ?? `doc_${index + 1}`;
   const chunkId = readNonEmptyText(record.chunk_id) ?? readNonEmptyText(record.id) ?? `chunk_${index + 1}`;
 
   return {
@@ -81,7 +81,7 @@ function collectCandidates(value: unknown, out: CitationCandidate[]) {
   }
 
   const record = unwrapped as Record<string, unknown>;
-  const listKeys = ['ranked_candidates', 'rankedCandidates', 'candidates', 'sources', 'items'];
+  const listKeys = ['candidates', 'sources', 'items'];
   for (const key of listKeys) {
     const list = record[key];
     if (!Array.isArray(list)) continue;
@@ -107,12 +107,6 @@ function normalizeInputCandidates(raw: unknown): CitationCandidate[] {
   return out;
 }
 
-/**
- * Формирует итог с цитированием: список ссылок на источники и cited_answer.
- *
- * @param input Нормализованный вход контракта.
- * @returns Детерминированный результат форматирования ответа с цитатами.
- */
 function buildCitationFormatterContractOutput(input: Record<string, any>): Record<string, any> {
   const answer = normalizeText(String(input.answer ?? ''));
   const candidates = normalizeInputCandidates(input.candidates);
@@ -136,15 +130,6 @@ function buildCitationFormatterContractOutput(input: Record<string, any>): Recor
   };
 }
 
-/**
- * Нормализует вход CitationFormatter: требует непустой answer
- * и, при наличии, собирает кандидатов для блока источников.
- *
- * @param inputs Выходы предыдущих узлов пайплайна.
- * @param context Контекст выполнения текущего узла.
- * @returns Нормализованный вход для executor-а.
- * @throws {HttpError} Если answer отсутствует или пустой.
- */
 export function resolveCitationFormatterContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
   const answerFromContext = extractAnswer(context.input_json);
   const answerFromInputs = answerFromContext
@@ -173,9 +158,6 @@ export function resolveCitationFormatterContractInput(inputs: any[], context: No
   };
 }
 
-/**
- * Определяет контракт CitationFormatter, его алиасы и допустимые executor-ы.
- */
 export const citationFormatterToolContractDefinition: ToolContractDefinition = {
   name: 'CitationFormatter',
   aliases: ['citationformatter', 'citation-formatter', 'citation_formatter'],
