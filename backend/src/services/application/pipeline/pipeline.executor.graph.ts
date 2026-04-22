@@ -6,6 +6,7 @@ import type {
   ExecutionJob,
   NodeExecutionContext,
   PipelineEdge,
+  PipelineExecutionFinalResult,
   PipelineExecutionNodeState,
   PipelineExecutionSummary,
   PipelineRecord,
@@ -14,6 +15,75 @@ import type {
 import { getLoopMaxRuns, getRange, normalizeUnknownError, nowIso, readPositiveInteger } from './pipeline.executor.utils.js';
 
 const STEP_FACTOR = readPositiveInteger(process.env.EXECUTOR_STEP_FACTOR, 4);
+
+function trimPreview(raw: string, maxLength = 320): string {
+  const text = raw.trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 15))}...(truncated)`;
+}
+
+function readFinalNodeText(output: unknown): string | undefined {
+  if (!output || typeof output !== 'object') return undefined;
+
+  const record = output as Record<string, any>;
+  const directCandidates = [
+    record.text,
+    record.answer,
+    record.cited_answer,
+  ];
+
+  for (const candidate of directCandidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+
+  const contractOutput = record.contract_output;
+  if (contractOutput && typeof contractOutput === 'object') {
+    const contractRecord = contractOutput as Record<string, any>;
+    const contractCandidates = [
+      contractRecord.text,
+      contractRecord.answer,
+      contractRecord.cited_answer,
+      contractRecord.context_bundle?.text,
+    ];
+
+    for (const candidate of contractCandidates) {
+      if (typeof candidate === 'string' && candidate.trim().length > 0) {
+        return candidate.trim();
+      }
+    }
+  }
+
+  return undefined;
+}
+
+export function buildFinalResult(result: ExecuteGraphResult): PipelineExecutionFinalResult | undefined {
+  const terminalIds = new Set(result.terminalNodeIds);
+  const terminalStates = result.nodeStates
+    .filter((state) => terminalIds.has(state.node_id))
+    .sort((a, b) => a.node_id - b.node_id);
+
+  const preferredState =
+    terminalStates.find((state) => state.status === 'completed' && state.output_json !== undefined) ??
+    terminalStates.find((state) => state.status === 'completed') ??
+    terminalStates[0];
+
+  if (!preferredState) return undefined;
+
+  const text = readFinalNodeText(preferredState.output_json);
+  const outputPreview =
+    text ??
+    (preferredState.output_json !== undefined ? trimPreview(JSON.stringify(preferredState.output_json)) : undefined);
+
+  return {
+    node_id: preferredState.node_id,
+    node_type: preferredState.node_type,
+    status: preferredState.status,
+    ...(text ? { text } : {}),
+    ...(outputPreview ? { output_preview: trimPreview(outputPreview) } : {}),
+  };
+}
 
 export async function executeGraph(
   pipeline: PipelineRecord,
@@ -212,6 +282,7 @@ export async function executeGraph(
   return {
     status: failure ? 'failed' : 'succeeded',
     nodeStates: orderedNodeStates,
+    terminalNodeIds: nodeIds.filter((nodeId) => (successors.get(nodeId) ?? []).length === 0),
     warnings,
     ...(failure ? { error: failure } : {}),
     stepsUsed,
@@ -252,6 +323,7 @@ export function buildSummary(result: ExecuteGraphResult): PipelineExecutionSumma
 }
 
 export function buildPipelineReport(job: ExecutionJob, result: ExecuteGraphResult, preflight: GraphValidationResult): Record<string, any> {
+  const finalResult = buildFinalResult(result);
   return {
     execution: {
       execution_id: job.execution_id,
@@ -273,6 +345,7 @@ export function buildPipelineReport(job: ExecutionJob, result: ExecuteGraphResul
     },
     warnings: [...job.warnings, ...result.warnings],
     ...(result.error ? { error: result.error } : {}),
+    ...(finalResult ? { final_result: finalResult } : {}),
     nodes: result.nodeStates,
     generated_at: nowIso(),
   };

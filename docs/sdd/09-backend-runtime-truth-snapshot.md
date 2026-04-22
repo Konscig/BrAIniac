@@ -103,6 +103,15 @@
 - `CitationFormatter` остаётся доступным инструментом, но не считается обязательным шагом baseline.
 - `LLMCall` остаётся допустимым runtime-путём, но не считается каноническим strict baseline.
 
+## Текущая пометка по качеству финального ответа
+- На текущем backend baseline критерием готовности считается не обязательный live-ответ самого `AgentCall`, а гарантированное завершение agent RAG осмысленным ответом на вопрос.
+- Если внешний chat-provider отвечает `429` или иным soft-failure, execution может завершиться через fallback path: `AgentCall` дожимает knowledge path инструментами и берёт финальный answer из `LLMAnswer`.
+- Это считается допустимым runtime-поведением и не является критическим блокером, пока:
+  - execution завершается успешно;
+  - `final_result.text` присутствует в execution snapshot;
+  - ответ содержательно опирается на retrieval context, а не деградирует до технического заполнителя.
+- Идеальный путь, при котором `AgentCall` сам получает успешный provider response без fallback, остаётся желательным, но на текущем этапе не является обязательным критерием готовности backend.
+
 ## Канонические источники в коде
 - `backend/src/services/application/node/handlers/agent-call.node-handler.ts`
 - `backend/src/services/application/node/handlers/agent-tool-discovery.ts`

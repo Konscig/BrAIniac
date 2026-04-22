@@ -13,7 +13,7 @@ import { getNodeTypeById } from '../../data/node_type.service.js';
 import { getPipelineById, updatePipeline } from '../../data/pipeline.service.js';
 import { getToolById } from '../../data/tool.service.js';
 import { externalizeNodeStateArtifacts } from './pipeline.executor.artifact-store.js';
-import { buildPipelineReport, buildSummary, executeGraph, persistNodeOutputs } from './pipeline.executor.graph.js';
+import { buildFinalResult, buildPipelineReport, buildSummary, executeGraph, persistNodeOutputs } from './pipeline.executor.graph.js';
 import {
   claimIdempotencyExecutionRecord,
   claimInFlightExecutionRecord,
@@ -86,6 +86,7 @@ function toSnapshot(job: ExecutionJob): PipelineExecutionSnapshot {
     request: job.request,
     ...(job.preflight ? { preflight: job.preflight } : {}),
     ...(job.summary ? { summary: job.summary } : {}),
+    ...(job.final_result ? { final_result: job.final_result } : {}),
     ...(job.warnings.length > 0 ? { warnings: [...job.warnings] } : {}),
     ...(job.error ? { error: job.error } : {}),
   };
@@ -536,6 +537,12 @@ async function runExecutionJob(job: ExecutionJob) {
     }
 
     job.summary = buildSummary(result);
+    const finalResult = buildFinalResult(result);
+    if (finalResult) {
+      job.final_result = finalResult;
+    } else if ('final_result' in job) {
+      delete job.final_result;
+    }
     job.status = result.status === 'failed' ? 'failed' : 'succeeded';
     touch(job);
 

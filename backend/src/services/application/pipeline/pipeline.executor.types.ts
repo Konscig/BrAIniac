@@ -67,6 +67,14 @@ export interface PipelineExecutionSummary {
   node_skipped: number;
 }
 
+export interface PipelineExecutionFinalResult {
+  node_id: number;
+  node_type: string;
+  status: NodeExecutionStatus;
+  text?: string;
+  output_preview?: string;
+}
+
 export interface StartPipelineExecutionInput {
   preset?: GraphValidationPreset;
   dataset_id?: number;
@@ -85,6 +93,7 @@ export interface PipelineExecutionSnapshot {
   request: StartPipelineExecutionInput;
   preflight?: GraphValidationResult;
   summary?: PipelineExecutionSummary;
+  final_result?: PipelineExecutionFinalResult;
   warnings?: string[];
   error?: {
     code: string;
@@ -106,6 +115,7 @@ export type ExecutionJob = {
   request: StartPipelineExecutionInput;
   preflight?: GraphValidationResult;
   summary?: PipelineExecutionSummary;
+  final_result?: PipelineExecutionFinalResult;
   warnings: string[];
   error?: {
     code: string;
@@ -136,6 +146,7 @@ export type NodeHandler = (runtime: RuntimeNode, inputs: any[], context: NodeExe
 export type ExecuteGraphResult = {
   status: 'succeeded' | 'failed';
   nodeStates: PipelineExecutionNodeState[];
+  terminalNodeIds: number[];
   warnings: string[];
   error?: {
     code: string;

@@ -170,3 +170,9 @@ Cleanup policy:
 - если нужен доказанный strict baseline, считать целевым путь `DocumentLoader -> Chunker -> Embedder -> VectorUpsert -> HybridRetriever -> ContextAssembler -> LLMAnswer`;
 - если нужна дополнительная полировка ответа, после `LLMAnswer` может добавляться `CitationFormatter`;
 - если используется `LLMCall`, это альтернативный runtime-путь, а не baseline-профиль.
+
+## Текущая пометка перед frontend
+- Для текущего backend baseline вопрос "получает ли пользователь финальный ответ на вопрос" считается закрытым.
+- Execution snapshot теперь хранит `final_result`, и frontend/отладка могут читать ответ напрямую из snapshot без отдельного поиска по `AgentCall.output_json`.
+- Если внешний provider-path временно деградирует по `429` или иным soft-failure, это не считается критическим блокером, пока agent RAG завершает execution и сохраняет осмысленный `final_result.text`.
+- Отдельная задача "добиться стабильного live provider response без fallback" остаётся улучшением качества answer-path, но не блокирует переход к frontend и не отменяет текущую готовность backend baseline.
