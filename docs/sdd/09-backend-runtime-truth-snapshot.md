@@ -86,6 +86,18 @@
 - Retrieval backend остаётся artifact-backed baseline, а не отдельным production-grade vector service.
 - В SDD ещё могут оставаться исторические заметки о старом поведении в документах, не относящихся к каноническому runtime snapshot.
 
+## Что зафиксировано перед frontend
+- Public backend contracts вынесены в `./11-backend-contract-freeze.md`.
+- Frozen baseline теперь включает:
+  - `AgentCall.ui_json`
+  - `ToolNode.ui_json`
+  - `POST /datasets/upload`
+  - `POST /pipelines/:id/execute`
+  - `GET /pipelines/:id/executions/:executionId`
+  - `AgentCall.output`
+  - `tool_call_trace`
+- Контрактный freeze подтверждается тестом `test:contracts:freeze`.
+
 ## Текущая фиксация answer path
 - Канонический final answer path для strict realistic сценария: `LLMAnswer`.
 - `CitationFormatter` остаётся доступным инструментом, но не считается обязательным шагом baseline.

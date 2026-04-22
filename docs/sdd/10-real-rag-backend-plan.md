@@ -114,7 +114,34 @@ Cleanup policy:
 Критерий выхода:
 - execution и polling безопасны для multi-worker deployment на текущем backend baseline.
 
-### Фаза 4. Retrieval Boundary Hardening
+### Фаза 4. Backend Contract Freeze
+Цель:
+- зафиксировать публичные backend-контракты перед переходом к frontend.
+
+Статус:
+- завершена
+
+Что сделано:
+- frozen public contracts вынесены в отдельный документ `11-backend-contract-freeze.md`;
+- зафиксированы public shapes для:
+  - `AgentCall.ui_json`
+  - `ToolNode.ui_json`
+  - `POST /datasets/upload`
+  - `POST /pipelines/:id/execute`
+  - `GET /pipelines/:id/executions/:executionId`
+  - `AgentCall.output`
+  - `tool_call_trace`
+- добавлен freeze-тест `test:contracts:freeze`.
+
+Результат:
+- frontend может опираться на один зафиксированный backend contract document;
+- public/internal boundary описана явно;
+- backend acceptance перед frontend выражен в конкретных test-командах.
+
+Критерий выхода:
+- frozen public contracts задокументированы и подтверждаются тестовым baseline.
+
+### Фаза 5. Retrieval Boundary Hardening
 Цель:
 - чётко отделить доказанный artifact-backed baseline от будущего production retrieval backend.
 
@@ -127,9 +154,8 @@ Cleanup policy:
 - roadmap явно разделяет текущую рабочую платформу и будущий infra-scale path.
 
 ## Ближайший исполнимый порядок
-1. Проверить runtime hardening на race/idempotency сценариях.
-2. Зафиксировать cleanup policy для stale coordination records.
-3. После этого переходить к boundary между artifact-backed retrieval и внешним retrieval backend.
+1. Если цель — переход к frontend, backend baseline уже допускает этот переход.
+2. Если цель — дальнейшая backend-эволюция retrieval, переходить к boundary между artifact-backed retrieval и внешним retrieval backend.
 
 ## Канонический final answer path
 Для текущего true RAG agent backend канонический final answer path фиксируется так:

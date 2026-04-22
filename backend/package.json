@@ -31,6 +31,7 @@
     "test:agent:runtime": "node --loader ts-node/esm ./scripts/agent-runtime-unit-test.mjs",
     "test:executor:coordination": "node --loader ts-node/esm ./scripts/executor-coordination-test.mjs",
     "test:executor:http": "node ./scripts/executor-http-coordination-test.mjs",
+    "test:contracts:freeze": "node --loader ts-node/esm ./scripts/backend-contract-freeze-test.mjs",
     "seed:basic-types": "node ./prisma/seeds/seed-basic-node-types.mjs",
     "seed:tool-contracts": "node ./prisma/seeds/seed-tool-contracts.mjs"
   },
