@@ -62,7 +62,7 @@ Frontend не должен пытаться синтезировать `tool_ref
 {
   "label": "AgentCall",
   "agent": {
-    "modelId": "openrouter/auto",
+    "modelId": "<env:OPENROUTER_LLM_MODEL>",
     "systemPrompt": "You are AgentCall runtime.",
     "maxToolCalls": 8,
     "maxAttempts": 3,
@@ -258,7 +258,7 @@ Response body:
 {
   "kind": "agent_call",
   "provider": "openrouter",
-  "model": "openrouter/auto",
+  "model": "<env:OPENROUTER_LLM_MODEL>",
   "provider_response_id": "resp-1",
   "text": "done",
   "final_text_source": "directive.final",

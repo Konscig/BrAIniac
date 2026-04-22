@@ -1,4 +1,5 @@
 import { HttpError } from '../../../../common/http-error.js';
+import { resolveDefaultChatModelFromEnv } from '../../../core/openrouter/openrouter.config.js';
 import type { NodeExecutionContext } from '../../pipeline/pipeline.executor.types.js';
 import {
   clampInt,
@@ -13,9 +14,19 @@ import {
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const DEFAULT_PROMPT_TEMPLATE = 'Answer the user query using only the provided context.';
-const DEFAULT_MODEL = 'openai/gpt-oss-120b:free';
 const DEFAULT_MAX_OUTPUT_TOKENS = 256;
 const MAX_OUTPUT_TOKENS = 4096;
+
+function resolveDefaultLlmAnswerModel(): string {
+  const resolved = resolveDefaultChatModelFromEnv();
+  if (resolved) return resolved;
+
+  throw new HttpError(500, {
+    code: 'EXECUTOR_TOOLNODE_CONTRACT_MODEL_REQUIRED',
+    error: 'LLMAnswer requires model from input or OPENROUTER_LLM_MODEL env',
+    details: { contract: 'LLMAnswer' },
+  });
+}
 
 function extractCandidateSnippets(value: unknown): string[] {
   const unwrapped = unwrapPayload(value);
@@ -210,7 +221,7 @@ function buildLlmAnswerContractOutput(input: Record<string, any>): Record<string
   const promptTemplate = readNonEmptyText(input.prompt_template) ?? DEFAULT_PROMPT_TEMPLATE;
   const userQuery = readNonEmptyText(input.user_query);
 
-  const model = readNonEmptyText(input.model) ?? DEFAULT_MODEL;
+  const model = readNonEmptyText(input.model) ?? resolveDefaultLlmAnswerModel();
   const temperature = clampNumber(coerceOptionalFiniteNumber(input.temperature) ?? 0.2, 0, 2);
   const maxOutputTokens = clampInt(
     coerceOptionalPositiveInt(input.max_output_tokens) ?? DEFAULT_MAX_OUTPUT_TOKENS,

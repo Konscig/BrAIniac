@@ -4,6 +4,8 @@ import { mapNodePatchDTO } from '../src/routes/shared/patch-dto.mappers.ts';
 import { buildAgentCallOutput } from '../src/services/application/node/handlers/agent-call-output.ts';
 import { toolNodeHandler } from '../src/services/application/node/handlers/tool-node.node-handler.ts';
 
+const frozenModel = String(process.env.OPENROUTER_LLM_MODEL || process.env.RAG_E2E_AGENT_MODEL || 'env-model').trim();
+
 function testNodeCreateDtoPreservesAgentCallUiJson() {
   const dto = mapNodeCreateDTO({
     fk_pipeline_id: 11,
@@ -12,7 +14,7 @@ function testNodeCreateDtoPreservesAgentCallUiJson() {
     ui_json: {
       label: 'AgentCall',
       agent: {
-        modelId: 'openrouter/auto',
+        modelId: frozenModel,
         systemPrompt: 'You are AgentCall runtime.',
         maxToolCalls: 8,
         maxAttempts: 3,
@@ -24,7 +26,7 @@ function testNodeCreateDtoPreservesAgentCallUiJson() {
   assert.equal(dto.fk_pipeline_id, 11);
   assert.equal(dto.fk_type_id, 22);
   assert.equal(dto.top_k, 1);
-  assert.equal(dto.ui_json?.agent?.modelId, 'openrouter/auto');
+  assert.equal(dto.ui_json?.agent?.modelId, frozenModel);
   assert.equal(dto.ui_json?.agent?.maxToolCalls, 8);
 }
 
@@ -103,7 +105,7 @@ async function testToolNodeAdvertisingOutputShape() {
 function testAgentCallOutputShape() {
   const output = buildAgentCallOutput({
     provider: 'openrouter',
-    model: 'openrouter/auto',
+    model: frozenModel,
     providerResponseId: 'resp-1',
     text: 'done',
     finalTextSource: 'directive.final',

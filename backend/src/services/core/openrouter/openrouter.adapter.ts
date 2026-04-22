@@ -209,6 +209,13 @@ export class OpenRouterAdapter {
 
   async chatCompletion(request: OpenRouterChatRequest): Promise<OpenRouterChatResult> {
     const model = request.model ?? this.config.defaultChatModel;
+    if (typeof model !== 'string' || model.trim().length === 0) {
+      throw new HttpError(500, {
+        ok: false,
+        code: 'OPENROUTER_MODEL_REQUIRED',
+        error: 'openrouter chat model is not configured; set OPENROUTER_LLM_MODEL or pass model explicitly',
+      });
+    }
 
     const payload = await this.postJson('/chat/completions', {
       model,
@@ -230,6 +237,13 @@ export class OpenRouterAdapter {
 
   async embeddings(request: OpenRouterEmbeddingRequest): Promise<OpenRouterEmbeddingResult> {
     const model = request.model ?? this.config.defaultEmbeddingModel;
+    if (typeof model !== 'string' || model.trim().length === 0) {
+      throw new HttpError(500, {
+        ok: false,
+        code: 'OPENROUTER_EMBEDDING_MODEL_REQUIRED',
+        error: 'openrouter embedding model is not configured; set OPENROUTER_EMBEDDING_MODEL or pass model explicitly',
+      });
+    }
     const input = Array.isArray(request.input) ? request.input : [request.input];
 
     const payload = await this.postJson('/embeddings', {

@@ -1,5 +1,6 @@
 const base = process.env.BASE_URL || 'http://localhost:8080';
 const headers = { 'Content-Type': 'application/json' };
+const llmContractModel = String(process.env.OPENROUTER_LLM_MODEL || process.env.RAG_E2E_AGENT_MODEL || '').trim();
 
 async function req(path, opts) {
   const url = base + path;
@@ -2277,6 +2278,13 @@ async function run() {
   console.log('POST /edges (LLMAnswer contract happy flow) ->', r.status);
   if (!ok(r.status)) return fail('create LLMAnswer contract happy flow edge failed', r);
 
+  if (!llmContractModel) {
+    return fail('LLMAnswer contract happy test requires OPENROUTER_LLM_MODEL or RAG_E2E_AGENT_MODEL env', {
+      status: 500,
+      body: { llmContractModel },
+    });
+  }
+
   r = await req(`/pipelines/${llmAnswerHappyPipeline.pipeline_id}/execute`, {
     method: 'POST',
     headers: authHeaders,
@@ -2287,7 +2295,7 @@ async function run() {
         },
         user_query: 'What is RAG?',
         prompt_template: 'Answer the query using context only.\nQuery: {{query}}\nContext: {{context}}',
-        model: 'openai/gpt-oss-120b:free',
+        ...(llmContractModel ? { model: llmContractModel } : {}),
         temperature: 0.2,
         max_output_tokens: 64,
       },
@@ -2369,7 +2377,7 @@ async function run() {
   }
 
   if (
-    llmAnswerContractOutput?.model !== 'openai/gpt-oss-120b:free' ||
+    llmAnswerContractOutput?.model !== llmContractModel ||
     Number(llmAnswerContractOutput?.max_output_tokens) !== 64 ||
     !String(llmAnswerContractOutput?.prompt ?? '').includes('What is RAG?')
   ) {

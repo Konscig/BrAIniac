@@ -10,7 +10,7 @@ const defaultExecutionPolls = Math.ceil(questionTimeoutMs / 1000) + 10;
 const maxExecutionPolls = Math.max(10, Number(process.env.RAG_E2E_MAX_POLLS || defaultExecutionPolls));
 const strictQuestionRetries = Math.max(1, Number(process.env.RAG_E2E_STRICT_RETRIES || 3));
 const strictRetryDelayMs = Math.max(0, Number(process.env.RAG_E2E_STRICT_RETRY_DELAY_MS || 2000));
-const ragAgentModel = String(process.env.RAG_E2E_AGENT_MODEL || process.env.OPENROUTER_LLM_MODEL || 'openrouter/auto').trim();
+const ragAgentModel = String(process.env.RAG_E2E_AGENT_MODEL || process.env.OPENROUTER_LLM_MODEL || '').trim();
 const headers = { 'Content-Type': 'application/json' };
 
 function parseEnvBool(raw, fallback) {
@@ -841,7 +841,7 @@ async function executeQuestion(base, authHeaders, ids, datasetDocs, chunks, vect
     mode: 'hybrid',
     alpha: 0.5,
     require_artifact_backed_retrieval: !contractMode,
-    model: 'openai/gpt-oss-120b:free',
+    ...(ragAgentModel ? { model: ragAgentModel } : {}),
     temperature: 0.2,
     max_output_tokens: 220,
   };
