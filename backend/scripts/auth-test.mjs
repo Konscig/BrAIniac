@@ -12,11 +12,10 @@ async function req(path, opts) {
 async function run(){
   const suffix = Date.now();
   const email = `auth+${suffix}@local`;
-  const username = `auth-${suffix}`;
   const password = 'pass123';
 
   console.log('signup...');
-  let r = await req('/auth/signup', { method: 'POST', headers, body: JSON.stringify({ email, username, password }) });
+  let r = await req('/auth/signup', { method: 'POST', headers, body: JSON.stringify({ email, password }) });
   console.log('signup', r.status);
   if (r.status !== 201) return fail('signup failed', r);
 
@@ -24,17 +23,12 @@ async function run(){
   r = await req('/auth/login', { method: 'POST', headers, body: JSON.stringify({ email, password }) });
   console.log('login', r.status, r.body && Object.keys(r.body));
   if (r.status !== 200) return fail('login failed', r);
-  const { accessToken, refreshToken } = r.body;
+  const { accessToken } = r.body;
 
   console.log('call /users/me with access token');
   r = await req('/users/me', { method: 'GET', headers: { Authorization: `Bearer ${accessToken}` } });
   console.log('/users/me', r.status);
   if (r.status !== 200) return fail('/users/me failed', r);
-
-  console.log('refresh token...');
-  r = await req('/auth/refresh', { method: 'POST', headers, body: JSON.stringify({ refreshToken }) });
-  console.log('refresh', r.status);
-  if (r.status !== 200) return fail('refresh failed', r);
 
   console.log('auth flow OK');
   process.exit(0);

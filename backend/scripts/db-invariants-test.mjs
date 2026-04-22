@@ -1,6 +1,15 @@
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+function resolveDatabaseUrl() {
+  const url = process.env.DATABASE_URL;
+  if (!url) return undefined;
+  return url.replace('@db:', '@localhost:');
+}
+
+const resolvedDatabaseUrl = resolveDatabaseUrl();
+const prisma = resolvedDatabaseUrl
+  ? new PrismaClient({ datasources: { db: { url: resolvedDatabaseUrl } } })
+  : new PrismaClient();
 
 async function scalar(sql) {
   const rows = await prisma.$queryRawUnsafe(sql);
@@ -44,8 +53,8 @@ async function run() {
   );
 
   await expectZero(
-    'self-loop edges',
-    'SELECT COUNT(*)::int AS count FROM "Edge" e WHERE e."fk_from_node" = e."fk_to_node"'
+    'orphan node types by tool',
+    'SELECT COUNT(*)::int AS count FROM "NodeType" nt LEFT JOIN "Tool" t ON nt."fk_tool_id" = t."tool_id" WHERE t."tool_id" IS NULL'
   );
 
   await expectZero(

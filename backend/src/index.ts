@@ -2,33 +2,41 @@ import express from 'express';
 import cors from 'cors';
 import cluster from 'node:cluster';
 import os from 'node:os';
-import userRouter from './routes/user.routes.js';
-import projectRouter from './routes/project.routes.js';
-import refreshTokenRouter from './routes/refresh_token.routes.js';
-import authRouter from './routes/auth.routes.js';
-import agentRouter from './routes/agent.routes.js';
-import datasetRouter from './routes/dataset.routes.js';
-import documentRouter from './routes/document.routes.js';
-import nodeRouter from './routes/node.routes.js';
-import edgeRouter from './routes/edge.routes.js';
-import exportRouter from './routes/export.routes.js';
-import metricRouter from './routes/metric.routes.js';
-import toolRouter from './routes/tool.routes.js';
-import pipelineRouter from './routes/pipeline.routes.js';
-import pipelineVersionRouter from './routes/pipeline_version.routes.js';
-import runRouter from './routes/run.routes.js';
-import runTaskRouter from './routes/run_task.routes.js';
+import { config as loadEnv } from 'dotenv';
+import userRouter from './routes/resources/user/user.routes.js';
+import projectRouter from './routes/resources/project/project.routes.js';
+import authRouter from './routes/resources/auth/auth.routes.js';
+import datasetRouter from './routes/resources/dataset/dataset.routes.js';
+import nodeRouter from './routes/resources/node/node.routes.js';
+import edgeRouter from './routes/resources/edge/edge.routes.js';
+import toolRouter from './routes/resources/tool/tool.routes.js';
+import pipelineRouter from './routes/resources/pipeline/pipeline.routes.js';
+import nodeTypeRouter from './routes/resources/node_type/node_type.routes.js';
+import { isHttpError } from './common/http-error.js';
+import { getOpenRouterConfig } from './services/core/openrouter/openrouter.config.js';
+import { resolveToolContractDefinition } from './services/application/tool/contracts/index.js';
+
+loadEnv({ path: process.env.ENV_FILE ?? '.env' });
+if (!process.env.DATABASE_URL || !process.env.OPENROUTER_API_KEY) {
+  loadEnv({ path: '../.env' });
+}
 
 const PORT = Number(process.env.PORT ?? 3000);
 const DEFAULT_WORKERS = Math.max(1, os.cpus().length);
 const CONFIGURED_WORKERS = Number(process.env.HTTP_WORKERS ?? DEFAULT_WORKERS);
 const ENABLE_CLUSTER = (process.env.HTTP_ENABLE_CLUSTER ?? 'true').toLowerCase() !== 'false';
 const SHOULD_FORK = ENABLE_CLUSTER && CONFIGURED_WORKERS > 1;
+const JSON_BODY_LIMIT = (process.env.HTTP_JSON_LIMIT ?? '12mb').trim();
 
 function createApp() {
   const app = express();
+  const openRouterConfig = getOpenRouterConfig();
 
-  app.use(express.json());
+  if (!openRouterConfig.enabled) {
+    console.warn('[config] OPENROUTER_API_KEY is not set: LLMCall nodes will fail until configured');
+  }
+
+  app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
   // CORS configuration
   const defaultOrigins = [
@@ -55,22 +63,80 @@ function createApp() {
   app.options(/.*/, cors());
 
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+  app.post('/tool-executor/contracts', async (req, res) => {
+    const payload = req.body && typeof req.body === 'object' ? req.body : {};
+    const tool = payload.tool && typeof payload.tool === 'object' ? payload.tool : {};
+    const contract = payload.contract && typeof payload.contract === 'object' ? payload.contract : {};
+    const input = payload.input && typeof payload.input === 'object' ? payload.input : {};
+    const contractInput =
+      input.contract_input && typeof input.contract_input === 'object' ? input.contract_input : input.input_json ?? null;
+
+    const requestedToolName = typeof tool.name === 'string' ? tool.name.trim() : '';
+    const requestedContractName = typeof contract.name === 'string' ? contract.name.trim() : '';
+    const resolvedContractName = requestedContractName || requestedToolName;
+    const resolvedContractDefinition = resolvedContractName ? resolveToolContractDefinition(resolvedContractName) : undefined;
+
+    let contractOutput: Record<string, any> | null = null;
+    if (
+      resolvedContractDefinition?.buildHttpSuccessOutput &&
+      contractInput &&
+      typeof contractInput === 'object' &&
+      !Array.isArray(contractInput)
+    ) {
+      try {
+        contractOutput = await resolvedContractDefinition.buildHttpSuccessOutput({
+          input: contractInput as Record<string, any>,
+          status: 200,
+          response: null,
+        });
+      } catch (error) {
+        if (isHttpError(error)) {
+          return res.status(error.status).json({
+            ok: false,
+            executor: 'backend-contract-http-json',
+            tool_name: requestedToolName || null,
+            contract_name: (resolvedContractDefinition?.name ?? resolvedContractName) || null,
+            ...error.body,
+          });
+        }
+
+        return res.status(500).json({
+          ok: false,
+          executor: 'backend-contract-http-json',
+          tool_name: requestedToolName || null,
+          contract_name: (resolvedContractDefinition?.name ?? resolvedContractName) || null,
+          error: error instanceof Error ? error.message : 'contract output builder failed',
+        });
+      }
+    }
+
+    res.json({
+      ok: true,
+      executor: 'backend-contract-http-json',
+      tool_name: requestedToolName || null,
+      contract_name: (resolvedContractDefinition?.name ?? resolvedContractName) || null,
+      received_at: new Date().toISOString(),
+      contract_output_source: contractOutput ? 'backend-tool-executor' : null,
+      ...(contractOutput ? { contract_output: contractOutput } : {}),
+      input_preview:
+        contractInput && typeof contractInput === 'object'
+          ? Object.keys(contractInput).slice(0, 24)
+          : typeof contractInput === 'string'
+          ? contractInput.slice(0, 256)
+          : contractInput,
+    });
+  });
+
   app.use('/users', userRouter);
   app.use('/auth', authRouter);
   app.use('/projects', projectRouter);
-  app.use('/refresh-tokens', refreshTokenRouter);
-  app.use('/agents', agentRouter);
   app.use('/datasets', datasetRouter);
-  app.use('/documents', documentRouter);
   app.use('/nodes', nodeRouter);
   app.use('/edges', edgeRouter);
-  app.use('/exports', exportRouter);
-  app.use('/metrics', metricRouter);
   app.use('/tools', toolRouter);
+  app.use('/node-types', nodeTypeRouter);
   app.use('/pipelines', pipelineRouter);
-  app.use('/pipeline-versions', pipelineVersionRouter);
-  app.use('/runs', runRouter);
-  app.use('/run-tasks', runTaskRouter);
 
   return app;
 }

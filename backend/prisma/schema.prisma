@@ -40,11 +40,11 @@ model Pipeline {
 }
 
 model Dataset {
-  dataset_id      Int       @id @default(autoincrement())
-  fk_pipeline_id  Int       @unique
-  desc            String?   @db.Char(512)
-  uri             String    @unique
-  pipeline        Pipeline  @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
+  dataset_id     Int      @id @default(autoincrement())
+  fk_pipeline_id Int      @unique
+  desc           String?  @db.Char(512)
+  uri            String   @unique
+  pipeline       Pipeline @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
 }
 
 model Tool {
@@ -59,6 +59,7 @@ model NodeType {
   fk_tool_id   Int
   name         String    @db.Char(64)
   desc         String    @db.Char(512)
+  config_json  Json?
   tool         Tool      @relation(fields: [fk_tool_id], references: [tool_id], onDelete: Cascade)
   nodes        Node[]
 

@@ -111,3 +111,9 @@ logs/
 *.seed
 docker-compose.override.yml
 .env.docker
+
+# -----------------------
+# Backend Runtime Artifacts
+# -----------------------
+backend/.artifacts/
+backend/.artifacts/executions/**/execution-snapshot.json
