@@ -117,3 +117,15 @@ docker-compose.override.yml
 # -----------------------
 backend/.artifacts/
 backend/.artifacts/executions/**/execution-snapshot.json
+
+# -----------------------
+# Local agent harness
+# -----------------------
+.claude/
+.specify/
+CLAUDE.md
+
+# -----------------------
+# Scratch / transient docs
+# -----------------------
+docs/math-pdf.docx
