@@ -119,11 +119,11 @@ backend/.artifacts/
 backend/.artifacts/executions/**/execution-snapshot.json
 
 # -----------------------
-# Local agent harness
+# Claude Code workspace-only files (SpecKit artefacts under .claude/ and .specify/ are tracked)
 # -----------------------
-.claude/
-.specify/
-CLAUDE.md
+.claude/settings.local.json
+.claude/history/
+.claude/projects/
 
 # -----------------------
 # Scratch / transient docs
