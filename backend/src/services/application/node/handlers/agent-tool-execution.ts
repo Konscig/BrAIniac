@@ -309,14 +309,13 @@ export async function executeResolvedToolBinding(
       input: inputTexts,
     });
 
-    const contractOutput =
-      ENABLE_LOCAL_SYNTHETIC_CONTRACT_OUTPUT && toolContract?.definition.buildEmbeddingSuccessOutput
-        ? toolContract.definition.buildEmbeddingSuccessOutput({
-            input: toolContract.input,
-            model: embeddingResult.model,
-            embeddings: embeddingResult.embeddings,
-          })
-        : null;
+    const contractOutput = toolContract?.definition.buildEmbeddingSuccessOutput
+      ? toolContract.definition.buildEmbeddingSuccessOutput({
+          input: toolContract.input,
+          model: embeddingResult.model,
+          embeddings: embeddingResult.embeddings,
+        })
+      : null;
 
     return {
       output: {
@@ -326,6 +325,7 @@ export async function executeResolvedToolBinding(
         tool_id: toolBinding.tool_id,
         tool_source: toolBinding.source,
         ...(toolContract ? { contract_name: toolContract.name } : {}),
+        ...(contractOutput ? { contract_output_source: 'local-synthetic' } : {}),
         ...(contractOutput ? { contract_output: contractOutput } : {}),
         model: embeddingResult.model,
         input_items: inputTexts.length,

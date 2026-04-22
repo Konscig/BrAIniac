@@ -258,7 +258,7 @@ export function resolveLlmAnswerContractInput(inputs: any[], context: NodeExecut
     extractPromptTemplate(context.input_json) ?? findFirstFromInputs(inputs, extractPromptTemplate) ?? DEFAULT_PROMPT_TEMPLATE;
 
   const userQuery = extractUserQuery(context.input_json) ?? findFirstFromInputs(inputs, extractUserQuery);
-  const model = extractModel(context.input_json) ?? findFirstFromInputs(inputs, extractModel);
+  const model = extractModel(context.input_json);
 
   const temperature = extractTemperature(context.input_json) ?? findFirstFromInputs(inputs, extractTemperature);
   const maxOutputTokens = extractMaxOutputTokens(context.input_json) ?? findFirstFromInputs(inputs, extractMaxOutputTokens);

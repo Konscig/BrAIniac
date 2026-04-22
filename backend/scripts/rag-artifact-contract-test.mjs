@@ -15,6 +15,7 @@ process.env.EXECUTOR_ARTIFACT_STORE_DIR = path.join(tempRoot, '.artifacts');
 process.env.EXECUTOR_ARTIFACT_INLINE_MAX_ITEMS = '1';
 process.env.EXECUTOR_ARTIFACT_INLINE_MAX_BYTES = '256';
 process.env.EXECUTOR_ARTIFACT_PREVIEW_ITEMS = '2';
+process.env.OPENROUTER_LLM_MODEL = 'google/gemini-2.5-flash-preview';
 
 const documentLoaderModule = await import(
   pathToFileURL(path.join(backendRoot, 'src/services/application/tool/contracts/document-loader.tool.ts')).href
@@ -28,6 +29,9 @@ const vectorUpsertModule = await import(
 const hybridRetrieverModule = await import(
   pathToFileURL(path.join(backendRoot, 'src/services/application/tool/contracts/hybrid-retriever.tool.ts')).href
 );
+const llmAnswerModule = await import(
+  pathToFileURL(path.join(backendRoot, 'src/services/application/tool/contracts/llm-answer.tool.ts')).href
+);
 const manifestModule = await import(
   pathToFileURL(path.join(backendRoot, 'src/services/application/tool/contracts/tool-artifact.manifest.ts')).href
 );
@@ -39,6 +43,7 @@ const { resolveDocumentLoaderContractInput, documentLoaderToolContractDefinition
 const { resolveEmbedderContractInput, embedderToolContractDefinition } = embedderModule;
 const { resolveVectorUpsertContractInput, vectorUpsertToolContractDefinition } = vectorUpsertModule;
 const { resolveHybridRetrieverContractInput, hybridRetrieverToolContractDefinition } = hybridRetrieverModule;
+const { resolveLlmAnswerContractInput, llmAnswerToolContractDefinition } = llmAnswerModule;
 const { buildInlineArtifactManifest, listArtifactManifestItems } = manifestModule;
 const { externalizeNodeStateArtifacts } = artifactStoreModule;
 
@@ -227,12 +232,46 @@ async function testArtifactBackedRetrieverPath() {
   log('HybridRetriever ranks persisted vector artifacts through external-blob pointers');
 }
 
+async function testLlmAnswerIgnoresEmbeddingModelFromUpstream() {
+  const llmInput = resolveLlmAnswerContractInput(
+    [
+      {
+        contract_output: {
+          model: 'nvidia/llama-nemotron-embed-vl-1b-v2:free',
+          context_bundle: {
+            text: 'Artemis II is the first crewed Artemis mission before future lunar landings.',
+          },
+        },
+      },
+    ],
+    {
+      dataset: null,
+      input_json: {
+        user_query: 'What is Artemis II for?',
+      },
+    },
+  );
+
+  const llmOutput = await llmAnswerToolContractDefinition.buildHttpSuccessOutput({
+    input: llmInput,
+    status: 200,
+    response: { ok: true },
+  });
+
+  assert.equal(llmInput.model, undefined);
+  assert.equal(llmOutput.model, 'google/gemini-2.5-flash-preview');
+  assert.match(llmOutput.answer, /Artemis II/i);
+
+  log('LLMAnswer ignores upstream embedding model and falls back to OPENROUTER_LLM_MODEL');
+}
+
 try {
   log(`temp root: ${path.relative(process.cwd(), tempRoot).replace(/\\/g, '/') || '.'}`);
   await testDocumentLoaderLocalText();
   await testDocumentLoaderJsonBundle();
   await testExternalBlobRoundTrip();
   await testArtifactBackedRetrieverPath();
+  await testLlmAnswerIgnoresEmbeddingModelFromUpstream();
   log('SUCCESS');
 } catch (error) {
   console.error('[rag-artifacts] FAIL:', error instanceof Error ? error.stack ?? error.message : error);
