@@ -31,7 +31,15 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+Reference: `.specify/memory/constitution.md` (current version: 1.0.0).
+
+Mark each gate PASS / FAIL / JUSTIFIED. For FAIL with JUSTIFIED deviation, record the rationale in Complexity Tracking.
+
+- [ ] **I. Engineering-Over-Utility**: Feature contributes to a stage of the agent SDLC (design / run / validate / evaluate) and exposes architecture or decisions to the user.
+- [ ] **II. Bounded Directed Graph**: Any pipeline topology change respects loop-policy with `maxIterations ≥ 1` and the global execution budget `B = (K_max, T_max, Cost_max, Tokens_max)`.
+- [ ] **III. Two-Level Consistency**: Internal node runtime (tool calls, retries, sub-planning) does not introduce external edges; tool advertising goes through `ToolNode → AgentCall`.
+- [ ] **IV. Specification-Driven Development**: This plan is produced after a corresponding `spec.md`; updates to affected `docs/math_*_draft.md` and `docs/sdd/` artefacts are included in this plan's scope.
+- [ ] **V. Automated Quantitative Evaluation**: Any metric contract respects `S = Σ w_j · S_j`, `[0, 1]` "higher is better" normalisation, `Σ w_j = 1`, and the operational/safety gates from the constitution.
 
 ## Project Structure
 
