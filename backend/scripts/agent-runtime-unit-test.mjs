@@ -7,6 +7,7 @@ import {
   parseAgentDirective,
 } from '../src/services/application/node/handlers/agent-directive-parser.ts';
 import { isToolAdvertisingInput } from '../src/services/application/node/handlers/agent-tool-discovery.ts';
+import { resolveAgentTurnDecision } from '../src/services/application/node/handlers/agent-turn-resolution.ts';
 import { HttpError } from '../src/common/http-error.ts';
 
 function testParseFinal() {
@@ -57,11 +58,40 @@ function testSoftErrorClassification() {
   assert.equal(isSoftOpenRouterError(error), true);
 }
 
+function testFinalFallsBackToLlmAnswerWhenNoArtifactAnswerYet() {
+  const decision = resolveAgentTurnDecision({
+    directive: parseAgentDirective('{"type":"final","text":"premature"}'),
+    hasToolBudget: true,
+    fallbackTool: { key: 'llmanswer', name: 'LLMAnswer' },
+    artifactAnswer: null,
+    completionText: '{"type":"final","text":"premature"}',
+  });
+
+  assert.equal(decision.kind, 'tool_call');
+  assert.equal(decision.requestedToolName, 'LLMAnswer');
+  assert.equal(decision.source, 'fallback');
+}
+
+function testArtifactAnswerWinsWhenNoFallbackToolLeft() {
+  const decision = resolveAgentTurnDecision({
+    directive: { kind: 'none', raw: null },
+    hasToolBudget: false,
+    artifactAnswer: 'grounded result',
+    completionText: '',
+  });
+
+  assert.equal(decision.kind, 'final');
+  assert.equal(decision.text, 'grounded result');
+  assert.equal(decision.finalTextSource, 'artifact.answer');
+}
+
 testParseFinal();
 testParseToolCall();
 testRecoverMalformedToolCall();
 testRejectUnknownToolIsRepresentedAsFinalMarkup();
 testToolAdvertisingInputsAreExcludedFromPrompt();
 testSoftErrorClassification();
+testFinalFallsBackToLlmAnswerWhenNoArtifactAnswerYet();
+testArtifactAnswerWinsWhenNoFallbackToolLeft();
 
 console.log('[agent-runtime-unit] SUCCESS');

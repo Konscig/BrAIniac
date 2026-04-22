@@ -1,61 +1,16 @@
 import { HttpError } from '../../../../common/http-error.js';
 import { getOpenRouterAdapter } from '../../../core/openrouter/openrouter.adapter.js';
 import type { NodeHandler } from '../../pipeline/pipeline.executor.types.js';
-import { buildPrompt, readBoundedInteger, tryParseJsonFromText } from '../../pipeline/pipeline.executor.utils.js';
-import {
-  mergeInputJson,
-  normalizeToolLookupKey,
-  resolveAgentChatModel,
-  resolveNodeSectionConfig,
-  stringifyForAgent,
-} from './node-handler.common.js';
-import {
-  type AgentDirective,
-  getHttpErrorCode,
-  getHttpErrorStatus,
-  isSoftOpenRouterError,
-  parseAgentDirective,
-} from './agent-directive-parser.js';
+import { buildPrompt, readBoundedInteger } from '../../pipeline/pipeline.executor.utils.js';
+import { resolveAgentChatModel, resolveNodeSectionConfig } from './node-handler.common.js';
+import { type AgentDirective, parseAgentDirective } from './agent-directive-parser.js';
 import { isToolAdvertisingInput, resolveAgentToolBindings } from './agent-tool-discovery.js';
-import { executeResolvedToolBinding } from './agent-tool-execution.js';
-import { extractAgentArtifactAnswer, summarizeAgentToolOutput } from './agent-output-summary.js';
-
-function hasPositiveUsageTokens(usage: Record<string, any> | undefined): boolean {
-  if (!usage || typeof usage !== 'object') return false;
-
-  const tokenKeys = ['total_tokens', 'prompt_tokens', 'completion_tokens', 'input_tokens', 'output_tokens'];
-  for (const key of tokenKeys) {
-    const value = Number((usage as Record<string, any>)[key]);
-    if (Number.isFinite(value) && value > 0) return true;
-  }
-
-  return false;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function summarizeDirective(directive: AgentDirective): Record<string, any> {
-  if (directive.kind === 'tool_call') {
-    return {
-      kind: directive.kind,
-      tool_name: directive.toolName,
-      input_keys: Object.keys(directive.input ?? {}).slice(0, 24),
-    };
-  }
-
-  if (directive.kind === 'final') {
-    return {
-      kind: directive.kind,
-      text_preview: directive.text.trim().slice(0, 240),
-    };
-  }
-
-  return {
-    kind: directive.kind,
-  };
-}
+import { buildAgentCallOutput, resolveEmptyAgentFinalText, summarizeDirective } from './agent-call-output.js';
+import { buildAgentMessages, buildAgentSystemPrompt } from './agent-prompt-builder.js';
+import { requestAgentCompletion, type AgentMessage } from './agent-provider-call.js';
+import { runAgentToolCall } from './agent-tool-call-runner.js';
+import { extractAgentArtifactAnswer } from './agent-output-summary.js';
+import { resolveAgentTurnDecision } from './agent-turn-resolution.js';
 
 export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context) => {
   const adapter = getOpenRouterAdapter();
@@ -87,38 +42,8 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
 
   const toolResolution = await resolveAgentToolBindings(runtime, inputs);
   const availableTools = toolResolution.advertised;
-  const toolText =
-    availableTools.length > 0
-      ? `Available tools:\n${availableTools
-          .map((tool, index) => `${index + 1}. ${tool.name}${tool.desc ? ` - ${tool.desc}` : ''}`)
-          .join('\n')}`
-      : 'Available tools: none';
-
-  const unresolvedToolText =
-    toolResolution.unresolvedTools.length > 0
-      ? `\nUnresolved tools (not callable): ${toolResolution.unresolvedTools.join(', ')}`
-      : '';
-
-  const toolProtocol = [
-    'Tool protocol:',
-    '1) To call a tool, respond with ONLY JSON:',
-    '{"type":"tool_call","tool_name":"<name>","input":{...}}',
-    '2) To finish, respond with ONLY JSON:',
-    '{"type":"final","text":"<answer>"}',
-    '3) One JSON object per response. No markdown wrappers.',
-  ].join('\n');
-
-  const systemPrompt = `${baseSystemPrompt}\n\n${toolProtocol}`;
-  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-    {
-      role: 'system',
-      content: systemPrompt,
-    },
-    {
-      role: 'user',
-      content: `${toolText}${unresolvedToolText}\n\nTask:\n${prompt}`,
-    },
-  ];
+  const systemPrompt = buildAgentSystemPrompt(baseSystemPrompt);
+  const messages: AgentMessage[] = buildAgentMessages(systemPrompt, availableTools, toolResolution.unresolvedTools, prompt);
 
   let attemptsUsed = 0;
   let llmTurns = 0;
@@ -143,146 +68,27 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   let workingInputJson: any = context.input_json;
   const attemptedToolKeys = new Set<string>();
 
-  const runToolCall = async (requestedToolName: string, inputPatch: Record<string, any>, source: 'model' | 'fallback') => {
-    const requestedKey = normalizeToolLookupKey(requestedToolName);
-    const resolvedBinding = toolResolution.byKey.get(requestedKey);
-
-    toolCallsExecuted += 1;
-
-    if (!resolvedBinding) {
-      toolCallTrace.push({
-        index: toolCallsExecuted,
-        requested_tool: requestedToolName,
-        source,
-        status: 'not_found',
-      });
-
-      messages.push({
-        role: 'user',
-        content: `Tool result:\n${stringifyForAgent({
-          status: 'not_found',
-          requested_tool: requestedToolName,
-        })}`,
-      });
-      return;
-    }
-
-    const resolvedKey = normalizeToolLookupKey(resolvedBinding.name);
-    attemptedToolKeys.add(resolvedKey);
-    attemptedToolKeys.add(requestedKey);
-
-    workingInputJson = mergeInputJson(workingInputJson, inputPatch);
-    const toolContext = {
-      dataset: context.dataset,
-      input_json: workingInputJson,
-    };
-
-    try {
-      const toolResult = await executeResolvedToolBinding(runtime, resolvedBinding, workingInputs, toolContext, {
-        nodeId: runtime.node.node_id,
-        topK: runtime.node.top_k,
-      });
-
-      workingInputs.push(toolResult.output);
-      toolCallTrace.push({
-        index: toolCallsExecuted,
-        requested_tool: requestedToolName,
-        resolved_tool: resolvedBinding.name,
-        source,
-        status: 'completed',
-        output: summarizeAgentToolOutput(toolResult.output),
-      });
-
-      messages.push({
-        role: 'user',
-        content: `Tool result:\n${stringifyForAgent({
-          status: 'completed',
-          tool_name: resolvedBinding.name,
-          output: summarizeAgentToolOutput(toolResult.output),
-        })}`,
-      });
-    } catch (error) {
-      const errorCode = getHttpErrorCode(error);
-      const errorStatus = getHttpErrorStatus(error);
-      const errorMessage = error instanceof Error ? error.message : 'tool call failed';
-
-      toolCallTrace.push({
-        index: toolCallsExecuted,
-        requested_tool: requestedToolName,
-        resolved_tool: resolvedBinding.name,
-        source,
-        status: 'failed',
-        error: {
-          ...(errorCode ? { code: errorCode } : {}),
-          ...(errorStatus ? { status: errorStatus } : {}),
-          message: errorMessage,
-        },
-      });
-
-      messages.push({
-        role: 'user',
-        content: `Tool result:\n${stringifyForAgent({
-          status: 'failed',
-          tool_name: resolvedBinding.name,
-          error: {
-            ...(errorCode ? { code: errorCode } : {}),
-            ...(errorStatus ? { status: errorStatus } : {}),
-            message: errorMessage,
-          },
-        })}`,
-      });
-    }
-  };
-
   while (llmTurns < maxToolCalls + 1) {
     llmTurns += 1;
-
-    let completionText = '';
-    let completionError: unknown;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      attemptsUsed += 1;
-      providerCallsAttempted += 1;
-      try {
-        const completion = await adapter.chatCompletion({
-          ...(agentModel ? { model: agentModel } : {}),
-          messages,
-          ...(Number.isFinite(temperatureRaw) ? { temperature: temperatureRaw } : {}),
-          ...(Number.isInteger(maxTokensRaw) && maxTokensRaw > 0 ? { maxTokens: maxTokensRaw } : {}),
-        });
-
-        finalModel = completion.model;
-        finalProviderResponseId = typeof completion.responseId === 'string' ? completion.responseId.trim() : finalProviderResponseId;
-        finalUsage = completion.usage;
-        providerSuccessfulResponses += 1;
-        providerLastErrorCode = '';
-        providerLastErrorStatus = null;
-        completionText = completion.text.trim();
-        if (completionText.length > 0) break;
-      } catch (error) {
-        completionError = error;
-        providerLastErrorCode = getHttpErrorCode(error) ?? '';
-        providerLastErrorStatus = getHttpErrorStatus(error);
-        const openRouterCode = getHttpErrorCode(error);
-        const isOpenRouterError = typeof openRouterCode === 'string' && openRouterCode.startsWith('OPENROUTER_');
-        const isRecoverableSoftError = isSoftOpenRouterError(error);
-        if (!isRecoverableSoftError && !isOpenRouterError) {
-          throw error;
-        }
-        providerSoftFailures += 1;
-
-        const backoffMs = Math.max(0, Math.min(softRetryDelayMs * attempt, 30_000));
-        if (backoffMs > 0) {
-          await sleep(backoffMs);
-        }
-
-        if (isRecoverableSoftError && attempt < maxAttempts) {
-          continue;
-        }
-
-        break;
-      }
-    }
+    const providerTurn = await requestAgentCompletion({
+      adapter,
+      ...(agentModel ? { model: agentModel } : {}),
+      messages,
+      temperatureRaw,
+      maxTokensRaw,
+      maxAttempts,
+      softRetryDelayMs,
+    });
+    attemptsUsed += providerTurn.attemptsUsed;
+    providerCallsAttempted += providerTurn.providerCallsAttempted;
+    providerSoftFailures += providerTurn.providerSoftFailures;
+    providerSuccessfulResponses += providerTurn.providerSuccessfulResponses;
+    providerLastErrorCode = providerTurn.providerLastErrorCode;
+    providerLastErrorStatus = providerTurn.providerLastErrorStatus;
+    finalModel = providerTurn.model;
+    finalProviderResponseId = providerTurn.providerResponseId || finalProviderResponseId;
+    finalUsage = providerTurn.usage;
+    const completionText = providerTurn.completionText;
 
     if (completionText.length > 0) {
       rawCompletionText = completionText;
@@ -295,91 +101,84 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
     const hasToolBudget = toolCallsExecuted < maxToolCalls;
     const directive: AgentDirective = completionText ? parseAgentDirective(completionText) : { kind: 'none', raw: null };
     lastDirectiveSummary = summarizeDirective(directive);
+    const fallbackTool = hasToolBudget ? toolResolution.orderedBindings.find((entry) => !attemptedToolKeys.has(entry.key)) : undefined;
+    const artifactAnswer = extractAgentArtifactAnswer(workingInputs);
+    const turnDecision = resolveAgentTurnDecision({
+      directive,
+      hasToolBudget,
+      ...(fallbackTool ? { fallbackTool: { key: fallbackTool.key, name: fallbackTool.binding.name } } : {}),
+      artifactAnswer,
+      completionText,
+    });
 
-    if (directive.kind === 'tool_call' && hasToolBudget) {
-      await runToolCall(directive.toolName, directive.input, 'model');
+    if (turnDecision.kind === 'tool_call') {
+      if (turnDecision.plannerFallbackUsed) {
+        plannerFallbackUsed = true;
+      }
+      toolCallsExecuted += 1;
+      const toolCallResult = await runAgentToolCall({
+        index: toolCallsExecuted,
+        requestedToolName: turnDecision.requestedToolName,
+        inputPatch: turnDecision.inputPatch,
+        source: turnDecision.source,
+        runtime,
+        context,
+        toolResolution,
+        workingInputs,
+        workingInputJson,
+        attemptedToolKeys,
+      });
+      workingInputJson = toolCallResult.nextInputJson;
+      toolCallTrace.push(toolCallResult.traceEntry);
+      messages.push(toolCallResult.followupMessage);
       continue;
     }
 
-    if (directive.kind === 'final' && directive.text.trim().length > 0) {
-      finalText = directive.text.trim();
-      finalTextSource = 'directive.final';
-      finalTextOrigin = 'model';
+    if (turnDecision.kind === 'final') {
+      finalText = turnDecision.text;
+      finalTextSource = turnDecision.finalTextSource;
+      finalTextOrigin = turnDecision.finalTextOrigin;
       break;
     }
 
-    if (hasToolBudget) {
-      const fallbackTool = toolResolution.orderedBindings.find((entry) => !attemptedToolKeys.has(entry.key));
-      if (fallbackTool) {
-        plannerFallbackUsed = true;
-        await runToolCall(fallbackTool.binding.name, {}, 'fallback');
-        continue;
-      }
-    }
-
-    const fallbackAnswer = extractAgentArtifactAnswer(workingInputs);
-    if (fallbackAnswer) {
-      finalText = fallbackAnswer;
-      finalTextSource = 'artifact.answer';
-      finalTextOrigin = 'tool-artifact';
+    if (turnDecision.kind === 'none') {
       break;
     }
-
-    if (completionText.length > 0) {
-      finalText = completionText;
-      finalTextSource = 'raw.completion';
-      finalTextOrigin = directive.kind === 'tool_call' ? 'model-tool-call-markup' : 'model';
-      break;
-    }
-
-    break;
   }
 
   if (!finalText) {
-    finalText = extractAgentArtifactAnswer(workingInputs) ?? 'AgentCall completed with empty answer.';
-    finalTextSource = finalText === 'AgentCall completed with empty answer.' ? 'fallback.empty' : 'artifact.answer';
-    finalTextOrigin = finalText === 'AgentCall completed with empty answer.' ? 'runtime' : 'tool-artifact';
+    const resolvedFinalText = resolveEmptyAgentFinalText(extractAgentArtifactAnswer(workingInputs));
+    finalText = resolvedFinalText.text;
+    finalTextSource = resolvedFinalText.source;
+    finalTextOrigin = resolvedFinalText.origin;
   }
 
-  const structuredOutput = tryParseJsonFromText(finalText);
-  const providerSoftFailure = providerSoftFailures > 0 && providerSuccessfulResponses === 0;
-
   return {
-    output: {
-      kind: 'agent_call',
+    output: buildAgentCallOutput({
       provider: 'openrouter',
       model: finalModel,
-      provider_response_id: finalProviderResponseId || null,
+      providerResponseId: finalProviderResponseId,
       text: finalText,
-      final_text_source: finalTextSource || null,
-      final_text_origin: finalTextOrigin || null,
-      raw_completion_text: rawCompletionText || null,
-      last_directive: lastDirectiveSummary,
-      last_directive_kind: typeof lastDirectiveSummary?.kind === 'string' ? lastDirectiveSummary.kind : null,
-      last_directive_tool_name: typeof lastDirectiveSummary?.tool_name === 'string' ? lastDirectiveSummary.tool_name : null,
-      usage: finalUsage ?? null,
-      provider_usage_complete: hasPositiveUsageTokens(finalUsage),
-      provider_calls_attempted: providerCallsAttempted,
-      provider_soft_failures: providerSoftFailures,
-      provider_last_error:
-        providerLastErrorCode || providerLastErrorStatus
-          ? {
-              ...(providerLastErrorCode ? { code: providerLastErrorCode } : {}),
-              ...(providerLastErrorStatus ? { status: providerLastErrorStatus } : {}),
-            }
-          : null,
-      attempts_used: attemptsUsed,
-      llm_turns: llmTurns,
-      max_attempts: maxAttempts,
-      max_tool_calls: maxToolCalls,
-      tool_calls_executed: toolCallsExecuted,
-      tool_call_trace: toolCallTrace,
-      provider_soft_failure: providerSoftFailure,
-      planner_fallback_used: plannerFallbackUsed,
-      ...(availableTools.length > 0 ? { available_tools: availableTools } : {}),
-      ...(toolResolution.unresolvedTools.length > 0 ? { unresolved_tools: toolResolution.unresolvedTools } : {}),
-      ...(structuredOutput !== null ? { structured_output: structuredOutput } : {}),
-    },
+      finalTextSource,
+      finalTextOrigin,
+      rawCompletionText,
+      lastDirectiveSummary,
+      usage: finalUsage,
+      providerCallsAttempted,
+      providerSoftFailures,
+      providerLastErrorCode,
+      providerLastErrorStatus,
+      attemptsUsed,
+      llmTurns,
+      maxAttempts,
+      maxToolCalls,
+      toolCallsExecuted,
+      toolCallTrace,
+      plannerFallbackUsed,
+      availableTools,
+      unresolvedTools: toolResolution.unresolvedTools,
+      providerSuccessfulResponses,
+    }),
     costUnits: Math.max(1, attemptsUsed + toolCallsExecuted),
   };
 };

@@ -582,7 +582,8 @@ async function ensureContractToolExecutors(base, authHeaders) {
           headers: authHeaders,
           body: JSON.stringify({ config_json: strictConfig }),
         });
-        mustOk(`strict tool config ${name}`, updateResponse);
+        const updatedTool = mustOk(`strict tool config ${name}`, updateResponse);
+        byName.set(name, updatedTool);
       }
 
       continue;
@@ -604,7 +605,8 @@ async function ensureContractToolExecutors(base, authHeaders) {
         headers: authHeaders,
         body: JSON.stringify({ config_json: updatedConfig }),
       });
-      mustOk(`update tool ${name}`, updateResponse);
+      const updatedTool = mustOk(`update tool ${name}`, updateResponse);
+      byName.set(name, updatedTool);
     }
   }
 

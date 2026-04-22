@@ -65,10 +65,21 @@
 Цель:
 - упростить внутреннюю структуру `AgentCall` без изменения публичного поведения.
 
-Задачи:
-- при необходимости ещё сильнее развести provider loop, directive parsing, tool execution и finalization;
-- локализовать fallback/recovery-код для malformed tool-call markup;
-- удержать `tool_call_trace`, `final_text_source`, `raw_completion_text` как стабильный execution/debug contract.
+Статус:
+- завершена
+
+Что уже вынесено:
+- provider retry-loop вынесен в `agent-provider-call.ts`;
+- execution одной tool-call итерации вынесен в `agent-tool-call-runner.ts`.
+- сборка system prompt и initial messages вынесена в `agent-prompt-builder.ts`;
+- финальная сборка `AgentCall` output вынесена в `agent-call-output.ts`.
+- разрешение одного agent turn вынесено в `agent-turn-resolution.ts`.
+
+Результат:
+- `agent-call.node-handler.ts` сведён к линейной orchestration-логике;
+- fallback-поведение для раннего `final` и канонического `LLMAnswer` path локализовано в turn-resolution слое;
+- execution/debug contract `tool_call_trace`, `final_text_source`, `raw_completion_text` сохранён;
+- живой `rag:e2e` повторно подтверждает, что cleanup не сломал edge-only сценарий.
 
 Критерий выхода:
 - `AgentCall` читается линейно и не тащит в себя лишнюю glue-логику.
@@ -98,10 +109,9 @@
 - roadmap явно разделяет текущую рабочую платформу и будущий infra-scale path.
 
 ## Ближайший исполнимый порядок
-1. Дочистить contract layer вокруг `DocumentLoader`, `Chunker`, `Embedder`, `VectorUpsert`, `HybridRetriever`, `ContextAssembler`, `LLMAnswer`.
-2. Зафиксировать и удержать текущий execution/debug contract `AgentCall`.
-3. Проверить runtime hardening на race/idempotency сценариях.
-4. После этого переходить к boundary между artifact-backed retrieval и внешним retrieval backend.
+1. Проверить runtime hardening на race/idempotency сценариях.
+2. Зафиксировать cleanup policy для stale coordination records.
+3. После этого переходить к boundary между artifact-backed retrieval и внешним retrieval backend.
 
 ## Канонический final answer path
 Для текущего true RAG agent backend канонический final answer path фиксируется так:

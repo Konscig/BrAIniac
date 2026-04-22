@@ -65,6 +65,14 @@
 - CamelCase и legacy-aliases удалены из канонического RAG contract path.
 - Интеграционные payload'ы переведены на канонические snake_case поля.
 
+6. Завершён второй этап cleanup `AgentCall`.
+- Provider retry-loop вынесен из `agent-call.node-handler.ts` в `agent-provider-call.ts`.
+- Исполнение одной tool-call итерации вынесено в `agent-tool-call-runner.ts`.
+- Сборка system prompt/messages вынесена в `agent-prompt-builder.ts`.
+- Финальная сборка output вынесена в `agent-call-output.ts`.
+- Разрешение одного agent turn вынесено в `agent-turn-resolution.ts`.
+- Повторный живой `rag:e2e` подтверждает, что runtime cleanup не сломал edge-only `ToolNode -> AgentCall` сценарий.
+
 ## Что ещё не доведено
 - Upload path пока JSON/base64, а не `multipart/form-data`.
 - Retrieval backend остаётся artifact-backed baseline, а не отдельным production-grade vector service.
