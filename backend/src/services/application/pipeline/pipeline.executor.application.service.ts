@@ -15,11 +15,13 @@ import { getToolById } from '../../data/tool.service.js';
 import { externalizeNodeStateArtifacts } from './pipeline.executor.artifact-store.js';
 import { buildPipelineReport, buildSummary, executeGraph, persistNodeOutputs } from './pipeline.executor.graph.js';
 import {
+  claimIdempotencyExecutionRecord,
+  claimInFlightExecutionRecord,
   deleteInFlightExecutionRecord,
   deleteIdempotencyExecutionRecord,
   readExecutionSnapshot,
   readIdempotencyExecutionRecord,
-  readInFlightExecutionRecord,
+  isCoordinationRecordStale,
   writeExecutionSnapshot,
   writeIdempotencyExecutionRecord,
   writeInFlightExecutionRecord,
@@ -49,6 +51,8 @@ export type {
 
 const EXECUTION_TTL_MS = readPositiveInteger(process.env.EXECUTOR_JOB_TTL_MS, 15 * 60_000);
 const EXECUTION_CACHE_LIMIT = readPositiveInteger(process.env.EXECUTOR_JOB_CACHE_LIMIT, 1_000);
+const EXECUTION_SNAPSHOT_WAIT_MS = readPositiveInteger(process.env.EXECUTOR_SNAPSHOT_WAIT_MS, 1200);
+const EXECUTION_SNAPSHOT_WAIT_INTERVAL_MS = readPositiveInteger(process.env.EXECUTOR_SNAPSHOT_WAIT_INTERVAL_MS, 100);
 
 const jobsById = new Map<string, ExecutionJob>();
 const inFlightByPipelineId = new Map<number, string>();
@@ -57,6 +61,9 @@ const idempotencyIndex = new Map<string, string>();
 async function persistExecutionSnapshotBestEffort(job: ExecutionJob) {
   try {
     await writeExecutionSnapshot(toSnapshot(job));
+    if (job.status === 'queued' || job.status === 'running') {
+      await writeInFlightExecutionRecord(job.pipeline_id, job.execution_id);
+    }
   } catch (error) {
     console.error('[executor] failed to persist execution snapshot', error);
   }
@@ -89,6 +96,20 @@ function normalizeIdempotencyKey(raw: string | undefined): string | undefined {
   const value = raw.trim();
   if (!value) return undefined;
   return value.slice(0, 200);
+}
+
+async function waitForPersistedSnapshot(executionId: string, pipelineId: number): Promise<PipelineExecutionSnapshot | null> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt <= EXECUTION_SNAPSHOT_WAIT_MS) {
+    const snapshot = await readExecutionSnapshot(executionId);
+    if (snapshot && snapshot.pipeline_id === pipelineId) {
+      return snapshot;
+    }
+    await new Promise((resolve) => setTimeout(resolve, EXECUTION_SNAPSHOT_WAIT_INTERVAL_MS));
+  }
+
+  return null;
 }
 
 function normalizeStartInput(input: StartPipelineExecutionInput): StartPipelineExecutionInput {
@@ -161,6 +182,9 @@ export async function startPipelineExecutionForUser(
 
   const idempotencyKey = normalizeIdempotencyKey(idempotencyKeyRaw);
   const idempotencyIndexKey = idempotencyKey ? `${userId}:${pipelineId}:${idempotencyKey}` : undefined;
+  const request = normalizeStartInput(input);
+  const now = new Date();
+  const executionId = randomUUID();
 
   if (idempotencyIndexKey) {
     const resolvedIdempotencyKey = idempotencyKey;
@@ -179,15 +203,74 @@ export async function startPipelineExecutionForUser(
 
     const persistedIdempotency = await readIdempotencyExecutionRecord(userId, pipelineId, resolvedIdempotencyKey);
     if (persistedIdempotency) {
+      const existingJob = jobsById.get(persistedIdempotency.execution_id);
+      if (existingJob) {
+        return toSnapshot(existingJob);
+      }
+
       const persistedSnapshot = await readExecutionSnapshot(persistedIdempotency.execution_id);
       if (persistedSnapshot && persistedSnapshot.pipeline_id === pipelineId) {
         return persistedSnapshot;
       }
+
+      const waitedSnapshot = await waitForPersistedSnapshot(persistedIdempotency.execution_id, pipelineId);
+      if (waitedSnapshot) {
+        return waitedSnapshot;
+      }
+
+      if (isCoordinationRecordStale(persistedIdempotency.updated_at)) {
+        await deleteIdempotencyExecutionRecord(userId, pipelineId, resolvedIdempotencyKey);
+      } else {
+        return {
+          execution_id: persistedIdempotency.execution_id,
+          pipeline_id: pipelineId,
+          status: 'queued',
+          created_at: persistedIdempotency.updated_at,
+          updated_at: persistedIdempotency.updated_at,
+          ...(resolvedIdempotencyKey ? { idempotency_key: resolvedIdempotencyKey } : {}),
+          request,
+        };
+      }
+    }
+
+    const idempotencyClaim = await claimIdempotencyExecutionRecord(userId, pipelineId, resolvedIdempotencyKey, executionId);
+    if (!idempotencyClaim.claimed) {
+      const existingJob = jobsById.get(idempotencyClaim.record.execution_id);
+      if (existingJob) {
+        return toSnapshot(existingJob);
+      }
+
+      const claimedSnapshot = await waitForPersistedSnapshot(idempotencyClaim.record.execution_id, pipelineId);
+      if (claimedSnapshot) {
+        return claimedSnapshot;
+      }
+
+      if (!isCoordinationRecordStale(idempotencyClaim.record.updated_at)) {
+        return {
+          execution_id: idempotencyClaim.record.execution_id,
+          pipeline_id: pipelineId,
+          status: 'queued',
+          created_at: idempotencyClaim.record.updated_at,
+          updated_at: idempotencyClaim.record.updated_at,
+          ...(resolvedIdempotencyKey ? { idempotency_key: resolvedIdempotencyKey } : {}),
+          request,
+        };
+      }
+
       await deleteIdempotencyExecutionRecord(userId, pipelineId, resolvedIdempotencyKey);
+      const retryClaim = await claimIdempotencyExecutionRecord(userId, pipelineId, resolvedIdempotencyKey, executionId);
+      if (!retryClaim.claimed) {
+        throw new HttpError(409, {
+          ok: false,
+          code: 'PIPELINE_EXECUTION_IDEMPOTENCY_RACE',
+          error: 'idempotent pipeline execution is already being initialized',
+          details: { execution_id: retryClaim.record.execution_id },
+        });
+      }
     }
   }
 
-  const existingInFlight = inFlightByPipelineId.get(pipelineId) ?? (await readInFlightExecutionRecord(pipelineId))?.execution_id;
+  const existingInFlight = inFlightByPipelineId.get(pipelineId);
   if (existingInFlight) {
     const runningJob = jobsById.get(existingInFlight);
     if (runningJob && (runningJob.status === 'queued' || runningJob.status === 'running')) {
@@ -199,7 +282,21 @@ export async function startPipelineExecutionForUser(
       });
     }
 
-    const persistedSnapshot = await readExecutionSnapshot(existingInFlight);
+  }
+
+  const inFlightClaim = await claimInFlightExecutionRecord(pipelineId, executionId);
+  if (!inFlightClaim.claimed) {
+    const runningJob = jobsById.get(inFlightClaim.record.execution_id);
+    if (runningJob && (runningJob.status === 'queued' || runningJob.status === 'running')) {
+      throw new HttpError(409, {
+        ok: false,
+        code: 'PIPELINE_EXECUTION_ALREADY_RUNNING',
+        error: 'pipeline execution is already running',
+        details: { execution_id: runningJob.execution_id },
+      });
+    }
+
+    const persistedSnapshot = await readExecutionSnapshot(inFlightClaim.record.execution_id);
     if (persistedSnapshot && (persistedSnapshot.status === 'queued' || persistedSnapshot.status === 'running')) {
       throw new HttpError(409, {
         ok: false,
@@ -209,12 +306,20 @@ export async function startPipelineExecutionForUser(
       });
     }
 
-    await deleteInFlightExecutionRecord(pipelineId, existingInFlight);
+    await deleteInFlightExecutionRecord(pipelineId, inFlightClaim.record.execution_id);
+    const retryClaim = await claimInFlightExecutionRecord(pipelineId, executionId);
+    if (!retryClaim.claimed) {
+      if (idempotencyKey) {
+        await deleteIdempotencyExecutionRecord(userId, pipelineId, idempotencyKey);
+      }
+      throw new HttpError(409, {
+        ok: false,
+        code: 'PIPELINE_EXECUTION_ALREADY_RUNNING',
+        error: 'pipeline execution is already running',
+        details: { execution_id: retryClaim.record.execution_id },
+      });
+    }
   }
-
-  const request = normalizeStartInput(input);
-  const now = new Date();
-  const executionId = randomUUID();
 
   const job: ExecutionJob = {
     execution_id: executionId,
@@ -234,7 +339,6 @@ export async function startPipelineExecutionForUser(
     idempotencyIndex.set(idempotencyIndexKey, job.execution_id);
   }
 
-  await writeInFlightExecutionRecord(pipelineId, job.execution_id);
   if (idempotencyKey) {
     await writeIdempotencyExecutionRecord(userId, pipelineId, idempotencyKey, job.execution_id);
   }

@@ -88,10 +88,28 @@
 Цель:
 - довести execution lifecycle до более строгого multi-worker safe поведения.
 
-Задачи:
-- проверить race-safety filesystem-backed `in-flight` и idempotency baseline;
-- формализовать cleanup policy для stale coordination records;
-- убедиться, что polling и старт execution не завязаны на process-local cache как на единственный источник истины.
+Статус:
+- завершена
+
+Что уже сделано:
+- для `in-flight` добавлен atomic claim через filesystem coordination store;
+- для `idempotency` добавлен atomic claim через filesystem coordination store;
+- stale coordination records теперь могут вытесняться по `updated_at` и `EXECUTOR_COORDINATION_STALE_MS`;
+- queued/running execution обновляет `in-flight` record при каждом persisted snapshot;
+- добавлен целевой тест `test:executor:coordination`.
+- добавлен HTTP-level smoke `test:executor:http` на idempotency replay и execution polling.
+
+Cleanup policy:
+- stale coordination record определяется по `updated_at`;
+- TTL stale-record определяется через `EXECUTOR_COORDINATION_STALE_MS`;
+- вытеснение stale-record выполняется при следующем atomic claim;
+- queued/running execution поддерживает актуальность `in-flight` record через persisted snapshots.
+
+Результат:
+- старт execution больше не опирается только на process-local `Map`;
+- idempotency replay подтверждён через HTTP smoke;
+- polling execution продолжает работать через persisted snapshots;
+- coordination baseline стал пригоден для multi-worker backend baseline без отдельного внешнего lock service.
 
 Критерий выхода:
 - execution и polling безопасны для multi-worker deployment на текущем backend baseline.

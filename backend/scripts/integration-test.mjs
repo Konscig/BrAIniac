@@ -773,8 +773,8 @@ async function run() {
   }
 
   const chatUnsupportedErrorCode = chatUnsupportedToolNodeState?.error?.code;
-  if (chatUnsupportedErrorCode !== 'EXECUTOR_TOOLNODE_EXECUTOR_UNSUPPORTED') {
-    return fail('ToolNode chat unsupported target should fail with EXECUTOR_TOOLNODE_EXECUTOR_UNSUPPORTED', {
+  if (chatUnsupportedErrorCode !== 'EXECUTOR_TOOLNODE_EXECUTOR_REQUIRED') {
+    return fail('ToolNode chat unsupported target should fail with EXECUTOR_TOOLNODE_EXECUTOR_REQUIRED', {
       status: 500,
       body: chatUnsupportedToolNodeState,
     });

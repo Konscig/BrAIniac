@@ -24,6 +24,8 @@
 - Oversized manifests и execution snapshots могут externalize'иться в файловый слой `.artifacts`.
 - Polling execution умеет читать persisted snapshot, если текущий worker не держит job в памяти.
 - `in-flight` и idempotency имеют filesystem-backed baseline.
+- `in-flight` и `idempotency` теперь создаются через atomic filesystem claim, а stale-records могут вытесняться по времени жизни.
+- idempotency replay подтверждён отдельным HTTP smoke-тестом.
 
 ## Что есть для RAG
 - Канонический способ рекламы инструментов для агента: upstream `ToolNode -> AgentCall`.
@@ -72,6 +74,12 @@
 - Финальная сборка output вынесена в `agent-call-output.ts`.
 - Разрешение одного agent turn вынесено в `agent-turn-resolution.ts`.
 - Повторный живой `rag:e2e` подтверждает, что runtime cleanup не сломал edge-only `ToolNode -> AgentCall` сценарий.
+
+7. Завершён этап runtime hardening coordination layer.
+- В snapshot store добавлены atomic claim-операции для `in-flight` и `idempotency`.
+- Добавлена stale-policy через `updated_at` и `EXECUTOR_COORDINATION_STALE_MS`.
+- Добавлен узкий тест `test:executor:coordination` на coordination semantics.
+- Добавлен HTTP smoke `test:executor:http` на execution start / idempotency replay / polling.
 
 ## Что ещё не доведено
 - Upload path пока JSON/base64, а не `multipart/form-data`.
