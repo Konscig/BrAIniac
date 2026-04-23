@@ -46,11 +46,15 @@ async function doFetch(url: string, init: RequestInit, timeout: number): Promise
 export const isSidecarAvailable = healthCheck;
 
 export async function computeSidecarMetric(code: string, item: any): Promise<number> {
-  const res = await computeMetric(code, {
+  const payload: Record<string, any> = {
     agent_output: { text: item.agent_output?.text ?? '' },
     reference: item.reference ?? {},
-    input: item.input ?? {},
-  });
+  };
+  // f_judge_ref expects rubric in config, not reference
+  if (code === 'f_judge_ref' && item.reference?.rubric) {
+    payload.config = { rubric: item.reference.rubric, scale: 5 };
+  }
+  const res = await computeMetric(code, payload);
   return res.value;
 }
 
