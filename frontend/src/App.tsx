@@ -7,6 +7,7 @@ import "./App.css";
 import { CanvasBoard } from "./components/canvas-board";
 import { ModeToggle } from "./components/mode-toggle";
 import { NodeLibrary } from "./components/node-library";
+import { RunPanel } from "./components/run-panel";
 import { SidebarProjects } from "./components/sidebar-projects";
 import { Button } from "./components/ui/button";
 import {
@@ -50,7 +51,7 @@ function MainPage(): React.ReactElement {
   const [activePipelineId, setActivePipelineId] = React.useState<number | null>(null);
   const [dataError, setDataError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [, setGraphState] = React.useState<{ nodes: NodeRecord[]; edges: EdgeRecord[] }>({
+  const [graphState, setGraphState] = React.useState<{ nodes: NodeRecord[]; edges: EdgeRecord[] }>({
     nodes: [],
     edges: []
   });
@@ -352,6 +353,12 @@ function MainPage(): React.ReactElement {
           <div className="min-h-0 flex-1">
             <NodeLibrary nodeTypes={nodeTypes} />
           </div>
+          <RunPanel
+            pipelineId={activePipelineId}
+            nodes={graphState.nodes}
+            nodeTypes={nodeTypes}
+            onError={setDataError}
+          />
           <div className="shrink-0 rounded-xl border border-dashed border-border/60 bg-muted/10 px-3 py-3 text-xs leading-5 text-muted-foreground">
             Место под инспектор узла зарезервировано для следующего этапа.
           </div>
