@@ -117,3 +117,5 @@ docker-compose.override.yml
 # -----------------------
 backend/.artifacts/
 backend/.artifacts/executions/**/execution-snapshot.json
+
+*.docx
