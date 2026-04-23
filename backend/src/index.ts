@@ -12,6 +12,10 @@ import edgeRouter from './routes/resources/edge/edge.routes.js';
 import toolRouter from './routes/resources/tool/tool.routes.js';
 import pipelineRouter from './routes/resources/pipeline/pipeline.routes.js';
 import nodeTypeRouter from './routes/resources/node_type/node_type.routes.js';
+import {
+  goldAnnotationDatasetRouter,
+  goldAnnotationIndividualRouter,
+} from './routes/resources/gold_annotation/gold_annotation.routes.js';
 import { isHttpError } from './common/http-error.js';
 import { getOpenRouterConfig } from './services/core/openrouter/openrouter.config.js';
 import { resolveToolContractDefinition } from './services/application/tool/contracts/index.js';
@@ -137,6 +141,8 @@ function createApp() {
   app.use('/tools', toolRouter);
   app.use('/node-types', nodeTypeRouter);
   app.use('/pipelines', pipelineRouter);
+  app.use('/datasets/:datasetId/gold-annotations', goldAnnotationDatasetRouter);
+  app.use('/gold-annotations', goldAnnotationIndividualRouter);
 
   return app;
 }
