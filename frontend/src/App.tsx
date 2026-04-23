@@ -6,9 +6,7 @@ import "./App.css";
 
 import { CanvasBoard } from "./components/canvas-board";
 import { ModeToggle } from "./components/mode-toggle";
-import { NodeInspector } from "./components/node-inspector";
 import { NodeLibrary } from "./components/node-library";
-import { RuntimePanel } from "./components/runtime-panel";
 import { SidebarProjects } from "./components/sidebar-projects";
 import { Button } from "./components/ui/button";
 import {
@@ -17,13 +15,11 @@ import {
   listNodeTypes,
   listPipelines,
   listProjects,
-  listTools,
   type EdgeRecord,
   type NodeRecord,
   type NodeTypeRecord,
   type PipelineRecord,
-  type ProjectRecord,
-  type ToolRecord
+  type ProjectRecord
 } from "./lib/api";
 import { AuthPage } from "./pages/auth-page";
 import { useAuth } from "./providers/AuthProvider";
@@ -32,32 +28,24 @@ function MainPage(): React.ReactElement {
   const [projects, setProjects] = React.useState<ProjectRecord[]>([]);
   const [pipelines, setPipelines] = React.useState<PipelineRecord[]>([]);
   const [nodeTypes, setNodeTypes] = React.useState<NodeTypeRecord[]>([]);
-  const [tools, setTools] = React.useState<ToolRecord[]>([]);
   const [activeProjectId, setActiveProjectId] = React.useState<number | null>(null);
   const [activePipelineId, setActivePipelineId] = React.useState<number | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = React.useState<number | null>(null);
-  const [refreshToken, setRefreshToken] = React.useState(0);
-  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [dataError, setDataError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [graphState, setGraphState] = React.useState<{ nodes: NodeRecord[]; edges: EdgeRecord[] }>({
+  const [, setGraphState] = React.useState<{ nodes: NodeRecord[]; edges: EdgeRecord[] }>({
     nodes: [],
     edges: []
   });
   const navigate = useNavigate();
   const { clearSession } = useAuth();
 
+  const activeProject = React.useMemo(
+    () => projects.find((project) => project.project_id === activeProjectId) ?? null,
+    [activeProjectId, projects]
+  );
   const activePipeline = React.useMemo(
     () => pipelines.find((pipeline) => pipeline.pipeline_id === activePipelineId) ?? null,
     [activePipelineId, pipelines]
-  );
-  const selectedNode = React.useMemo(
-    () => graphState.nodes.find((node) => node.node_id === selectedNodeId) ?? null,
-    [graphState.nodes, selectedNodeId]
-  );
-  const selectedNodeType = React.useMemo(
-    () => nodeTypes.find((nodeType) => nodeType.type_id === selectedNode?.fk_type_id) ?? null,
-    [nodeTypes, selectedNode?.fk_type_id]
   );
 
   const handleLogout = React.useCallback(() => {
@@ -81,15 +69,13 @@ function MainPage(): React.ReactElement {
     setDataError(null);
 
     try {
-      const [nextProjects, nextNodeTypes, nextTools] = await Promise.all([
+      const [nextProjects, nextNodeTypes] = await Promise.all([
         listProjects(),
-        listNodeTypes(),
-        listTools()
+        listNodeTypes()
       ]);
 
       setProjects(nextProjects);
       setNodeTypes(nextNodeTypes);
-      setTools(nextTools);
 
       const projectId = nextProjects[0]?.project_id ?? null;
       setActiveProjectId((current) => {
@@ -126,13 +112,9 @@ function MainPage(): React.ReactElement {
 
     void reloadPipelines(activeProjectId).catch((error) => {
       console.error("Failed to load pipelines", error);
-      setDataError(error instanceof Error ? error.message : "Не удалось загрузить пайплайны.");
+      setDataError(error instanceof Error ? error.message : "Не удалось загрузить агентов.");
     });
   }, [activeProjectId, reloadPipelines]);
-
-  React.useEffect(() => {
-    setSelectedNodeId(null);
-  }, [activePipelineId]);
 
   const handleCreateProject = React.useCallback(async (name: string) => {
     try {
@@ -166,23 +148,16 @@ function MainPage(): React.ReactElement {
       setDataError(null);
     } catch (createError) {
       console.error("Failed to create pipeline", createError);
-      setDataError(createError instanceof Error ? createError.message : "Не удалось создать пайплайн.");
+      setDataError(createError instanceof Error ? createError.message : "Не удалось создать агента.");
     }
   }, [activeProjectId, pipelines]);
 
-  const handleRefreshGraph = React.useCallback(() => {
-    setRefreshToken((current) => current + 1);
-  }, []);
-
   return (
-    <div className="App flex min-h-screen flex-col bg-background text-foreground">
+    <div className="App flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <header className="flex items-center justify-between border-b border-border/60 px-6 py-4 backdrop-blur">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">BrAIniac</p>
-          <h1 className="text-2xl font-semibold">RAG-конструктор</h1>
-          <p className="text-sm text-muted-foreground">
-            Фронт работает поверх backend runtime: граф, датасет, запуск и execution/debug данные.
-          </p>
+          <h1 className="text-3xl font-semibold">Конструктор агентов</h1>
         </div>
 
         <div className="flex items-center gap-3">
@@ -199,71 +174,54 @@ function MainPage(): React.ReactElement {
         </div>
       </header>
 
-      <main className="flex flex-1 overflow-hidden">
+      <main className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_320px] overflow-hidden">
         <SidebarProjects
           projects={projects}
           pipelines={pipelines}
           activeProjectId={activeProjectId}
           activePipelineId={activePipelineId}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed((current) => !current)}
           onSelectProject={setActiveProjectId}
           onSelectPipeline={setActivePipelineId}
           onCreateProject={handleCreateProject}
           onCreatePipeline={handleCreatePipeline}
         />
 
-        <div className="flex flex-1 overflow-hidden">
-          <div className="flex flex-1 flex-col overflow-hidden px-6 py-6">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">Текущий контекст</div>
-                <div className="text-lg font-semibold text-foreground">
-                  {activePipeline?.name ?? "Пайплайн не выбран"}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {activeProjectId
-                    ? `Проект #${activeProjectId}${activePipeline ? ` · pipeline_id=${activePipeline.pipeline_id}` : ""}`
-                    : "Выберите или создайте проект и пайплайн."}
-                </div>
+        <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden border-r border-border/60 px-5 py-5">
+          <div className="grid shrink-0 gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Проект</div>
+              <div className="mt-1 text-base font-semibold text-foreground">
+                {activeProject?.name ?? "Не выбран"}
               </div>
-
-              {isLoading && <div className="text-sm text-muted-foreground">Загружаем каталог backend...</div>}
             </div>
-
-            {dataError && (
-              <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                {dataError}
+            <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Агент</div>
+              <div className="mt-1 text-base font-semibold text-foreground">
+                {activePipeline?.name ?? "Не выбран"}
               </div>
-            )}
-
-            <CanvasBoard
-              pipelineId={activePipelineId}
-              nodeTypes={nodeTypes}
-              refreshToken={refreshToken}
-              onGraphChange={setGraphState}
-              onSelectNode={setSelectedNodeId}
-              onError={setDataError}
-            />
+            </div>
           </div>
 
-          <aside className="flex w-[420px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border/60 px-4 py-6">
-            <NodeLibrary nodeTypes={nodeTypes} />
-            <NodeInspector
-              node={selectedNode}
-              nodeType={selectedNodeType}
-              tools={tools}
-              onSaved={() => {
-                handleRefreshGraph();
-              }}
-            />
-            <RuntimePanel
-              pipeline={activePipeline}
-              nodes={graphState.nodes}
-              onDataChanged={handleRefreshGraph}
-            />
-          </aside>
-        </div>
+          {isLoading && <div className="shrink-0 text-sm text-muted-foreground">Загружаем каталог узлов...</div>}
+
+          {dataError && (
+            <div className="shrink-0 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {dataError}
+            </div>
+          )}
+
+          <CanvasBoard
+            pipelineId={activePipelineId}
+            nodeTypes={nodeTypes}
+            className="min-h-0"
+            onGraphChange={setGraphState}
+            onError={setDataError}
+          />
+        </section>
+
+        <aside className="flex min-h-0 flex-col overflow-hidden px-4 py-5">
+          <NodeLibrary nodeTypes={nodeTypes} />
+        </aside>
       </main>
     </div>
   );

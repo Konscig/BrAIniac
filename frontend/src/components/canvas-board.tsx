@@ -32,7 +32,7 @@ import {
   type NodeTypeRecord,
   updateNode
 } from "../lib/api";
-import { getNodeTypeRole, getNodeTypeUiLabel } from "../lib/node-catalog";
+import { getNodeTypeRole, getNodeTypeUiLabel, normalizeNodeTypeName } from "../lib/node-catalog";
 import { cn } from "../lib/utils";
 import { type CanvasNodeData, nodeTypes } from "./custom-nodes";
 import { Card } from "./ui/card";
@@ -71,7 +71,7 @@ function getExecutionStatus(node: NodeRecord): CanvasNodeData["status"] {
 
 function isNodeIncomplete(node: NodeRecord, nodeType: NodeTypeRecord | undefined): boolean {
   if (!nodeType) return false;
-  if (nodeType.name === "ToolNode") {
+  if (normalizeNodeTypeName(nodeType.name) === "ToolNode") {
     const tool = node.ui_json?.tool;
     const toolRecord = tool && typeof tool === "object" && !Array.isArray(tool) ? (tool as Record<string, unknown>) : null;
     return !toolRecord || typeof toolRecord.name !== "string" || toolRecord.name.trim().length === 0;
@@ -89,7 +89,7 @@ function toFlowNode(node: NodeRecord, nodeType: NodeTypeRecord | undefined): Nod
     position,
     data: {
       label: readNodeLabel(node),
-      nodeTypeName: nodeType?.name ?? `NodeType ${node.fk_type_id}`,
+      nodeTypeName: nodeType ? normalizeNodeTypeName(nodeType.name) : `NodeType ${node.fk_type_id}`,
       role,
       status: getExecutionStatus(node),
       isIncomplete: isNodeIncomplete(node, nodeType),
@@ -113,20 +113,16 @@ function toFlowEdge(edge: EdgeRecord): Edge {
 export interface CanvasBoardProps {
   pipelineId: number | null;
   nodeTypes: NodeTypeRecord[];
-  refreshToken: number;
   className?: string;
   onGraphChange?: (state: GraphState) => void;
-  onSelectNode?: (nodeId: number | null) => void;
   onError?: (message: string | null) => void;
 }
 
 export function CanvasBoard({
   pipelineId,
   nodeTypes: nodeTypesCatalog,
-  refreshToken,
   className,
   onGraphChange,
-  onSelectNode,
   onError
 }: CanvasBoardProps): React.ReactElement {
   const [nodes, setNodes] = React.useState<Array<Node<CanvasNodeData>>>([]);
@@ -158,7 +154,7 @@ export function CanvasBoard({
       setBackendNodes([]);
       setBackendEdges([]);
       setFetchError(null);
-      setEmptyStateMessage("Выберите пайплайн, чтобы начать собирать граф.");
+      setEmptyStateMessage("Выберите агента, чтобы начать собирать схему.");
       emitGraphChange([], []);
       return;
     }
@@ -173,15 +169,11 @@ export function CanvasBoard({
       setBackendEdges(nextEdges);
       setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id))));
       setEdges(nextEdges.map(toFlowEdge));
-      setEmptyStateMessage(
-        nextNodes.length === 0
-          ? "Перетащите узел из библиотеки. Для канонического RAG-сценария начните с вопроса пользователя, инструмента и агента."
-          : null
-      );
+      setEmptyStateMessage(nextNodes.length === 0 ? "Перетащите узел из библиотеки, чтобы начать собирать схему." : null);
       emitGraphChange(nextNodes, nextEdges);
     } catch (error) {
       console.error("Failed to load pipeline graph", error);
-      const message = "Не удалось загрузить граф пайплайна.";
+      const message = "Не удалось загрузить схему агента.";
       setFetchError(message);
       setEmptyStateMessage(null);
       onError?.(message);
@@ -192,7 +184,7 @@ export function CanvasBoard({
 
   React.useEffect(() => {
     void loadGraph();
-  }, [loadGraph, refreshToken]);
+  }, [loadGraph]);
 
   const updateNodeCache = React.useCallback(
     (nextNodes: NodeRecord[]) => {
@@ -294,10 +286,8 @@ export function CanvasBoard({
           onError?.("Не удалось удалить узел.");
         });
       }
-
-      onSelectNode?.(null);
     },
-    [backendEdges, backendNodes, onError, onSelectNode, updateEdgeCache, updateNodeCache]
+    [backendEdges, backendNodes, onError, updateEdgeCache, updateNodeCache]
   );
 
   const handleEdgesDelete = React.useCallback(
@@ -354,7 +344,6 @@ export function CanvasBoard({
           setEmptyStateMessage(null);
           setFetchError(null);
           onError?.(null);
-          onSelectNode?.(created.node_id);
         })
         .catch((error) => {
           console.error("Failed to create node", error);
@@ -363,7 +352,7 @@ export function CanvasBoard({
           onError?.(message);
         });
     },
-    [backendNodes, nodeTypeMap, onError, onSelectNode, pipelineId, updateNodeCache]
+    [backendNodes, nodeTypeMap, onError, pipelineId, updateNodeCache]
   );
 
   const handleDragOver = React.useCallback((event: React.DragEvent) => {
@@ -371,16 +360,12 @@ export function CanvasBoard({
     event.dataTransfer.dropEffect = "move";
   }, []);
 
-  const handleNodeClick = React.useCallback((_event: React.MouseEvent, node: Node<CanvasNodeData>) => {
-    onSelectNode?.(Number(node.id));
-  }, [onSelectNode]);
-
   const setInstance = React.useCallback((instance: ReactFlowInstance<CanvasNodeData>) => {
     reactFlowInstance.current = instance;
   }, []);
 
   return (
-    <Card className={cn("relative flex-1 overflow-hidden border-border/60", className)}>
+    <Card className={cn("relative flex-1 min-h-0 overflow-hidden border-border/60", className)}>
       <div ref={reactFlowWrapper} className="h-full w-full">
         <ReactFlow
           nodes={nodes}
@@ -391,8 +376,6 @@ export function CanvasBoard({
           onConnect={handleConnect}
           onNodesDelete={handleNodesDelete}
           onEdgesDelete={handleEdgesDelete}
-          onNodeClick={handleNodeClick}
-          onPaneClick={() => onSelectNode?.(null)}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onInit={setInstance}
@@ -426,7 +409,7 @@ export function CanvasBoard({
 
       {isLoading && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 text-sm text-muted-foreground">
-          Загружаем граф...
+          Загружаем схему...
         </div>
       )}
 
@@ -443,7 +426,7 @@ export function CanvasBoard({
       )}
 
       <div className="pointer-events-none absolute left-4 bottom-4 max-w-sm rounded-lg bg-background/85 px-3 py-2 text-xs text-muted-foreground shadow-sm">
-        Перетаскивайте узлы из библиотеки, соединяйте их стрелками и редактируйте выделенный узел в инспекторе справа.
+        Перетаскивайте узлы из библиотеки и соединяйте их стрелками.
       </div>
     </Card>
   );

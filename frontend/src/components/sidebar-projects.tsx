@@ -1,10 +1,9 @@
 import React from "react";
-import { ChevronLeft, ChevronRight, FolderKanban, GitBranch } from "lucide-react";
+import { FolderKanban, GitBranch } from "lucide-react";
 
 import type { PipelineRecord, ProjectRecord } from "../lib/api";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
-import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
 
 export interface SidebarProjectsProps {
@@ -12,8 +11,6 @@ export interface SidebarProjectsProps {
   pipelines: PipelineRecord[];
   activeProjectId: number | null;
   activePipelineId: number | null;
-  collapsed: boolean;
-  onToggleCollapse: () => void;
   onSelectProject: (projectId: number) => void;
   onSelectPipeline: (pipelineId: number) => void;
   onCreateProject: (name: string) => void;
@@ -25,8 +22,6 @@ export function SidebarProjects({
   pipelines,
   activeProjectId,
   activePipelineId,
-  collapsed,
-  onToggleCollapse,
   onSelectProject,
   onSelectPipeline,
   onCreateProject,
@@ -35,43 +30,42 @@ export function SidebarProjects({
   const [projectDraft, setProjectDraft] = React.useState("");
   const [pipelineDraft, setPipelineDraft] = React.useState("");
   const activeProject = projects.find((project) => project.project_id === activeProjectId) ?? null;
+  const activePipeline = pipelines.find((pipeline) => pipeline.pipeline_id === activePipelineId) ?? null;
 
   return (
-    <aside
-      className={cn(
-        "flex h-full flex-col border-r border-border/60 bg-background/90 backdrop-blur",
-        collapsed ? "w-16" : "w-80"
-      )}
-    >
-      <div className="flex items-center justify-between px-4 py-4">
-        {!collapsed && (
-          <div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Рабочая область</div>
-            <div className="text-lg font-semibold text-foreground">Проекты и пайплайны</div>
-          </div>
-        )}
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="rounded-full border border-border/60"
-          onClick={onToggleCollapse}
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </Button>
+    <aside className="flex h-full min-h-0 w-full flex-col border-r border-border/60 bg-background/90 backdrop-blur">
+      <div className="px-5 py-4">
+        <div className="text-xs uppercase tracking-wide text-muted-foreground">Навигация</div>
+        <div className="text-lg font-semibold text-foreground">Проекты и агенты</div>
       </div>
 
       <Separator />
 
-      {!collapsed && (
-        <div className="space-y-3 px-4 py-4">
-          <div className="space-y-2">
-            <label className="text-xs uppercase tracking-wide text-muted-foreground">Новый проект</label>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="space-y-6">
+          <section className="space-y-3">
+            <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Текущий проект</div>
+              <div className="mt-1 text-sm font-medium text-foreground">
+                {activeProject?.name ?? "Проект не выбран"}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Текущий агент</div>
+              <div className="mt-1 text-sm font-medium text-foreground">
+                {activePipeline?.name ?? "Агент не выбран"}
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">Создать проект</label>
             <div className="flex gap-2">
               <input
                 value={projectDraft}
                 onChange={(event) => setProjectDraft(event.target.value)}
-                placeholder="Например, Корпус знаний"
+                placeholder="Например, Поддержка"
                 className="flex-1 rounded-md border border-border/60 bg-background/80 px-3 py-2 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring"
               />
               <Button
@@ -86,24 +80,11 @@ export function SidebarProjects({
                 Создать
               </Button>
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Активный проект</div>
-            <div className="mt-1 text-sm font-medium text-foreground">
-              {activeProject?.name ?? "Проект не выбран"}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <ScrollArea className="flex-1 px-3 py-3">
-        <div className="space-y-5">
-          <div className="space-y-2">
-            {!collapsed && (
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Проекты</div>
-            )}
-            {projects.length === 0 && !collapsed && (
+          <section className="space-y-2">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Проекты</div>
+            {projects.length === 0 && (
               <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
                 Пока нет проектов.
               </div>
@@ -121,46 +102,41 @@ export function SidebarProjects({
                 )}
               >
                 <FolderKanban className="h-4 w-4 shrink-0" />
-                {!collapsed && <span className="truncate text-sm font-medium">{project.name}</span>}
+                <span className="truncate text-sm font-medium">{project.name}</span>
               </button>
             ))}
-          </div>
+          </section>
 
-          {!collapsed && (
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-wide text-muted-foreground">Новый пайплайн</label>
-                <div className="flex gap-2">
-                  <input
-                    value={pipelineDraft}
-                    onChange={(event) => setPipelineDraft(event.target.value)}
-                    placeholder="Например, RAG-агент"
-                    disabled={!activeProjectId}
-                    className="flex-1 rounded-md border border-border/60 bg-background/80 px-3 py-2 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-                  <Button
-                    type="button"
-                    disabled={!activeProjectId}
-                    onClick={() => {
-                      const name = pipelineDraft.trim();
-                      if (!name) return;
-                      onCreatePipeline(name);
-                      setPipelineDraft("");
-                    }}
-                  >
-                    Создать
-                  </Button>
-                </div>
-              </div>
-
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Пайплайны</div>
+          <section className="space-y-2">
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">Создать агента</label>
+            <div className="flex gap-2">
+              <input
+                value={pipelineDraft}
+                onChange={(event) => setPipelineDraft(event.target.value)}
+                placeholder="Например, Агент поддержки"
+                disabled={!activeProjectId}
+                className="flex-1 rounded-md border border-border/60 bg-background/80 px-3 py-2 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <Button
+                type="button"
+                disabled={!activeProjectId}
+                onClick={() => {
+                  const name = pipelineDraft.trim();
+                  if (!name) return;
+                  onCreatePipeline(name);
+                  setPipelineDraft("");
+                }}
+              >
+                Создать
+              </Button>
             </div>
-          )}
+          </section>
 
-          <div className="space-y-2">
-            {pipelines.length === 0 && !collapsed && (
+          <section className="space-y-2">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Агенты</div>
+            {pipelines.length === 0 && (
               <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-                У проекта пока нет пайплайнов.
+                У проекта пока нет агентов.
               </div>
             )}
             {pipelines.map((pipeline) => (
@@ -176,19 +152,14 @@ export function SidebarProjects({
                 )}
               >
                 <GitBranch className="mt-0.5 h-4 w-4 shrink-0" />
-                {!collapsed && (
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-foreground">{pipeline.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      Лимиты: время {pipeline.max_time}s, стоимость {pipeline.max_cost}
-                    </div>
-                  </div>
-                )}
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-foreground">{pipeline.name}</div>
+                </div>
               </button>
             ))}
-          </div>
+          </section>
         </div>
-      </ScrollArea>
+      </div>
     </aside>
   );
 }

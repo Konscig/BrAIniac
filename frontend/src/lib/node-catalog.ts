@@ -29,19 +29,47 @@ const ORDER = new Map<string, number>(
   [...VISIBLE_NODE_TYPE_NAMES, ...HIDDEN_NODE_TYPE_NAMES].map((name, index) => [name, index])
 );
 
+export function normalizeNodeTypeName(name: string): string {
+  return name.trim();
+}
+
 export function isVisibleNodeType(nodeType: NodeTypeRecord): boolean {
-  return VISIBLE_NODE_TYPE_NAMES.includes(nodeType.name as VisibleNodeTypeName);
+  return VISIBLE_NODE_TYPE_NAMES.includes(normalizeNodeTypeName(nodeType.name) as VisibleNodeTypeName);
 }
 
 export function sortNodeTypes(nodeTypes: NodeTypeRecord[]): NodeTypeRecord[] {
   return [...nodeTypes].sort((left, right) => {
-    const leftOrder = ORDER.get(left.name) ?? Number.MAX_SAFE_INTEGER;
-    const rightOrder = ORDER.get(right.name) ?? Number.MAX_SAFE_INTEGER;
+    const leftName = normalizeNodeTypeName(left.name);
+    const rightName = normalizeNodeTypeName(right.name);
+    const leftOrder = ORDER.get(leftName) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = ORDER.get(rightName) ?? Number.MAX_SAFE_INTEGER;
     if (leftOrder !== rightOrder) {
       return leftOrder - rightOrder;
     }
-    return left.name.localeCompare(right.name);
+    return leftName.localeCompare(rightName);
   });
+}
+
+export function getVisibleNodeTypeCatalog(nodeTypes: NodeTypeRecord[]): NodeTypeRecord[] {
+  const uniqueByName = new Map<string, NodeTypeRecord>();
+
+  for (const nodeType of nodeTypes) {
+    const normalizedName = normalizeNodeTypeName(nodeType.name);
+    if (!VISIBLE_NODE_TYPE_NAMES.includes(normalizedName as VisibleNodeTypeName)) {
+      continue;
+    }
+
+    const normalizedRecord: NodeTypeRecord = {
+      ...nodeType,
+      name: normalizedName
+    };
+    const existing = uniqueByName.get(normalizedName);
+    if (!existing || normalizedRecord.type_id > existing.type_id) {
+      uniqueByName.set(normalizedName, normalizedRecord);
+    }
+  }
+
+  return sortNodeTypes(Array.from(uniqueByName.values()));
 }
 
 export function getNodeTypeRole(nodeType: NodeTypeRecord): string {
@@ -50,7 +78,7 @@ export function getNodeTypeRole(nodeType: NodeTypeRecord): string {
 }
 
 export function getNodeTypeGroupLabel(nodeType: NodeTypeRecord): string {
-  switch (nodeType.name) {
+  switch (normalizeNodeTypeName(nodeType.name)) {
     case "Trigger":
     case "ManualInput":
       return "Источники";
@@ -67,7 +95,7 @@ export function getNodeTypeGroupLabel(nodeType: NodeTypeRecord): string {
 }
 
 export function getNodeTypeUiLabel(nodeType: NodeTypeRecord): string {
-  switch (nodeType.name) {
+  switch (normalizeNodeTypeName(nodeType.name)) {
     case "Trigger":
       return "Триггер";
     case "ManualInput":
@@ -91,12 +119,12 @@ export function getNodeTypeUiLabel(nodeType: NodeTypeRecord): string {
     case "DatasetInput":
       return "Входной датасет";
     default:
-      return nodeType.name;
+      return normalizeNodeTypeName(nodeType.name);
   }
 }
 
 export function getNodeTypeUiTagline(nodeType: NodeTypeRecord): string {
-  switch (nodeType.name) {
+  switch (normalizeNodeTypeName(nodeType.name)) {
     case "Trigger":
       return "Старт по событию или вручную";
     case "ManualInput":
@@ -116,9 +144,9 @@ export function getNodeTypeUiTagline(nodeType: NodeTypeRecord): string {
     case "Parser":
       return "Нормализует и структурирует output";
     case "SaveResult":
-      return "Финальный sink результата";
+      return "Финальная точка сохранения результата";
     case "DatasetInput":
-      return "Advanced-only source узел";
+      return "Скрытый источник для расширенного сценария";
     default:
       return nodeType.desc;
   }
