@@ -81,6 +81,45 @@ function readSelectedToolId(node: NodeRecord): number | null {
   return Number.isInteger(toolId) && toolId > 0 ? toolId : null;
 }
 
+function toPreviewText(value: unknown, maxLength = 420): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") {
+    return value.length > maxLength ? `${value.slice(0, maxLength - 15)}...(truncated)` : value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const candidates = [
+      record.text,
+      record.answer,
+      record.cited_answer,
+      record.output_preview,
+      record.preview,
+      (record.contract_output as Record<string, unknown> | undefined)?.text,
+      (record.contract_output as Record<string, unknown> | undefined)?.answer,
+      (record.contract_output as Record<string, unknown> | undefined)?.cited_answer
+    ];
+    for (const candidate of candidates) {
+      const text = toPreviewText(candidate, maxLength);
+      if (text) return text;
+    }
+  }
+  try {
+    const text = JSON.stringify(value);
+    return text.length > maxLength ? `${text.slice(0, maxLength - 15)}...(truncated)` : text;
+  } catch {
+    return "";
+  }
+}
+
+function readFinalOutputPreview(node: NodeRecord, nodeTypeName: string): string | undefined {
+  if (nodeTypeName !== "SaveResult") return undefined;
+  const wrapper = node.output_json && typeof node.output_json === "object" ? (node.output_json as Record<string, unknown>) : null;
+  const data = wrapper?.data;
+  const preview = toPreviewText(data);
+  return preview || undefined;
+}
+
 function getExecutionStatus(node: NodeRecord): CanvasNodeData["status"] {
   const wrapper = node.output_json && typeof node.output_json === "object" ? (node.output_json as Record<string, unknown>) : null;
   const raw = wrapper?.status;
@@ -124,6 +163,7 @@ function toFlowNode(
       description: nodeType?.desc ?? undefined,
       manualQuestion: nodeTypeName === "ManualInput" ? readManualQuestion(node) : undefined,
       selectedToolId: nodeTypeName === "ToolNode" ? readSelectedToolId(node) : undefined,
+      finalOutputPreview: readFinalOutputPreview(node, nodeTypeName),
       tools,
       ...callbacks
     }
@@ -164,6 +204,7 @@ function toFlowEdge(edge: EdgeRecord, backendNodes: NodeRecord[], nodeTypeMap: M
 export interface CanvasBoardProps {
   pipelineId: number | null;
   nodeTypes: NodeTypeRecord[];
+  refreshToken?: number;
   className?: string;
   onGraphChange?: (state: GraphState) => void;
   onError?: (message: string | null) => void;
@@ -172,6 +213,7 @@ export interface CanvasBoardProps {
 export function CanvasBoard({
   pipelineId,
   nodeTypes: nodeTypesCatalog,
+  refreshToken = 0,
   className,
   onGraphChange,
   onError
@@ -326,7 +368,7 @@ export function CanvasBoard({
 
   React.useEffect(() => {
     void loadGraph();
-  }, [loadGraph]);
+  }, [loadGraph, refreshToken]);
 
   const updateNodeCache = React.useCallback(
     (nextNodes: NodeRecord[]) => {

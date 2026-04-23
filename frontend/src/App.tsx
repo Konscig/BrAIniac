@@ -51,6 +51,7 @@ function MainPage(): React.ReactElement {
   const [activePipelineId, setActivePipelineId] = React.useState<number | null>(null);
   const [dataError, setDataError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [graphRefreshToken, setGraphRefreshToken] = React.useState(0);
   const [graphState, setGraphState] = React.useState<{ nodes: NodeRecord[]; edges: EdgeRecord[] }>({
     nodes: [],
     edges: []
@@ -343,6 +344,7 @@ function MainPage(): React.ReactElement {
           <CanvasBoard
             pipelineId={activePipelineId}
             nodeTypes={nodeTypes}
+            refreshToken={graphRefreshToken}
             className="min-h-0"
             onGraphChange={setGraphState}
             onError={setDataError}
@@ -358,6 +360,7 @@ function MainPage(): React.ReactElement {
             nodes={graphState.nodes}
             nodeTypes={nodeTypes}
             onError={setDataError}
+            onExecutionComplete={() => setGraphRefreshToken((current) => current + 1)}
           />
           <div className="shrink-0 rounded-xl border border-dashed border-border/60 bg-muted/10 px-3 py-3 text-xs leading-5 text-muted-foreground">
             Место под инспектор узла зарезервировано для следующего этапа.

@@ -26,6 +26,7 @@ interface RunPanelProps {
   nodes: NodeRecord[];
   nodeTypes: NodeTypeRecord[];
   onError?: (message: string | null) => void;
+  onExecutionComplete?: () => void;
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -70,7 +71,31 @@ function formatDiagnostics(result: GraphValidationResult | null): string[] {
   return [...result.errors, ...result.warnings].map((item) => `${item.code}: ${item.message}`);
 }
 
-export function RunPanel({ pipelineId, nodes, nodeTypes, onError }: RunPanelProps): React.ReactElement {
+function readOutputData(node: NodeRecord): Record<string, unknown> | null {
+  const wrapper = node.output_json && typeof node.output_json === "object" ? (node.output_json as Record<string, unknown>) : null;
+  const data = wrapper?.data;
+  return data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
+}
+
+function readAgentDebug(nodes: NodeRecord[], nodeTypes: NodeTypeRecord[]): Array<{ id: number; data: Record<string, unknown> }> {
+  const typeById = new Map(nodeTypes.map((nodeType) => [nodeType.type_id, normalizeNodeTypeName(nodeType.name)]));
+  return nodes
+    .filter((node) => typeById.get(node.fk_type_id) === "AgentCall")
+    .map((node) => ({ id: node.node_id, data: readOutputData(node) }))
+    .filter((entry): entry is { id: number; data: Record<string, unknown> } => Boolean(entry.data));
+}
+
+function summarizeJson(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionComplete }: RunPanelProps): React.ReactElement {
   const [datasets, setDatasets] = React.useState<DatasetRecord[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = React.useState<number | "">("");
   const [isDatasetBusy, setIsDatasetBusy] = React.useState(false);
@@ -80,6 +105,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError }: RunPanelProp
   const [localError, setLocalError] = React.useState<string | null>(null);
 
   const question = React.useMemo(() => readManualQuestion(nodes, nodeTypes), [nodes, nodeTypes]);
+  const agentDebug = React.useMemo(() => readAgentDebug(nodes, nodeTypes), [nodes, nodeTypes]);
 
   const refreshDatasets = React.useCallback(async () => {
     if (!pipelineId) {
@@ -190,6 +216,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError }: RunPanelProp
         snapshot = await getPipelineExecution(pipelineId, snapshot.execution_id);
         setExecution(snapshot);
       }
+      onExecutionComplete?.();
     } catch (error) {
       console.error("Failed to run pipeline", error);
       const message = error instanceof Error ? error.message : "Не удалось запустить pipeline.";
@@ -198,7 +225,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError }: RunPanelProp
     } finally {
       setIsRunning(false);
     }
-  }, [onError, pipelineId, question, selectedDatasetId]);
+  }, [onError, onExecutionComplete, pipelineId, question, selectedDatasetId]);
 
   const diagnostics = formatDiagnostics(validation);
 
@@ -271,6 +298,25 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError }: RunPanelProp
             {!execution.final_result?.text && execution.final_result?.output_preview && (
               <div className="mt-1 line-clamp-4 text-muted-foreground">{execution.final_result.output_preview}</div>
             )}
+          </div>
+        )}
+
+        {agentDebug.length > 0 && (
+          <div className="max-h-40 overflow-auto rounded-lg border border-border/50 bg-muted/10 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+            {agentDebug.map((entry) => (
+              <div key={entry.id} className="space-y-1 border-b border-border/40 py-2 last:border-0">
+                <div className="font-medium text-foreground">AgentCall #{entry.id}</div>
+                {["text", "final_text_source", "final_text_origin", "available_tools", "tool_calls_executed", "tool_call_trace"].map((key) => {
+                  const value = summarizeJson(entry.data[key]);
+                  if (!value) return null;
+                  return (
+                    <div key={key}>
+                      <span className="text-foreground">{key}:</span> {value}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         )}
 

@@ -17,6 +17,7 @@ export type CanvasNodeData = {
   description?: string;
   manualQuestion?: string;
   selectedToolId?: number | null;
+  finalOutputPreview?: string;
   tools?: ToolRecord[];
   onManualQuestionCommit?: (nodeId: number, question: string) => void;
   onToolSelect?: (nodeId: number, toolId: number | null) => void;
@@ -73,6 +74,7 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
   const isManualInput = data.nodeTypeName === "ManualInput";
   const isToolNode = data.nodeTypeName === "ToolNode";
   const isAgentCall = data.nodeTypeName === "AgentCall";
+  const isSaveResult = data.nodeTypeName === "SaveResult";
   const [questionDraft, setQuestionDraft] = React.useState(data.manualQuestion ?? "");
 
   React.useEffect(() => {
@@ -157,6 +159,12 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
             </option>
           ))}
         </select>
+      )}
+
+      {isSaveResult && data.finalOutputPreview && (
+        <div className="max-h-28 overflow-auto rounded-lg border border-border/50 bg-background/85 px-2.5 py-2 text-xs leading-5 text-muted-foreground">
+          {data.finalOutputPreview}
+        </div>
       )}
 
       {data.description && (
