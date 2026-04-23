@@ -1,3 +1,4 @@
+import { HttpError } from '../../common/http-error.js';
 import {
   optionalFiniteNumber,
   optionalId,
@@ -23,7 +24,12 @@ export function mapPipelinePatchDTO(body: unknown): PipelinePatchDTO {
   const source = toBodyRecord(body);
   const patch: PipelinePatchDTO = {};
 
-  if (source.name !== undefined) patch.name = source.name;
+  if (source.name !== undefined) {
+    if (typeof source.name !== 'string' || source.name.trim().length === 0) {
+      throw new HttpError(400, { error: 'invalid name' });
+    }
+    patch.name = source.name.trim();
+  }
   if (source.max_time !== undefined) {
     const maxTime = optionalFiniteNumber(source.max_time, 'invalid max_time');
     if (maxTime !== undefined) patch.max_time = maxTime;
@@ -105,7 +111,12 @@ export function mapProjectPatchDTO(body: unknown): ProjectPatchDTO {
   const source = toBodyRecord(body);
   const patch: ProjectPatchDTO = {};
 
-  if (source.name !== undefined) patch.name = source.name;
+  if (source.name !== undefined) {
+    if (typeof source.name !== 'string' || source.name.trim().length === 0) {
+      throw new HttpError(400, { error: 'invalid name' });
+    }
+    patch.name = source.name.trim();
+  }
 
   return patch;
 }

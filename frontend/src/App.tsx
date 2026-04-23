@@ -12,9 +12,13 @@ import { Button } from "./components/ui/button";
 import {
   createPipeline,
   createProject,
+  deletePipeline,
+  deleteProject,
   listNodeTypes,
   listPipelines,
   listProjects,
+  updatePipeline,
+  updateProject,
   type EdgeRecord,
   type NodeRecord,
   type NodeTypeRecord,
@@ -24,9 +28,23 @@ import {
 import { AuthPage } from "./pages/auth-page";
 import { useAuth } from "./providers/AuthProvider";
 
+function normalizeProjectRecord(project: ProjectRecord): ProjectRecord {
+  return {
+    ...project,
+    name: project.name.trim()
+  };
+}
+
+function normalizePipelineRecord(pipeline: PipelineRecord): PipelineRecord {
+  return {
+    ...pipeline,
+    name: pipeline.name.trim()
+  };
+}
+
 function MainPage(): React.ReactElement {
   const [projects, setProjects] = React.useState<ProjectRecord[]>([]);
-  const [pipelines, setPipelines] = React.useState<PipelineRecord[]>([]);
+  const [pipelinesByProject, setPipelinesByProject] = React.useState<Record<number, PipelineRecord[]>>({});
   const [nodeTypes, setNodeTypes] = React.useState<NodeTypeRecord[]>([]);
   const [activeProjectId, setActiveProjectId] = React.useState<number | null>(null);
   const [activePipelineId, setActivePipelineId] = React.useState<number | null>(null);
@@ -36,68 +54,87 @@ function MainPage(): React.ReactElement {
     nodes: [],
     edges: []
   });
+  const activeProjectIdRef = React.useRef<number | null>(null);
+  const activePipelineIdRef = React.useRef<number | null>(null);
   const navigate = useNavigate();
   const { clearSession } = useAuth();
+
+  React.useEffect(() => {
+    activeProjectIdRef.current = activeProjectId;
+  }, [activeProjectId]);
+
+  React.useEffect(() => {
+    activePipelineIdRef.current = activePipelineId;
+  }, [activePipelineId]);
 
   const activeProject = React.useMemo(
     () => projects.find((project) => project.project_id === activeProjectId) ?? null,
     [activeProjectId, projects]
   );
-  const activePipeline = React.useMemo(
-    () => pipelines.find((pipeline) => pipeline.pipeline_id === activePipelineId) ?? null,
-    [activePipelineId, pipelines]
+
+  const activePipeline = React.useMemo(() => {
+    for (const pipelineList of Object.values(pipelinesByProject)) {
+      const found = pipelineList.find((pipeline) => pipeline.pipeline_id === activePipelineId);
+      if (found) return found;
+    }
+    return null;
+  }, [activePipelineId, pipelinesByProject]);
+
+  const ensureActiveSelection = React.useCallback(
+    (
+      nextProjects: ProjectRecord[],
+      nextPipelinesByProject: Record<number, PipelineRecord[]>,
+      preferredProjectId?: number | null,
+      preferredPipelineId?: number | null
+    ) => {
+      const resolvedProjectId =
+        preferredProjectId && nextProjects.some((project) => project.project_id === preferredProjectId)
+          ? preferredProjectId
+          : nextProjects[0]?.project_id ?? null;
+
+      const projectPipelines = resolvedProjectId ? nextPipelinesByProject[resolvedProjectId] ?? [] : [];
+      const resolvedPipelineId =
+        preferredPipelineId && projectPipelines.some((pipeline) => pipeline.pipeline_id === preferredPipelineId)
+          ? preferredPipelineId
+          : projectPipelines[0]?.pipeline_id ?? null;
+
+      setActiveProjectId(resolvedProjectId);
+      setActivePipelineId(resolvedPipelineId);
+    },
+    []
   );
-
-  const handleLogout = React.useCallback(() => {
-    clearSession();
-    navigate("/auth", { replace: true });
-  }, [clearSession, navigate]);
-
-  const reloadPipelines = React.useCallback(async (projectId: number) => {
-    const nextPipelines = await listPipelines(projectId);
-    setPipelines(nextPipelines);
-    setActivePipelineId((current) => {
-      if (current && nextPipelines.some((pipeline) => pipeline.pipeline_id === current)) {
-        return current;
-      }
-      return nextPipelines[0]?.pipeline_id ?? null;
-    });
-  }, []);
 
   const loadInitialData = React.useCallback(async () => {
     setIsLoading(true);
     setDataError(null);
 
     try {
-      const [nextProjects, nextNodeTypes] = await Promise.all([
-        listProjects(),
-        listNodeTypes()
-      ]);
+      const [rawProjects, nextNodeTypes] = await Promise.all([listProjects(), listNodeTypes()]);
+      const nextProjects = rawProjects.map(normalizeProjectRecord);
+      const projectPipelinePairs = await Promise.all(
+        nextProjects.map(async (project) => [
+          project.project_id,
+          (await listPipelines(project.project_id)).map(normalizePipelineRecord)
+        ] as const)
+      );
+      const nextPipelinesByProject = Object.fromEntries(projectPipelinePairs);
 
       setProjects(nextProjects);
       setNodeTypes(nextNodeTypes);
-
-      const projectId = nextProjects[0]?.project_id ?? null;
-      setActiveProjectId((current) => {
-        if (current && nextProjects.some((project) => project.project_id === current)) {
-          return current;
-        }
-        return projectId;
-      });
-
-      if (projectId) {
-        await reloadPipelines(projectId);
-      } else {
-        setPipelines([]);
-        setActivePipelineId(null);
-      }
+      setPipelinesByProject(nextPipelinesByProject);
+      ensureActiveSelection(
+        nextProjects,
+        nextPipelinesByProject,
+        activeProjectIdRef.current,
+        activePipelineIdRef.current
+      );
     } catch (loadError) {
       console.error("Failed to load initial data", loadError);
       setDataError(loadError instanceof Error ? loadError.message : "Не удалось загрузить данные.");
     } finally {
       setIsLoading(false);
     }
-  }, [reloadPipelines]);
+  }, [ensureActiveSelection]);
 
   React.useEffect(() => {
     void loadInitialData();
@@ -105,59 +142,152 @@ function MainPage(): React.ReactElement {
 
   React.useEffect(() => {
     if (!activeProjectId) {
-      setPipelines([]);
       setActivePipelineId(null);
       return;
     }
 
-    void reloadPipelines(activeProjectId).catch((error) => {
-      console.error("Failed to load pipelines", error);
-      setDataError(error instanceof Error ? error.message : "Не удалось загрузить агентов.");
-    });
-  }, [activeProjectId, reloadPipelines]);
+    const activeProjectPipelines = pipelinesByProject[activeProjectId] ?? [];
+    if (!activeProjectPipelines.some((pipeline) => pipeline.pipeline_id === activePipelineId)) {
+      setActivePipelineId(activeProjectPipelines[0]?.pipeline_id ?? null);
+    }
+  }, [activePipelineId, activeProjectId, pipelinesByProject]);
+
+  const handleLogout = React.useCallback(() => {
+    clearSession();
+    navigate("/auth", { replace: true });
+  }, [clearSession, navigate]);
 
   const handleCreateProject = React.useCallback(async (name: string) => {
     try {
-      const created = await createProject({ name });
-      const nextProjects = [created, ...projects];
-      setProjects(nextProjects);
+      const created = normalizeProjectRecord(await createProject({ name }));
+      setProjects((current) => [created, ...current]);
+      setPipelinesByProject((current) => ({ ...current, [created.project_id]: [] }));
       setActiveProjectId(created.project_id);
-      setPipelines([]);
       setActivePipelineId(null);
       setDataError(null);
     } catch (createError) {
       console.error("Failed to create project", createError);
       setDataError(createError instanceof Error ? createError.message : "Не удалось создать проект.");
     }
-  }, [projects]);
+  }, []);
 
-  const handleCreatePipeline = React.useCallback(async (name: string) => {
-    if (!activeProjectId) {
-      setDataError("Сначала выберите проект.");
-      return;
-    }
-
+  const handleCreatePipeline = React.useCallback(async (projectId: number, name: string) => {
     try {
-      const created = await createPipeline({
-        fk_project_id: activeProjectId,
+      const created = normalizePipelineRecord(await createPipeline({
+        fk_project_id: projectId,
         name
-      });
-      const nextPipelines = [created, ...pipelines];
-      setPipelines(nextPipelines);
+      }));
+
+      setPipelinesByProject((current) => ({
+        ...current,
+        [projectId]: [created, ...(current[projectId] ?? [])]
+      }));
+      setActiveProjectId(projectId);
       setActivePipelineId(created.pipeline_id);
       setDataError(null);
     } catch (createError) {
       console.error("Failed to create pipeline", createError);
       setDataError(createError instanceof Error ? createError.message : "Не удалось создать агента.");
     }
-  }, [activeProjectId, pipelines]);
+  }, []);
+
+  const handleRenameProject = React.useCallback(async (projectId: number, name: string) => {
+    try {
+      const updated = normalizeProjectRecord(await updateProject(projectId, { name }));
+      setProjects((current) =>
+        current.map((project) => (project.project_id === projectId ? updated : project))
+      );
+      setDataError(null);
+    } catch (updateError) {
+      console.error("Failed to rename project", updateError);
+      setDataError(updateError instanceof Error ? updateError.message : "Не удалось переименовать проект.");
+    }
+  }, []);
+
+  const handleDeleteProject = React.useCallback(async (projectId: number) => {
+    try {
+      await deleteProject(projectId);
+
+      const nextProjects = projects.filter((project) => project.project_id !== projectId);
+      const nextPipelinesByProject = { ...pipelinesByProject };
+      delete nextPipelinesByProject[projectId];
+
+      setProjects(nextProjects);
+      setPipelinesByProject(nextPipelinesByProject);
+      ensureActiveSelection(
+        nextProjects,
+        nextPipelinesByProject,
+        activeProjectId === projectId ? null : activeProjectId,
+        activeProjectId === projectId ? null : activePipelineId
+      );
+      setDataError(null);
+    } catch (deleteError) {
+      console.error("Failed to delete project", deleteError);
+      setDataError(deleteError instanceof Error ? deleteError.message : "Не удалось удалить проект.");
+    }
+  }, [activePipelineId, activeProjectId, ensureActiveSelection, pipelinesByProject, projects]);
+
+  const handleRenamePipeline = React.useCallback(async (pipelineId: number, name: string) => {
+    try {
+      const updated = normalizePipelineRecord(await updatePipeline(pipelineId, { name }));
+      setPipelinesByProject((current) => {
+        const next = { ...current };
+        for (const projectId of Object.keys(next)) {
+          const numericProjectId = Number(projectId);
+          next[numericProjectId] = (next[numericProjectId] ?? []).map((pipeline) =>
+            pipeline.pipeline_id === pipelineId ? updated : pipeline
+          );
+        }
+        return next;
+      });
+      setDataError(null);
+    } catch (updateError) {
+      console.error("Failed to rename pipeline", updateError);
+      setDataError(updateError instanceof Error ? updateError.message : "Не удалось переименовать агента.");
+    }
+  }, []);
+
+  const handleDeletePipeline = React.useCallback(async (pipelineId: number) => {
+    try {
+      await deletePipeline(pipelineId);
+
+      setPipelinesByProject((current) => {
+        const next = { ...current };
+        let deletedProjectId: number | null = null;
+
+        for (const projectId of Object.keys(next)) {
+          const numericProjectId = Number(projectId);
+          const filtered = (next[numericProjectId] ?? []).filter((pipeline) => pipeline.pipeline_id !== pipelineId);
+          if (filtered.length !== (next[numericProjectId] ?? []).length) {
+            deletedProjectId = numericProjectId;
+          }
+          next[numericProjectId] = filtered;
+        }
+
+        if (pipelineId === activePipelineId) {
+          const fallbackList = deletedProjectId ? next[deletedProjectId] ?? [] : [];
+          setActivePipelineId(fallbackList[0]?.pipeline_id ?? null);
+          if (deletedProjectId) {
+            setActiveProjectId(deletedProjectId);
+          }
+        }
+
+        return next;
+      });
+
+      setDataError(null);
+    } catch (deleteError) {
+      console.error("Failed to delete pipeline", deleteError);
+      setDataError(deleteError instanceof Error ? deleteError.message : "Не удалось удалить агента.");
+    }
+  }, [activePipelineId]);
 
   return (
     <div className="App flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex items-center justify-between border-b border-border/60 px-6 py-4 backdrop-blur">
+      <header className="flex items-center justify-between border-b border-border/60 px-5 py-3 backdrop-blur">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">BrAIniac</p>
-          <h1 className="text-3xl font-semibold">Конструктор агентов</h1>
+          <h1 className="text-2xl font-semibold">Конструктор агентов</h1>
         </div>
 
         <div className="flex items-center gap-3">
@@ -174,31 +304,30 @@ function MainPage(): React.ReactElement {
         </div>
       </header>
 
-      <main className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_320px] overflow-hidden">
+      <main className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_300px] overflow-hidden">
         <SidebarProjects
           projects={projects}
-          pipelines={pipelines}
+          pipelinesByProject={pipelinesByProject}
           activeProjectId={activeProjectId}
           activePipelineId={activePipelineId}
           onSelectProject={setActiveProjectId}
           onSelectPipeline={setActivePipelineId}
           onCreateProject={handleCreateProject}
           onCreatePipeline={handleCreatePipeline}
+          onRenameProject={handleRenameProject}
+          onDeleteProject={handleDeleteProject}
+          onRenamePipeline={handleRenamePipeline}
+          onDeletePipeline={handleDeletePipeline}
         />
 
-        <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden border-r border-border/60 px-5 py-5">
-          <div className="grid shrink-0 gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Проект</div>
-              <div className="mt-1 text-base font-semibold text-foreground">
-                {activeProject?.name ?? "Не выбран"}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Агент</div>
-              <div className="mt-1 text-base font-semibold text-foreground">
-                {activePipeline?.name ?? "Не выбран"}
-              </div>
+        <section className="flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden border-r border-border/60 border-l border-border/60 px-4 py-4">
+          <div className="shrink-0 px-1 pt-0.5">
+            <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground">
+              <span className="truncate">{activeProject?.name ?? "Проект не выбран"}</span>
+              <span className="shrink-0 text-muted-foreground/70">&gt;</span>
+              <span className="truncate text-primary">
+                {activePipeline?.name ?? "Пайплайн не выбран"}
+              </span>
             </div>
           </div>
 
@@ -219,7 +348,7 @@ function MainPage(): React.ReactElement {
           />
         </section>
 
-        <aside className="flex min-h-0 flex-col overflow-hidden px-4 py-5">
+        <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden px-3 py-4 xl:px-4">
           <NodeLibrary nodeTypes={nodeTypes} />
         </aside>
       </main>

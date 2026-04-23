@@ -67,46 +67,46 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
   return (
     <div
       className={cn(
-        "group relative flex min-w-[220px] max-w-[260px] flex-col gap-3 rounded-2xl border px-4 py-3 shadow-soft transition",
+        "group relative flex min-w-[200px] max-w-[232px] flex-col gap-2.5 rounded-[1.15rem] border px-3.5 py-3 shadow-soft transition",
         tokens.frame,
         selected && "ring-2 ring-ring",
         data.isIncomplete && "border-dashed border-amber-400/60"
       )}
     >
-      <div className="flex items-start gap-3">
-        <div className={cn("flex h-10 w-10 items-center justify-center rounded-full", tokens.badge)}>
-          <Icon className="h-5 w-5" />
+      <div className="flex items-start gap-2.5">
+        <div className={cn("flex h-[2.125rem] w-[2.125rem] items-center justify-center rounded-2xl", tokens.badge)}>
+          <Icon className="h-[1.125rem] w-[1.125rem]" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-foreground">{data.label}</div>
-          <div className="truncate text-xs uppercase tracking-wide text-muted-foreground">
+          <div className="truncate text-[13px] font-semibold leading-5 text-foreground">{data.label}</div>
+          <div className="truncate text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
             {data.nodeTypeName}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 text-xs">
+      <div className="flex items-center justify-between gap-2 text-[11px]">
         <span className={cn("font-medium", status.tone)}>{status.label}</span>
-        <span className="rounded-full border border-border/60 px-2 py-0.5 text-muted-foreground">
+        <span className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
           {data.role}
         </span>
       </div>
 
       {data.isIncomplete && (
-        <div className="text-xs text-amber-200">
+        <div className="text-[11px] text-amber-200">
           Требуется настройка узла
         </div>
       )}
 
       {data.description && (
-        <div className="line-clamp-2 text-xs text-muted-foreground">{data.description}</div>
+        <div className="line-clamp-2 text-[11px] leading-[1.125rem] text-muted-foreground">{data.description}</div>
       )}
 
       <Handle
         type="target"
         position={Position.Top}
         className={cn(
-          "!h-3 !w-3 !border-2 !border-background shadow-glow transition group-hover:scale-110",
+          "!h-2.5 !w-2.5 !border-2 !border-background shadow-glow transition group-hover:scale-110",
           tokens.handle
         )}
       />
@@ -114,7 +114,7 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
         type="source"
         position={Position.Bottom}
         className={cn(
-          "!h-3 !w-3 !border-2 !border-background shadow-glow transition group-hover:scale-110",
+          "!h-2.5 !w-2.5 !border-2 !border-background shadow-glow transition group-hover:scale-110",
           tokens.handle
         )}
       />

@@ -375,6 +375,17 @@ export function createPipeline(payload: CreatePipelinePayload): Promise<Pipeline
   });
 }
 
+export function updatePipeline(
+  pipelineId: number,
+  payload: Partial<CreatePipelinePayload>
+): Promise<PipelineRecord> {
+  return putJson<PipelineRecord>(`/pipelines/${pipelineId}`, payload);
+}
+
+export function deletePipeline(pipelineId: number): Promise<void> {
+  return deleteRequest(`/pipelines/${pipelineId}`);
+}
+
 export function listNodeTypes(): Promise<NodeTypeRecord[]> {
   return apiRequest<NodeTypeRecord[]>("/node-types");
 }
