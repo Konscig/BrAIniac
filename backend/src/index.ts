@@ -17,6 +17,7 @@ import {
   goldAnnotationIndividualRouter,
 } from './routes/resources/gold_annotation/gold_annotation.routes.js';
 import judgeAssessmentRouter from './routes/resources/judge_assessment/judge_assessment.routes.js';
+import judgeChatRouter from './routes/resources/judge/judge.chat.routes.js';
 import { isHttpError } from './common/http-error.js';
 import { getOpenRouterConfig } from './services/core/openrouter/openrouter.config.js';
 import { resolveToolContractDefinition } from './services/application/tool/contracts/index.js';
@@ -145,6 +146,7 @@ function createApp() {
   app.use('/datasets/:datasetId/gold-annotations', goldAnnotationDatasetRouter);
   app.use('/gold-annotations', goldAnnotationIndividualRouter);
   app.use('/judge/assessments', judgeAssessmentRouter);
+  app.use('/judge', judgeChatRouter);
 
   return app;
 }
