@@ -8,43 +8,289 @@ generator client {
 }
 
 model User {
-  user_id       Int       @id @default(autoincrement())
-  email         String    @unique @db.Citext
-  password_hash String    @unique @db.Char(256)
-  projects      Project[]
+  user_id             Int                 @id @default(autoincrement())
+  email               String              @unique @db.Citext
+  password_hash       String              @unique @db.Char(256)
+  projects            Project[]
+  judge_conversations JudgeConversation[]
+  judge_assessments   JudgeAssessment[]
+  gold_annotations    GoldAnnotation[]
 }
 
 model Project {
-  project_id   Int        @id @default(autoincrement())
+  project_id   Int                 @id @default(autoincrement())
   fk_user_id   Int
-  name         String     @unique @db.Char(256)
-  user         User       @relation(fields: [fk_user_id], references: [user_id], onDelete: Cascade)
+  name         String              @unique @db.Char(256)
+  user         User                @relation(fields: [fk_user_id], references: [user_id], onDelete: Cascade)
   pipelines    Pipeline[]
+  conversations JudgeConversation[]
 }
 
 model Pipeline {
-  pipeline_id   Int       @id @default(autoincrement())
+  pipeline_id   Int                         @id @default(autoincrement())
   fk_project_id Int
-  name          String    @db.Char(256)
+  name          String                      @db.Char(256)
   max_time      Int
   max_cost      Int
-  max_reject    Decimal   @db.Decimal(5, 2)
-  score         Decimal?  @db.Decimal(3, 2)
+  max_reject    Decimal                     @db.Decimal(5, 2)
+  score         Decimal?                    @db.Decimal(3, 2)
   report_json   Json?
-  project       Project   @relation(fields: [fk_project_id], references: [project_id], onDelete: Cascade)
+  project       Project                     @relation(fields: [fk_project_id], references: [project_id], onDelete: Cascade)
   dataset       Dataset?
   nodes         Node[]
-  nested_nodes  Node[]    @relation("NestedPipeline")
+  nested_nodes  Node[]                      @relation("NestedPipeline")
+  assessments   JudgeAssessment[]
+  inflights     JudgeAssessmentInflight[]
 
   @@index([fk_project_id])
 }
 
 model Dataset {
-  dataset_id     Int      @id @default(autoincrement())
-  fk_pipeline_id Int      @unique
-  desc           String?  @db.Char(512)
-  uri            String   @unique
-  pipeline       Pipeline @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
+  dataset_id     Int                        @id @default(autoincrement())
+  fk_pipeline_id Int                        @unique
+  desc           String?                    @db.Char(512)
+  uri            String                     @unique
+  pipeline       Pipeline                   @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
+  documents      Document[]
+  assessments    JudgeAssessment[]
+  inflights      JudgeAssessmentInflight[]
+}
+
+model Document {
+  document_id     Int              @id @default(autoincrement())
+  fk_dataset_id   Int
+  item_key        String           @db.Char(128)
+  input_json      Json
+  metadata_json   Json?
+  created_at      DateTime         @default(now())
+  dataset         Dataset          @relation(fields: [fk_dataset_id], references: [dataset_id], onDelete: Cascade)
+  gold_annotations GoldAnnotation[]
+  assessment_items JudgeAssessmentItem[]
+  frozen_gold      JudgeAssessmentFrozenGold[]
+
+  @@index([fk_dataset_id, item_key])
+}
+
+model GoldAnnotation {
+  gold_annotation_id Int       @id @default(autoincrement())
+  fk_document_id     Int
+  annotation_type    String    @db.Char(32)
+  payload_json       Json
+  version            Int       @default(1)
+  current            Boolean   @default(true)
+  fk_author_user_id  Int?
+  created_at         DateTime  @default(now())
+  deleted_at         DateTime?
+  document           Document  @relation(fields: [fk_document_id], references: [document_id], onDelete: Cascade)
+  author             User?     @relation(fields: [fk_author_user_id], references: [user_id], onDelete: SetNull)
+  frozen_in          JudgeAssessmentFrozenGold[]
+
+  @@unique([fk_document_id, annotation_type, version])
+  @@index([fk_document_id, annotation_type, current])
+}
+
+model JudgeAssessment {
+  assessment_id                   Int                        @id @default(autoincrement())
+  fk_pipeline_id                  Int
+  fk_dataset_id                   Int
+  fk_weight_profile_id            Int
+  fk_normalization_profile_id     Int
+  fk_initiator_user_id            Int
+  status                          String                     @db.Char(16)
+  verdict                         String?                    @db.Char(16)
+  final_score                     Decimal?                   @db.Decimal(4, 3)
+  alpha_thresholds_json           Json
+  hard_gate_status                String?                    @db.Char(16)
+  preflight_warnings_json         Json?
+  preset                          String                     @db.Char(16)
+  request_json                    Json
+  summary_json                    Json?
+  error_json                      Json?
+  idempotency_key                 String?                    @db.Char(128)
+  total_items                     Int
+  completed_items                 Int                        @default(0)
+  skipped_items                   Int                        @default(0)
+  failed_items                    Int                        @default(0)
+  created_at                      DateTime                   @default(now())
+  updated_at                      DateTime                   @updatedAt
+  started_at                      DateTime?
+  finished_at                     DateTime?
+  pipeline                        Pipeline                   @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
+  dataset                         Dataset                    @relation(fields: [fk_dataset_id], references: [dataset_id], onDelete: Cascade)
+  weight_profile                  WeightProfile              @relation(fields: [fk_weight_profile_id], references: [weight_profile_id])
+  normalization_profile           NormalizationProfile       @relation(fields: [fk_normalization_profile_id], references: [normalization_profile_id])
+  initiator                       User                       @relation(fields: [fk_initiator_user_id], references: [user_id], onDelete: Cascade)
+  items                           JudgeAssessmentItem[]
+  scores                          MetricScore[]
+  operational                     OperationalMetrics?
+  axis_coverage                   AxisCoverage[]
+  frozen_gold                     JudgeAssessmentFrozenGold[]
+  conversations                   JudgeConversation[]
+
+  @@index([fk_pipeline_id, fk_dataset_id])
+  @@unique([fk_pipeline_id, fk_dataset_id, idempotency_key])
+  @@index([status])
+}
+
+model JudgeAssessmentItem {
+  item_id             Int              @id @default(autoincrement())
+  fk_assessment_id    Int
+  fk_document_id      Int
+  item_index          Int
+  status              String           @db.Char(16)
+  attempt_count       Int              @default(0)
+  agent_run_id        Int?
+  agent_output_json   Json?
+  tool_call_trace_json Json?
+  failure_class       String?          @db.Char(32)
+  failure_detail_json Json?
+  created_at          DateTime         @default(now())
+  updated_at          DateTime         @updatedAt
+  assessment          JudgeAssessment  @relation(fields: [fk_assessment_id], references: [assessment_id], onDelete: Cascade)
+  document            Document         @relation(fields: [fk_document_id], references: [document_id], onDelete: Cascade)
+
+  @@unique([fk_assessment_id, item_index])
+  @@index([fk_assessment_id, status])
+}
+
+model JudgeAssessmentInflight {
+  inflight_id      Int      @id @default(autoincrement())
+  fk_pipeline_id   Int
+  fk_dataset_id    Int
+  fk_assessment_id Int
+  updated_at       DateTime @updatedAt
+  created_at       DateTime @default(now())
+  pipeline         Pipeline @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
+  dataset          Dataset  @relation(fields: [fk_dataset_id], references: [dataset_id], onDelete: Cascade)
+
+  @@unique([fk_pipeline_id, fk_dataset_id])
+}
+
+model MetricDefinition {
+  metric_id           Int           @id @default(autoincrement())
+  code                String        @unique @db.Char(32)
+  axis                String        @db.Char(2)
+  title               String        @db.Char(128)
+  requires_reference  Boolean
+  executor            String        @db.Char(16)
+  description         String?       @db.Char(512)
+  source              String?       @db.Char(32)
+  scores              MetricScore[]
+}
+
+model MetricScore {
+  score_id                      Int              @id @default(autoincrement())
+  fk_assessment_id              Int
+  fk_metric_id                  Int
+  fk_node_id                    Int
+  value                         Decimal          @db.Decimal(5, 4)
+  sample_size                   Int
+  contributing_axis             String           @db.Char(2)
+  origin_reason                 String           @db.Char(256)
+  executor_used                 String           @db.Char(16)
+  aggregation_method            String?          @db.Char(32)
+  normalization_applied_json    Json?
+  details_json                  Json?
+  created_at                    DateTime         @default(now())
+  assessment                    JudgeAssessment  @relation(fields: [fk_assessment_id], references: [assessment_id], onDelete: Cascade)
+  metric                        MetricDefinition @relation(fields: [fk_metric_id], references: [metric_id])
+  node                          Node             @relation(fields: [fk_node_id], references: [node_id], onDelete: Cascade)
+
+  @@unique([fk_assessment_id, fk_metric_id, fk_node_id])
+  @@index([fk_assessment_id])
+}
+
+model WeightProfile {
+  weight_profile_id     Int               @id @default(autoincrement())
+  code                  String            @unique @db.Char(32)
+  architectural_class   String            @db.Char(16)
+  method                String            @db.Char(16)
+  lambda                Decimal?          @db.Decimal(3, 2)
+  consistency_ratio     Decimal?          @db.Decimal(4, 3)
+  weights_json          Json
+  active                Boolean           @default(true)
+  created_at            DateTime          @default(now())
+  assessments           JudgeAssessment[]
+}
+
+model NormalizationProfile {
+  normalization_profile_id Int                @id @default(autoincrement())
+  code                     String             @db.Char(32)
+  version                  Int
+  params_json              Json
+  calibrated_on_json       Json?
+  active                   Boolean            @default(true)
+  created_at               DateTime           @default(now())
+  assessments              JudgeAssessment[]
+
+  @@unique([code, version])
+}
+
+model AxisCoverage {
+  coverage_id       Int              @id @default(autoincrement())
+  fk_assessment_id  Int
+  axis              String           @db.Char(2)
+  mandatory         Boolean
+  covered           Boolean
+  metric_count      Int
+  assessment        JudgeAssessment  @relation(fields: [fk_assessment_id], references: [assessment_id], onDelete: Cascade)
+
+  @@unique([fk_assessment_id, axis])
+}
+
+model OperationalMetrics {
+  ops_id                  Int              @id @default(autoincrement())
+  fk_assessment_id        Int              @unique
+  p95_latency_ms          Int?
+  total_cost_usd          Decimal?         @db.Decimal(10, 6)
+  total_tokens_in         Int?
+  total_tokens_out        Int?
+  fail_rate               Decimal?         @db.Decimal(5, 4)
+  failure_taxonomy_json   Json?
+  hard_gate_status        String?          @db.Char(16)
+  assessment              JudgeAssessment  @relation(fields: [fk_assessment_id], references: [assessment_id], onDelete: Cascade)
+}
+
+model JudgeAssessmentFrozenGold {
+  frozen_id              Int              @id @default(autoincrement())
+  fk_assessment_id       Int
+  fk_gold_annotation_id  Int
+  fk_document_id         Int
+  annotation_type        String           @db.Char(32)
+  assessment             JudgeAssessment  @relation(fields: [fk_assessment_id], references: [assessment_id], onDelete: Cascade)
+  gold_annotation        GoldAnnotation   @relation(fields: [fk_gold_annotation_id], references: [gold_annotation_id], onDelete: Cascade)
+  document               Document         @relation(fields: [fk_document_id], references: [document_id], onDelete: Cascade)
+
+  @@unique([fk_assessment_id, fk_document_id, annotation_type])
+}
+
+model JudgeConversation {
+  conversation_id  Int              @id @default(autoincrement())
+  fk_user_id       Int
+  fk_project_id    Int
+  fk_assessment_id Int?
+  title            String?          @db.Char(256)
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+  user             User             @relation(fields: [fk_user_id], references: [user_id], onDelete: Cascade)
+  project          Project          @relation(fields: [fk_project_id], references: [project_id], onDelete: Cascade)
+  assessment       JudgeAssessment? @relation(fields: [fk_assessment_id], references: [assessment_id], onDelete: SetNull)
+  messages         JudgeMessage[]
+
+  @@index([fk_user_id, fk_project_id])
+}
+
+model JudgeMessage {
+  message_id        Int               @id @default(autoincrement())
+  fk_conversation_id Int
+  role              String            @db.Char(16)
+  content           String            @db.Text
+  tool_name         String?           @db.Char(64)
+  tool_call_id      String?           @db.Char(64)
+  created_at        DateTime          @default(now())
+  conversation      JudgeConversation @relation(fields: [fk_conversation_id], references: [conversation_id], onDelete: Cascade)
+
+  @@index([fk_conversation_id, created_at])
 }
 
 model Tool {
@@ -67,18 +313,19 @@ model NodeType {
 }
 
 model Node {
-  node_id           Int        @id @default(autoincrement())
+  node_id           Int           @id @default(autoincrement())
   fk_pipeline_id    Int
   fk_type_id        Int
   fk_sub_pipeline   Int?
   top_k             Int
   output_json       Json?
   ui_json           Json
-  pipeline          Pipeline   @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
-  node_type         NodeType   @relation(fields: [fk_type_id], references: [type_id], onDelete: Cascade)
-  sub_pipeline      Pipeline?  @relation("NestedPipeline", fields: [fk_sub_pipeline], references: [pipeline_id], onDelete: Cascade)
-  incoming_edges    Edge[]     @relation("EdgeToNode")
-  outgoing_edges    Edge[]     @relation("EdgeFromNode")
+  pipeline          Pipeline      @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
+  node_type         NodeType      @relation(fields: [fk_type_id], references: [type_id], onDelete: Cascade)
+  sub_pipeline      Pipeline?     @relation("NestedPipeline", fields: [fk_sub_pipeline], references: [pipeline_id], onDelete: Cascade)
+  incoming_edges    Edge[]        @relation("EdgeToNode")
+  outgoing_edges    Edge[]        @relation("EdgeFromNode")
+  metric_scores     MetricScore[]
 
   @@index([fk_pipeline_id])
   @@index([fk_type_id])
