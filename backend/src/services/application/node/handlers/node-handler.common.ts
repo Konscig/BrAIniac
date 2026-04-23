@@ -273,10 +273,12 @@ export function extractCandidateItems(inputs: any[], inputJson: any): any[] {
 }
 
 export function resolveAgentChatModel(runtime: RuntimeNode): string | undefined {
-  const fromAgent = runtime.config?.agent?.modelId;
+  const agentConfig = resolveNodeSectionConfig(runtime, 'agent');
+  const fromAgent = agentConfig.modelId;
   if (typeof fromAgent === 'string' && fromAgent.trim().length > 0) return fromAgent;
 
-  const fromNodeLlm = runtime.config?.llm?.modelId;
+  const llmConfig = resolveNodeSectionConfig(runtime, 'llm');
+  const fromNodeLlm = llmConfig.modelId;
   if (typeof fromNodeLlm === 'string' && fromNodeLlm.trim().length > 0) return fromNodeLlm;
 
   const fromToolLlm = runtime.tool?.config_json?.llm?.modelId;
