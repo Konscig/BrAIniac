@@ -101,8 +101,8 @@ services:
       - PYTHONUNBUFFERED=1
     networks:
       - brainiac-network
-    expose:
-      - "8001"
+    ports:
+      - "8001:8001"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health', timeout=3).status==200 else 1)"]
       interval: 15s

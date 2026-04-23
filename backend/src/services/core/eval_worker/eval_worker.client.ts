@@ -43,6 +43,17 @@ async function doFetch(url: string, init: RequestInit, timeout: number): Promise
   }
 }
 
+export const isSidecarAvailable = healthCheck;
+
+export async function computeSidecarMetric(code: string, item: any): Promise<number> {
+  const res = await computeMetric(code, {
+    agent_output: { text: item.agent_output?.text ?? '' },
+    reference: item.reference ?? {},
+    input: item.input ?? {},
+  });
+  return res.value;
+}
+
 export async function healthCheck(): Promise<boolean> {
   try {
     const res = await doFetch(`${baseUrl()}/health`, { method: 'GET' }, 5_000);
