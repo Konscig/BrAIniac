@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
 
 const METRICS = [
   // Axis A — Correctness
-  { code: 'f_EM',         axis: 'A', title: 'Exact Match',          requires_reference: true,  executor: 'sidecar' },
+  { code: 'f_EM',         axis: 'A', title: 'Exact Match',          requires_reference: true,  executor: 'native'  },
   { code: 'f_F1',         axis: 'A', title: 'Token F1',             requires_reference: true,  executor: 'native'  },
   { code: 'f_sim',        axis: 'A', title: 'Semantic Similarity',  requires_reference: true,  executor: 'sidecar' },
   { code: 'f_corr',       axis: 'A', title: 'Answer Correctness',   requires_reference: true,  executor: 'sidecar' },

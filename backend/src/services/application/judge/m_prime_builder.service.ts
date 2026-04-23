@@ -70,7 +70,8 @@ export async function buildMPrime(pipelineId: number): Promise<MPrimeResult> {
     listNodesByPipeline(pipelineId),
     listAllMetrics(),
   ]);
-  const defByCode = new Map(definitions.map((d: any) => [d.code, d]));
+  // Char(32) fields arrive with trailing spaces — trim for reliable lookup
+  const defByCode = new Map(definitions.map((d: any) => [d.code.trim(), { ...d, code: d.code.trim(), axis: d.axis?.trim(), executor: d.executor?.trim() }]));
 
   const typeNames = new Map<number, string>();
   for (const node of nodes) {
