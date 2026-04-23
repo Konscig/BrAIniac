@@ -1,135 +1,121 @@
 import React from "react";
-import { Brain, Cable, Database, Settings2 } from "lucide-react";
+import { Bot, Braces, Cable, CirclePlay, Database, Save, Wrench } from "lucide-react";
 import { Handle, Position, type NodeProps } from "reactflow";
 
 import { cn } from "../lib/utils";
-import type { PipelineNodeCategory } from "../lib/api";
 
-type CanvasNodeStatus = "idle" | "running" | "error" | "completed";
+type CanvasNodeStatus = "idle" | "completed" | "failed" | "skipped" | "running";
 
-type CanvasNodeData = {
+export type CanvasNodeData = {
   label: string;
-  category: PipelineNodeCategory;
-  status?: CanvasNodeStatus | string;
-  nodeType?: string;
-  configJson?: string;
+  nodeTypeName: string;
+  role: string;
+  status: CanvasNodeStatus;
+  isIncomplete?: boolean;
+  description?: string;
 };
 
-const statusTokens: Record<CanvasNodeStatus, { label: string; dot: string; text: string }> = {
-  idle: {
-    label: "Ожидает",
-    dot: "bg-muted-foreground/50",
-    text: "text-muted-foreground"
+const statusTokens: Record<CanvasNodeStatus, { label: string; tone: string }> = {
+  idle: { label: "Черновик", tone: "text-muted-foreground" },
+  running: { label: "Выполняется", tone: "text-sky-300" },
+  completed: { label: "Выполнен", tone: "text-emerald-300" },
+  failed: { label: "Ошибка", tone: "text-red-300" },
+  skipped: { label: "Пропущен", tone: "text-amber-300" }
+};
+
+const roleTokens: Record<string, { badge: string; frame: string; handle: string }> = {
+  source: {
+    badge: "bg-sky-500/15 text-sky-200",
+    frame: "border-sky-500/35 bg-sky-500/5",
+    handle: "bg-sky-400"
   },
-  running: {
-    label: "Выполняется",
-    dot: "bg-emerald-400",
-    text: "text-emerald-300"
+  transform: {
+    badge: "bg-primary/15 text-primary-foreground",
+    frame: "border-primary/35 bg-primary/5",
+    handle: "bg-primary"
   },
-  error: {
-    label: "Ошибка",
-    dot: "bg-red-400",
-    text: "text-red-300"
+  control: {
+    badge: "bg-amber-500/15 text-amber-200",
+    frame: "border-amber-500/35 bg-amber-500/5",
+    handle: "bg-amber-400"
   },
-  completed: {
-    label: "Готово",
-    dot: "bg-sky-400",
-    text: "text-sky-300"
+  sink: {
+    badge: "bg-emerald-500/15 text-emerald-200",
+    frame: "border-emerald-500/35 bg-emerald-500/5",
+    handle: "bg-emerald-400"
   }
 };
 
-const categoryTokens: Record<PipelineNodeCategory, {
-  icon: React.ComponentType<{ className?: string }>;
-  subtitle: string;
-  badgeClass: string;
-  wrapperClass: string;
-  handleClass: string;
-}> = {
-  LLM: {
-    icon: Brain,
-    subtitle: "Модель",
-    badgeClass: "bg-primary/15 text-primary",
-    wrapperClass: "border-primary/30 bg-primary/5",
-    handleClass: "bg-primary"
-  },
-  Data: {
-    icon: Database,
-    subtitle: "Данные",
-    badgeClass: "bg-sky-500/15 text-sky-300",
-    wrapperClass: "border-sky-500/30 bg-sky-500/5",
-    handleClass: "bg-sky-400"
-  },
-  Services: {
-    icon: Cable,
-    subtitle: "Сервис",
-    badgeClass: "bg-violet-500/15 text-violet-300",
-    wrapperClass: "border-violet-500/25 bg-violet-500/5",
-    handleClass: "bg-violet-400"
-  },
-  Utility: {
-    icon: Settings2,
-    subtitle: "Утилиты",
-    badgeClass: "bg-amber-400/15 text-amber-300",
-    wrapperClass: "border-amber-400/25 bg-amber-400/5",
-    handleClass: "bg-amber-300"
-  }
+const iconByType: Record<string, React.ComponentType<{ className?: string }>> = {
+  Trigger: CirclePlay,
+  ManualInput: Database,
+  PromptBuilder: Braces,
+  Filter: Cable,
+  Ranker: Cable,
+  LLMCall: Bot,
+  AgentCall: Bot,
+  ToolNode: Wrench,
+  Parser: Braces,
+  SaveResult: Save
 };
 
-export type VkNodeData = CanvasNodeData;
-
-export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
-  const { label, category, status } = data;
-  const tokens = categoryTokens[category] ?? categoryTokens.Utility;
-  const Icon = tokens.icon;
-  const normalizedStatus = status && status in statusTokens ? (status as CanvasNodeStatus) : undefined;
-  const statusToken = normalizedStatus ? statusTokens[normalizedStatus] : undefined;
+export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, selected }) => {
+  const tokens = roleTokens[data.role] ?? roleTokens.transform;
+  const status = statusTokens[data.status] ?? statusTokens.idle;
+  const Icon = iconByType[data.nodeTypeName] ?? Wrench;
 
   return (
     <div
       className={cn(
-        "group relative flex min-w-[180px] max-w-[240px] flex-col gap-3 rounded-2xl border px-4 py-3 text-left shadow-soft transition",
-        tokens.wrapperClass,
-        selected && "ring-2 ring-ring"
+        "group relative flex min-w-[220px] max-w-[260px] flex-col gap-3 rounded-2xl border px-4 py-3 shadow-soft transition",
+        tokens.frame,
+        selected && "ring-2 ring-ring",
+        data.isIncomplete && "border-dashed border-amber-400/60"
       )}
     >
-      <div className="flex items-center gap-3">
-        <div
-          className={cn(
-            "flex h-10 w-10 items-center justify-center rounded-full text-primary",
-            tokens.badgeClass
-          )}
-        >
+      <div className="flex items-start gap-3">
+        <div className={cn("flex h-10 w-10 items-center justify-center rounded-full", tokens.badge)}>
           <Icon className="h-5 w-5" />
         </div>
-        <div>
-          <div className="text-sm font-semibold text-foreground">{label}</div>
-          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">
-            {tokens.subtitle}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-foreground">{data.label}</div>
+          <div className="truncate text-xs uppercase tracking-wide text-muted-foreground">
+            {data.nodeTypeName}
           </div>
         </div>
       </div>
 
-      {statusToken && (
-        <div className={cn("flex items-center gap-2 text-xs font-medium", statusToken.text)}>
-          <span className={cn("h-1.5 w-1.5 rounded-full", statusToken.dot)} />
-          {statusToken.label}
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className={cn("font-medium", status.tone)}>{status.label}</span>
+        <span className="rounded-full border border-border/60 px-2 py-0.5 text-muted-foreground">
+          {data.role}
+        </span>
+      </div>
+
+      {data.isIncomplete && (
+        <div className="text-xs text-amber-200">
+          Требуется настройка узла
         </div>
+      )}
+
+      {data.description && (
+        <div className="line-clamp-2 text-xs text-muted-foreground">{data.description}</div>
       )}
 
       <Handle
         type="target"
         position={Position.Top}
         className={cn(
-          "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
-          tokens.handleClass
+          "!h-3 !w-3 !border-2 !border-background shadow-glow transition group-hover:scale-110",
+          tokens.handle
         )}
       />
       <Handle
         type="source"
         position={Position.Bottom}
         className={cn(
-          "!h-3 !w-3 !bg-background border-2 border-background shadow-glow transition group-hover:scale-110",
-          tokens.handleClass
+          "!h-3 !w-3 !border-2 !border-background shadow-glow transition group-hover:scale-110",
+          tokens.handle
         )}
       />
     </div>
@@ -137,5 +123,5 @@ export const VkNode: React.FC<NodeProps<VkNodeData>> = ({ data, selected }) => {
 };
 
 export const nodeTypes = {
-  vkNode: VkNode
+  runtimeNode: RuntimeNodeCard
 };
