@@ -189,7 +189,7 @@ export async function runAssessment(params: RunnerParams): Promise<void> {
           nodeId: entry.node_id,
           value: result.value,
           sampleSize: result.sample_size,
-          aggregation: result.aggregation_method,
+          ...(result.aggregation_method !== undefined ? { aggregation: result.aggregation_method } : {}),
         });
       } catch (err) {
         const cls = classifyFailure(err);
@@ -214,10 +214,10 @@ export async function runAssessment(params: RunnerParams): Promise<void> {
     if (!def) continue;
     const byNode = new Map<number, { sum: number; count: number; agg?: string }>();
     for (const row of rows) {
-      const acc = byNode.get(row.nodeId) ?? { sum: 0, count: 0, agg: row.aggregation };
+      const acc = byNode.get(row.nodeId) ?? { sum: 0, count: 0, ...(row.aggregation !== undefined ? { agg: row.aggregation } : {}) };
       acc.sum += row.value;
       acc.count += 1;
-      acc.agg = row.aggregation ?? acc.agg;
+      if (row.aggregation !== undefined) acc.agg = row.aggregation;
       byNode.set(row.nodeId, acc);
     }
     const averages: number[] = [];
@@ -233,7 +233,7 @@ export async function runAssessment(params: RunnerParams): Promise<void> {
         contributing_axis: def.axis,
         origin_reason: `${def.axis} axis`,
         executor_used: def.executor as any,
-        aggregation_method: acc.agg,
+        ...(acc.agg !== undefined ? { aggregation_method: acc.agg } : {}),
       });
     }
     scoresByCode[code] = averages.reduce((s, v) => s + v, 0) / averages.length;

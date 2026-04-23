@@ -217,9 +217,9 @@ export async function compareAssessments(baseId: number, againstId: number, user
     delta: (againstMap.get(code) ?? 0) - (baseMap.get(code) ?? 0),
   }));
   return {
-    base: { assessment_id: base.assessment_id, final_score: base.summary?.final_score, verdict: base.summary?.verdict },
-    against: { assessment_id: against.assessment_id, final_score: against.summary?.final_score, verdict: against.summary?.verdict },
-    delta_score: (against.summary?.final_score ?? 0) - (base.summary?.final_score ?? 0),
+    base: { assessment_id: base.assessment_id, final_score: (base.summary as any)?.final_score, verdict: (base.summary as any)?.verdict },
+    against: { assessment_id: against.assessment_id, final_score: (against.summary as any)?.final_score, verdict: (against.summary as any)?.verdict },
+    delta_score: ((against.summary as any)?.final_score ?? 0) - ((base.summary as any)?.final_score ?? 0),
     delta_per_metric,
     axis_coverage_diff: diffAxisCoverage(base.axis_coverage, against.axis_coverage),
   };

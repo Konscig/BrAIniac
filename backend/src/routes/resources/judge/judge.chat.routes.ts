@@ -15,8 +15,8 @@ router.post('/chat', async (req: any, res) => {
     const result = await sendChatMessage(
       {
         project_id: Number(body.project_id),
-        conversation_id: body.conversation_id ? Number(body.conversation_id) : undefined,
-        assessment_id: body.assessment_id ? Number(body.assessment_id) : undefined,
+        ...(body.conversation_id ? { conversation_id: Number(body.conversation_id) } : {}),
+        ...(body.assessment_id ? { assessment_id: Number(body.assessment_id) } : {}),
         message: String(body.message ?? ''),
       },
       req.user.user_id,
@@ -35,7 +35,10 @@ router.get('/history', async (req: any, res) => {
     }
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
     const beforeId = req.query.before_message_id ? Number(req.query.before_message_id) : undefined;
-    const history = await getHistoryForOwner(conversationId, req.user.user_id, { limit, beforeId });
+    const history = await getHistoryForOwner(conversationId, req.user.user_id, {
+      ...(limit !== undefined ? { limit } : {}),
+      ...(beforeId !== undefined ? { beforeId } : {}),
+    });
     return res.json(history);
   } catch (err) {
     return sendRouteError(res, err);

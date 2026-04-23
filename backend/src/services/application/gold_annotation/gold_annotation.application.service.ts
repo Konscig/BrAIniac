@@ -113,9 +113,9 @@ export async function listGoldAnnotationsForUser(
 ) {
   await ensureDatasetOwnedByUser(datasetId, userId);
   return listByDataset(datasetId, {
-    annotation_type: filter.annotation_type,
-    fk_document_id: filter.document_id,
-    include_history: filter.include_history,
+    ...(filter.annotation_type !== undefined ? { annotation_type: filter.annotation_type } : {}),
+    ...(filter.document_id !== undefined ? { fk_document_id: filter.document_id } : {}),
+    ...(filter.include_history !== undefined ? { include_history: filter.include_history } : {}),
   });
 }
 

@@ -31,10 +31,13 @@ datasetScopedRouter.post('/', async (req: any, res) => {
 datasetScopedRouter.get('/', async (req: any, res) => {
   try {
     const datasetId = requiredId(req.params.datasetId, 'invalid dataset id');
+    const annotationType = typeof req.query.annotation_type === 'string' ? req.query.annotation_type : undefined;
+    const documentId = req.query.document_id ? Number(req.query.document_id) : undefined;
+    const includeHistory = String(req.query.include_history ?? '').toLowerCase() === 'true';
     const items = await listGoldAnnotationsForUser(datasetId, req.user.user_id, {
-      annotation_type: typeof req.query.annotation_type === 'string' ? req.query.annotation_type : undefined,
-      document_id: req.query.document_id ? Number(req.query.document_id) : undefined,
-      include_history: String(req.query.include_history ?? '').toLowerCase() === 'true',
+      ...(annotationType !== undefined ? { annotation_type: annotationType } : {}),
+      ...(documentId !== undefined ? { document_id: documentId } : {}),
+      include_history: includeHistory,
     });
     return res.json({ dataset_id: datasetId, items, has_more: false });
   } catch (err) {

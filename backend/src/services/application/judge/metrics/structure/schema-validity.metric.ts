@@ -1,7 +1,9 @@
-import Ajv from 'ajv';
+import _Ajv from 'ajv';
 import { MetricBase, MetricContext, MetricResult, mean } from '../metric.base.js';
 
-const ajv = new Ajv({ strict: false, allErrors: true });
+// esModuleInterop + ajv v8 type definitions mismatch — safe cast
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ajv = new (_Ajv as any)({ strict: false, allErrors: true });
 const compiledCache = new Map<string, ReturnType<typeof ajv.compile>>();
 
 function compileSchema(schema: Record<string, any>) {
