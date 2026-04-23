@@ -348,8 +348,13 @@ function MainPage(): React.ReactElement {
           />
         </section>
 
-        <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden px-3 py-4 xl:px-4">
-          <NodeLibrary nodeTypes={nodeTypes} />
+        <aside className="flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden px-3 py-4 xl:px-4">
+          <div className="min-h-0 flex-1">
+            <NodeLibrary nodeTypes={nodeTypes} />
+          </div>
+          <div className="shrink-0 rounded-xl border border-dashed border-border/60 bg-muted/10 px-3 py-3 text-xs leading-5 text-muted-foreground">
+            Место под инспектор узла зарезервировано для следующего этапа.
+          </div>
         </aside>
       </main>
     </div>

@@ -25,11 +25,13 @@ import {
   deleteNode,
   listEdges,
   listNodes,
+  listTools,
   readNodeLabel,
   readNodePosition,
   type EdgeRecord,
   type NodeRecord,
   type NodeTypeRecord,
+  type ToolRecord,
   updateNode
 } from "../lib/api";
 import { getNodeTypeRole, getNodeTypeUiLabel, normalizeNodeTypeName } from "../lib/node-catalog";
@@ -60,6 +62,25 @@ type GraphState = {
   edges: EdgeRecord[];
 };
 
+type NodeCallbacks = Pick<CanvasNodeData, "onManualQuestionCommit" | "onToolSelect">;
+
+function readManualQuestion(node: NodeRecord): string {
+  const manualInput = node.ui_json?.manualInput;
+  const record =
+    manualInput && typeof manualInput === "object" && !Array.isArray(manualInput)
+      ? (manualInput as Record<string, unknown>)
+      : null;
+  const question = record?.question;
+  return typeof question === "string" ? question : "";
+}
+
+function readSelectedToolId(node: NodeRecord): number | null {
+  const tool = node.ui_json?.tool;
+  const record = tool && typeof tool === "object" && !Array.isArray(tool) ? (tool as Record<string, unknown>) : null;
+  const toolId = Number(record?.tool_id);
+  return Number.isInteger(toolId) && toolId > 0 ? toolId : null;
+}
+
 function getExecutionStatus(node: NodeRecord): CanvasNodeData["status"] {
   const wrapper = node.output_json && typeof node.output_json === "object" ? (node.output_json as Record<string, unknown>) : null;
   const raw = wrapper?.status;
@@ -79,34 +100,64 @@ function isNodeIncomplete(node: NodeRecord, nodeType: NodeTypeRecord | undefined
   return false;
 }
 
-function toFlowNode(node: NodeRecord, nodeType: NodeTypeRecord | undefined): Node<CanvasNodeData> {
+function toFlowNode(
+  node: NodeRecord,
+  nodeType: NodeTypeRecord | undefined,
+  tools: ToolRecord[],
+  callbacks: NodeCallbacks
+): Node<CanvasNodeData> {
   const position = readNodePosition(node);
   const role = nodeType ? getNodeTypeRole(nodeType) : "transform";
+  const nodeTypeName = nodeType ? normalizeNodeTypeName(nodeType.name) : `NodeType ${node.fk_type_id}`;
 
   return {
     id: String(node.node_id),
     type: "runtimeNode",
     position,
     data: {
+      nodeId: node.node_id,
       label: readNodeLabel(node),
-      nodeTypeName: nodeType ? normalizeNodeTypeName(nodeType.name) : `NodeType ${node.fk_type_id}`,
+      nodeTypeName,
       role,
       status: getExecutionStatus(node),
       isIncomplete: isNodeIncomplete(node, nodeType),
-      description: nodeType?.desc ?? undefined
+      description: nodeType?.desc ?? undefined,
+      manualQuestion: nodeTypeName === "ManualInput" ? readManualQuestion(node) : undefined,
+      selectedToolId: nodeTypeName === "ToolNode" ? readSelectedToolId(node) : undefined,
+      tools,
+      ...callbacks
     }
   };
 }
 
-function toFlowEdge(edge: EdgeRecord): Edge {
+function isCapabilityEdge(
+  edge: EdgeRecord,
+  backendNodes: NodeRecord[],
+  nodeTypeMap: Map<number, NodeTypeRecord>
+): boolean {
+  const fromNode = backendNodes.find((node) => node.node_id === edge.fk_from_node);
+  const toNode = backendNodes.find((node) => node.node_id === edge.fk_to_node);
+  if (!fromNode || !toNode) return false;
+  const fromType = nodeTypeMap.get(fromNode.fk_type_id);
+  const toType = nodeTypeMap.get(toNode.fk_type_id);
+  return normalizeNodeTypeName(fromType?.name ?? "") === "ToolNode" && normalizeNodeTypeName(toType?.name ?? "") === "AgentCall";
+}
+
+function toFlowEdge(edge: EdgeRecord, backendNodes: NodeRecord[], nodeTypeMap: Map<number, NodeTypeRecord>): Edge {
+  const capability = isCapabilityEdge(edge, backendNodes, nodeTypeMap);
   return {
     id: String(edge.edge_id),
     source: String(edge.fk_from_node),
     target: String(edge.fk_to_node),
+    sourceHandle: capability ? "capability-bottom" : "flow-out",
+    targetHandle: capability ? "capability-top" : "flow-in",
     type: "smoothstep",
     animated: true,
-    style: { ...defaultEdgeStyle },
-    markerEnd: { ...defaultMarker }
+    style: {
+      ...defaultEdgeStyle,
+      ...(capability ? { stroke: "rgba(245, 158, 11, 0.82)", strokeDasharray: "7 5" } : {})
+    },
+    markerEnd: { ...defaultMarker, ...(capability ? { color: "rgba(245, 158, 11, 0.9)" } : {}) }
   };
 }
 
@@ -129,6 +180,7 @@ export function CanvasBoard({
   const [edges, setEdges] = React.useState<Edge[]>([]);
   const [backendNodes, setBackendNodes] = React.useState<NodeRecord[]>([]);
   const [backendEdges, setBackendEdges] = React.useState<EdgeRecord[]>([]);
+  const [tools, setTools] = React.useState<ToolRecord[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const [fetchError, setFetchError] = React.useState<string | null>(null);
   const [emptyStateMessage, setEmptyStateMessage] = React.useState<string | null>(null);
@@ -146,6 +198,96 @@ export function CanvasBoard({
     },
     [onGraphChange]
   );
+  const nodeCallbacksRef = React.useRef<NodeCallbacks>({});
+
+  const updateBackendNode = React.useCallback(
+    (nodeId: number, updater: (node: NodeRecord) => NodeRecord) => {
+      setBackendNodes((currentNodes) => {
+        const existing = currentNodes.find((node) => node.node_id === nodeId);
+        if (!existing) return currentNodes;
+        const updated = updater(existing);
+        const nextNodes = currentNodes.map((node) => (node.node_id === nodeId ? updated : node));
+        setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id), tools, nodeCallbacksRef.current)));
+        emitGraphChange(nextNodes, backendEdges);
+
+        void updateNode(nodeId, {
+          top_k: updated.top_k,
+          ui_json: updated.ui_json
+        }).catch((error) => {
+          console.error("Failed to update node", error);
+          onError?.("Не удалось сохранить настройки узла.");
+        });
+
+        return nextNodes;
+      });
+    },
+    [backendEdges, emitGraphChange, nodeTypeMap, onError, tools]
+  );
+
+  const handleManualQuestionCommit = React.useCallback(
+    (nodeId: number, question: string) => {
+      updateBackendNode(nodeId, (node) => ({
+        ...node,
+        ui_json: {
+          ...node.ui_json,
+          manualInput: {
+            ...((node.ui_json.manualInput && typeof node.ui_json.manualInput === "object" && !Array.isArray(node.ui_json.manualInput)
+              ? (node.ui_json.manualInput as Record<string, unknown>)
+              : {})),
+            question
+          }
+        }
+      }));
+    },
+    [updateBackendNode]
+  );
+
+  const handleToolSelect = React.useCallback(
+    (nodeId: number, toolId: number | null) => {
+      const selectedTool = toolId ? tools.find((tool) => tool.tool_id === toolId) : null;
+      updateBackendNode(nodeId, (node) => {
+        const nextUiJson = { ...node.ui_json };
+        if (selectedTool) {
+          nextUiJson.tool = {
+            tool_id: selectedTool.tool_id,
+            name: selectedTool.name,
+            config_json: selectedTool.config_json
+          };
+          nextUiJson.label = `Узел инструмента (${selectedTool.name})`;
+        } else {
+          delete nextUiJson.tool;
+        }
+        return {
+          ...node,
+          ui_json: nextUiJson
+        };
+      });
+    },
+    [tools, updateBackendNode]
+  );
+
+  const nodeCallbacks = React.useMemo<NodeCallbacks>(
+    () => ({
+      onManualQuestionCommit: handleManualQuestionCommit,
+      onToolSelect: handleToolSelect
+    }),
+    [handleManualQuestionCommit, handleToolSelect]
+  );
+
+  React.useEffect(() => {
+    nodeCallbacksRef.current = nodeCallbacks;
+  }, [nodeCallbacks]);
+
+  React.useEffect(() => {
+    void listTools()
+      .then((nextTools) => {
+        setTools(nextTools);
+      })
+      .catch((error) => {
+        console.error("Failed to load tools", error);
+        onError?.("Не удалось загрузить каталог инструментов.");
+      });
+  }, [onError]);
 
   const loadGraph = React.useCallback(async () => {
     if (!pipelineId) {
@@ -167,8 +309,8 @@ export function CanvasBoard({
       const [nextNodes, nextEdges] = await Promise.all([listNodes(pipelineId), listEdges(pipelineId)]);
       setBackendNodes(nextNodes);
       setBackendEdges(nextEdges);
-      setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id))));
-      setEdges(nextEdges.map(toFlowEdge));
+      setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id), tools, nodeCallbacksRef.current)));
+      setEdges(nextEdges.map((edge) => toFlowEdge(edge, nextNodes, nodeTypeMap)));
       setEmptyStateMessage(nextNodes.length === 0 ? "Перетащите узел из библиотеки, чтобы начать собирать схему." : null);
       emitGraphChange(nextNodes, nextEdges);
     } catch (error) {
@@ -180,7 +322,7 @@ export function CanvasBoard({
     } finally {
       setIsLoading(false);
     }
-  }, [emitGraphChange, nodeTypeMap, onError, pipelineId]);
+  }, [emitGraphChange, nodeTypeMap, onError, pipelineId, tools]);
 
   React.useEffect(() => {
     void loadGraph();
@@ -189,19 +331,19 @@ export function CanvasBoard({
   const updateNodeCache = React.useCallback(
     (nextNodes: NodeRecord[]) => {
       setBackendNodes(nextNodes);
-      setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id))));
+      setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id), tools, nodeCallbacksRef.current)));
       emitGraphChange(nextNodes, backendEdges);
     },
-    [backendEdges, emitGraphChange, nodeTypeMap]
+    [backendEdges, emitGraphChange, nodeTypeMap, tools]
   );
 
   const updateEdgeCache = React.useCallback(
     (nextEdges: EdgeRecord[]) => {
       setBackendEdges(nextEdges);
-      setEdges(nextEdges.map(toFlowEdge));
+      setEdges(nextEdges.map((edge) => toFlowEdge(edge, backendNodes, nodeTypeMap)));
       emitGraphChange(backendNodes, nextEdges);
     },
-    [backendNodes, emitGraphChange]
+    [backendNodes, emitGraphChange, nodeTypeMap]
   );
 
   const handleNodesChange = React.useCallback(
