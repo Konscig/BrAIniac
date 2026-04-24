@@ -1,5 +1,5 @@
 import React from "react";
-import { Play, Trash2, Upload } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, Play, Trash2, Upload, X } from "lucide-react";
 
 import {
   buildQuestionInput,
@@ -22,6 +22,8 @@ import { Card } from "./ui/card";
 
 interface RunPanelProps {
   pipelineId: number | null;
+  projectName: string | null;
+  pipelineName: string | null;
   nodes: NodeRecord[];
   nodeTypes: NodeTypeRecord[];
   onError?: (message: string | null) => void;
@@ -94,7 +96,15 @@ function summarizeJson(value: unknown): string {
   }
 }
 
-export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionComplete }: RunPanelProps): React.ReactElement {
+export function RunPanel({
+  pipelineId,
+  projectName,
+  pipelineName,
+  nodes,
+  nodeTypes,
+  onError,
+  onExecutionComplete
+}: RunPanelProps): React.ReactElement {
   const [datasets, setDatasets] = React.useState<DatasetRecord[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = React.useState<number | "">("");
   const [isDatasetBusy, setIsDatasetBusy] = React.useState(false);
@@ -102,6 +112,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
   const [validation, setValidation] = React.useState<GraphValidationResult | null>(null);
   const [execution, setExecution] = React.useState<ExecutionSnapshot | null>(null);
   const [localError, setLocalError] = React.useState<string | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
 
   const question = React.useMemo(() => readManualQuestion(nodes, nodeTypes), [nodes, nodeTypes]);
   const agentDebug = React.useMemo(() => readAgentDebug(nodes, nodeTypes), [nodes, nodeTypes]);
@@ -125,9 +136,11 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
     setValidation(null);
     setExecution(null);
     setLocalError(null);
+    setIsDrawerOpen(false);
     void refreshDatasets().catch((error) => {
       console.error("Failed to load datasets", error);
       setLocalError("Не удалось загрузить dataset.");
+      setIsDrawerOpen(true);
     });
   }, [refreshDatasets]);
 
@@ -154,7 +167,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
         console.error("Failed to upload dataset", error);
         const message = error instanceof Error ? error.message : "Не удалось загрузить dataset.";
         setLocalError(message);
-        onError?.(message);
+        setIsDrawerOpen(true);
       } finally {
         setIsDatasetBusy(false);
       }
@@ -172,6 +185,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
     } catch (error) {
       console.error("Failed to delete dataset", error);
       setLocalError(error instanceof Error ? error.message : "Не удалось удалить dataset.");
+      setIsDrawerOpen(true);
     } finally {
       setIsDatasetBusy(false);
     }
@@ -182,10 +196,12 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
     const currentQuestion = question.trim();
     if (!currentQuestion) {
       setLocalError("Введите вопрос в узле ManualInput.");
+      setIsDrawerOpen(true);
       return;
     }
 
     setIsRunning(true);
+    setIsDrawerOpen(true);
     setLocalError(null);
     setExecution(null);
     onError?.(null);
@@ -194,7 +210,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
       const validationResult = await validatePipelineGraph(pipelineId, "default");
       setValidation(validationResult);
       if (!validationResult.valid) {
-        setLocalError("Граф не прошёл backend validation.");
+        setLocalError("Граф не прошел backend validation.");
         return;
       }
 
@@ -220,6 +236,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
       console.error("Failed to run pipeline", error);
       const message = error instanceof Error ? error.message : "Не удалось запустить pipeline.";
       setLocalError(message);
+      setIsDrawerOpen(true);
     } finally {
       setIsRunning(false);
     }
@@ -227,22 +244,36 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
 
   const diagnostics = formatDiagnostics(validation);
   const hasDetails = Boolean(execution || agentDebug.length > 0 || diagnostics.length > 0 || localError);
+  const runStatus = isRunning ? "Выполняется" : execution ? `Статус: ${execution.status}` : "Готов к запуску";
 
   return (
-    <Card className="w-[min(58vw,620px)] shrink-0 rounded-xl border-border/60 bg-card/80 px-2 py-2">
-      <div className="flex items-center gap-2">
-        <Button type="button" size="icon" className="h-9 w-9 shrink-0" disabled={!pipelineId || isRunning} onClick={handleRun}>
-          <Play className="h-4 w-4" />
-        </Button>
-
-        <div className="min-w-[150px] flex-1">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Запуск</div>
-          <div className="line-clamp-1 text-[11px] leading-4 text-foreground">
+    <Card className="shrink-0 rounded-xl border-border/60 bg-card/80 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-[180px] flex-1">
+          <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground">
+            <span className="truncate">{projectName ?? "Проект не выбран"}</span>
+            <span className="shrink-0 text-muted-foreground/70">&gt;</span>
+            <span className="truncate text-primary">{pipelineName ?? "Агент не выбран"}</span>
+          </div>
+          <div className="mt-0.5 line-clamp-1 text-[11px] leading-4 text-muted-foreground">
             {question || "Вопрос не задан"}
           </div>
         </div>
 
-        <div className="flex min-w-[210px] items-center gap-1.5">
+        <div className="flex min-w-[410px] flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            size="icon"
+            className="h-9 w-9 shrink-0"
+            disabled={!pipelineId || isRunning}
+            onClick={handleRun}
+            aria-label="Запустить граф"
+          >
+            {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+          </Button>
+
+          <div className="min-w-[96px] text-[11px] leading-4 text-muted-foreground">{runStatus}</div>
+
           <select
             value={selectedDatasetId ? String(selectedDatasetId) : ""}
             onChange={(event) => {
@@ -250,7 +281,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
               setSelectedDatasetId(Number.isInteger(value) && value > 0 ? value : "");
             }}
             disabled={!pipelineId || isDatasetBusy}
-            className="h-8 min-w-0 flex-1 rounded-md border border-border/60 bg-background/85 px-2 text-[11px] text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+            className="h-8 min-w-[190px] rounded-md border border-border/60 bg-background/85 px-2 text-[11px] text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
           >
             <option value="">Без dataset</option>
             {datasets.map((dataset) => (
@@ -281,51 +312,77 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
           >
             <Trash2 className="h-4 w-4" />
           </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-8 gap-1.5 px-2 text-[11px]"
+            onClick={() => setIsDrawerOpen((current) => !current)}
+          >
+            Детали
+            {isDrawerOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </Button>
         </div>
       </div>
 
-      {hasDetails && (
-        <details className="mt-2 rounded-lg border border-border/50 bg-muted/10 px-2.5 py-1.5 text-[11px] leading-4 text-muted-foreground">
-          <summary className="cursor-pointer list-none font-medium text-foreground">Детали запуска</summary>
-          <div className="mt-2 max-h-36 space-y-2 overflow-auto">
-            {execution && (
-              <div>
-                <div className="font-medium text-foreground">Execution: {execution.status}</div>
-                {execution.final_result?.text && (
-                  <div className="mt-1 line-clamp-4 text-muted-foreground">{execution.final_result.text}</div>
-                )}
-                {!execution.final_result?.text && execution.final_result?.output_preview && (
-                  <div className="mt-1 line-clamp-4 text-muted-foreground">{execution.final_result.output_preview}</div>
-                )}
-              </div>
-            )}
+      {isDrawerOpen && (
+        <div className="mt-2 border-t border-border/50 pt-2">
+          <div className="grid max-h-44 grid-cols-1 gap-2 overflow-auto rounded-lg border border-border/50 bg-muted/10 p-2 text-[11px] leading-4 text-muted-foreground lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <section className="min-w-0">
+              <div className="font-medium text-foreground">Запуск</div>
+              {!hasDetails && <div className="mt-1">Данных запуска пока нет.</div>}
+              {execution && (
+                <div className="mt-1 space-y-1">
+                  <div>Execution: {execution.status}</div>
+                  {execution.final_result?.text && <div className="line-clamp-4">{execution.final_result.text}</div>}
+                  {!execution.final_result?.text && execution.final_result?.output_preview && (
+                    <div className="line-clamp-4">{execution.final_result.output_preview}</div>
+                  )}
+                </div>
+              )}
+              {diagnostics.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <div className="font-medium text-foreground">Diagnostics</div>
+                  {diagnostics.map((item) => (
+                    <div key={item}>{item}</div>
+                  ))}
+                </div>
+              )}
+              {localError && (
+                <div className="mt-2 flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-red-200">
+                  <div className="min-w-0 flex-1">{localError}</div>
+                  <button
+                    type="button"
+                    className="rounded text-red-100/80 transition hover:text-red-100"
+                    onClick={() => setLocalError(null)}
+                    aria-label="Скрыть ошибку"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+            </section>
 
-            {agentDebug.map((entry) => (
-              <div key={entry.id} className="space-y-1 border-b border-border/40 py-2 last:border-0">
-                <div className="font-medium text-foreground">AgentCall #{entry.id}</div>
-                {["text", "final_text_source", "final_text_origin", "available_tools", "tool_calls_executed", "tool_call_trace"].map((key) => {
-                  const value = summarizeJson(entry.data[key]);
-                  if (!value) return null;
-                  return (
-                    <div key={key}>
-                      <span className="text-foreground">{key}:</span> {value}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-
-            {diagnostics.map((item) => (
-              <div key={item}>{item}</div>
-            ))}
-
-            {localError && (
-              <div className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-red-200">
-                {localError}
-              </div>
-            )}
+            <section className="min-w-0">
+              <div className="font-medium text-foreground">Agent debug</div>
+              {agentDebug.length === 0 && <div className="mt-1">Отладочные данные агента появятся после запуска.</div>}
+              {agentDebug.map((entry) => (
+                <div key={entry.id} className="mt-1 space-y-1 border-b border-border/40 pb-2 last:border-0">
+                  <div className="font-medium text-foreground">AgentCall #{entry.id}</div>
+                  {["text", "final_text_source", "final_text_origin", "available_tools", "tool_calls_executed", "tool_call_trace"].map((key) => {
+                    const value = summarizeJson(entry.data[key]);
+                    if (!value) return null;
+                    return (
+                      <div key={key} className="break-words">
+                        <span className="text-foreground">{key}:</span> {value}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </section>
           </div>
-        </details>
+        </div>
       )}
     </Card>
   );
