@@ -1,7 +1,7 @@
-import { buildQuestionInput, isExecutionTerminal, type NodeRecord, type NodeTypeRecord } from "./lib/api";
+import { buildQuestionInput, isExecutionTerminal, type NodeRecord, type NodeTypeRecord, type ToolRecord } from "./lib/api";
 import { buildNodeConfigPatch } from "./lib/node-config";
 import { getNodeRoleVisual } from "./lib/node-roles";
-import { getVisibleNodeTypeCatalog, getNodeTypeUiLabel, getNodeTypeUiTagline } from "./lib/node-catalog";
+import { getVisibleNodeTypeCatalog, getVisibleToolCatalog, getNodeTypeUiLabel, getNodeTypeUiTagline } from "./lib/node-catalog";
 import { toReadableError } from "./lib/readable-errors";
 
 const makeNodeType = (type_id: number, name: string): NodeTypeRecord => ({
@@ -10,6 +10,12 @@ const makeNodeType = (type_id: number, name: string): NodeTypeRecord => ({
   name,
   desc: name,
   config_json: { role: "transform" }
+});
+
+const makeTool = (tool_id: number, name: string, config_json: ToolRecord["config_json"] = {}): ToolRecord => ({
+  tool_id,
+  name,
+  config_json
 });
 
 test("builds canonical question input for pipeline execution", () => {
@@ -38,6 +44,18 @@ test("keeps frontend catalog scoped to implemented runtime nodes", () => {
   expect(visible.map((nodeType) => nodeType.name)).toEqual(["ManualInput", "AgentCall", "ToolNode"]);
   expect(getNodeTypeUiLabel(visible[0])).toBe("Вопрос пользователя");
   expect(getNodeTypeUiTagline(visible[2])).toBe("Объявляет инструмент для агента или исполняет его как шаг.");
+});
+
+test("keeps tool picker scoped to builtin contract tools", () => {
+  const visible = getVisibleToolCatalog([
+    makeTool(1, "it-tool-1777050203306"),
+    makeTool(2, "mvp-core-nodes", { family: "builtin", catalog: "mvp-node-catalog" }),
+    makeTool(3, "DocumentLoader", { family: "builtin-contract", catalog: "mvp-tool-contracts" }),
+    makeTool(4, "HybridRetriever", { family: "builtin-contract", catalog: "mvp-tool-contracts" }),
+    makeTool(5, "custom-tool", { family: "custom", catalog: "user-tools" })
+  ]);
+
+  expect(visible.map((tool) => tool.name)).toEqual(["DocumentLoader", "HybridRetriever"]);
 });
 
 test("maps node roles to distinct palette labels", () => {

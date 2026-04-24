@@ -1,4 +1,4 @@
-import type { NodeTypeRecord } from "./api";
+import type { NodeTypeRecord, ToolRecord } from "./api";
 
 export const VISIBLE_NODE_TYPE_NAMES = [
   "Trigger",
@@ -31,6 +31,39 @@ const ORDER = new Map<string, number>(
 
 export function normalizeNodeTypeName(name: string): string {
   return name.trim();
+}
+
+export const VISIBLE_TOOL_NAMES = [
+  "DocumentLoader",
+  "QueryBuilder",
+  "Chunker",
+  "Embedder",
+  "VectorUpsert",
+  "HybridRetriever",
+  "ContextAssembler",
+  "LLMAnswer",
+  "CitationFormatter"
+] as const;
+
+const TOOL_ORDER = new Map<string, number>(VISIBLE_TOOL_NAMES.map((name, index) => [name, index]));
+
+export function normalizeToolName(name: string): string {
+  return name.trim();
+}
+
+export function isVisibleTool(tool: ToolRecord): boolean {
+  const name = normalizeToolName(tool.name);
+  const config = tool.config_json && typeof tool.config_json === "object" ? tool.config_json : {};
+  const family = typeof config.family === "string" ? config.family.trim() : "";
+  const catalog = typeof config.catalog === "string" ? config.catalog.trim() : "";
+
+  return TOOL_ORDER.has(name) && family === "builtin-contract" && catalog === "mvp-tool-contracts";
+}
+
+export function getVisibleToolCatalog(tools: ToolRecord[]): ToolRecord[] {
+  return tools
+    .filter(isVisibleTool)
+    .sort((a, b) => (TOOL_ORDER.get(normalizeToolName(a.name)) ?? 999) - (TOOL_ORDER.get(normalizeToolName(b.name)) ?? 999));
 }
 
 export function isVisibleNodeType(nodeType: NodeTypeRecord): boolean {

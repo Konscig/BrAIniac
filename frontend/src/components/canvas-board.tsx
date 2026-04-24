@@ -42,6 +42,7 @@ import {
   getNodeTypeUiLabel,
   getNodeTypeUiTagline,
   getToolUiLabel,
+  getVisibleToolCatalog,
   normalizeNodeTypeName
 } from "../lib/node-catalog";
 import { isConfigurableNodeType } from "../lib/node-config";
@@ -389,8 +390,7 @@ export function CanvasBoard({
         if (selectedTool) {
           nextUiJson.tool = {
             tool_id: selectedTool.tool_id,
-            name: selectedTool.name,
-            config_json: selectedTool.config_json
+            name: selectedTool.name
           };
           nextUiJson.label = getToolUiLabel(selectedTool.name);
         } else {
@@ -425,7 +425,7 @@ export function CanvasBoard({
   React.useEffect(() => {
     void listTools()
       .then((nextTools) => {
-        setTools(nextTools);
+        setTools(getVisibleToolCatalog(nextTools));
       })
       .catch((error) => {
         console.error("Failed to load tools", error);

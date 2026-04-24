@@ -213,9 +213,31 @@ export async function resolveToolNodeBinding(runtime: RuntimeNode): Promise<Reso
 
     const inlineConfig =
       inlineTool.config_json !== undefined ? inlineTool.config_json : inlineTool.config !== undefined ? inlineTool.config : {};
+    const inlineToolId = coerceOptionalPositiveInt(inlineTool.tool_id);
+
+    if (inlineToolId) {
+      const linkedTool = await getToolById(inlineToolId);
+      if (!linkedTool) {
+        throw new HttpError(404, {
+          code: 'EXECUTOR_TOOLNODE_TOOL_NOT_FOUND',
+          error: 'tool for tool node was not found',
+          details: { tool_id: inlineToolId },
+        });
+      }
+
+      const linkedName = typeof linkedTool.name === 'string' && linkedTool.name.trim().length > 0 ? linkedTool.name.trim() : name;
+      const linkedConfig = linkedTool.config_json && typeof linkedTool.config_json === 'object' ? linkedTool.config_json : {};
+
+      return {
+        tool_id: inlineToolId,
+        name: linkedName,
+        config_json: linkedConfig,
+        source: 'node.tool_id',
+      };
+    }
 
     return {
-      tool_id: coerceOptionalPositiveInt(inlineTool.tool_id) ?? null,
+      tool_id: null,
       name,
       config_json: inlineConfig,
       source: 'node.tool',
