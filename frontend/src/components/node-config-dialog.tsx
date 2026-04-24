@@ -3,6 +3,7 @@ import ReactDOM from "react-dom";
 import { X } from "lucide-react";
 
 import type { JsonRecord, NodeRecord, NodeTypeRecord } from "../lib/api";
+import { buildNodeConfigPatch, NODE_CONFIG_DEFINITIONS } from "../lib/node-config";
 import { getNodeTypeUiLabel, normalizeNodeTypeName } from "../lib/node-catalog";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -12,82 +13,6 @@ type NodeConfigDialogProps = {
   nodeType: NodeTypeRecord | null;
   onClose: () => void;
   onSave: (nodeId: number, patch: { ui_json: JsonRecord }) => void;
-};
-
-type FieldConfig = {
-  key: string;
-  label: string;
-  kind: "text" | "textarea" | "number" | "select";
-  options?: Array<{ value: string; label: string }>;
-  placeholder?: string;
-};
-
-const CONFIG_FIELDS: Record<string, { section: string; title: string; fields: FieldConfig[] }> = {
-  AgentCall: {
-    section: "agent",
-    title: "Настройки агента",
-    fields: [
-      { key: "modelId", label: "Модель", kind: "text", placeholder: "openai/gpt-4o-mini" },
-      { key: "systemPrompt", label: "Системный промпт", kind: "textarea" },
-      { key: "maxToolCalls", label: "Максимум вызовов инструментов", kind: "number" },
-      { key: "maxAttempts", label: "Попытки провайдера", kind: "number" },
-      { key: "softRetryDelayMs", label: "Пауза retry, мс", kind: "number" },
-      { key: "temperature", label: "Temperature", kind: "number" },
-      { key: "maxTokens", label: "Max tokens", kind: "number" }
-    ]
-  },
-  LLMCall: {
-    section: "llm",
-    title: "Настройки модели",
-    fields: [
-      { key: "modelId", label: "Модель", kind: "text", placeholder: "openai/gpt-4o-mini" },
-      { key: "temperature", label: "Temperature", kind: "number" },
-      { key: "maxTokens", label: "Max tokens", kind: "number" }
-    ]
-  },
-  Filter: {
-    section: "filter",
-    title: "Настройки фильтра",
-    fields: [
-      { key: "field", label: "Поле", kind: "text", placeholder: "score" },
-      {
-        key: "op",
-        label: "Оператор",
-        kind: "select",
-        options: [
-          { value: "", label: "Не задан" },
-          { value: "eq", label: "равно" },
-          { value: "neq", label: "не равно" },
-          { value: "gt", label: "больше" },
-          { value: "gte", label: "больше или равно" },
-          { value: "lt", label: "меньше" },
-          { value: "lte", label: "меньше или равно" },
-          { value: "contains", label: "содержит" }
-        ]
-      },
-      { key: "value", label: "Значение", kind: "text" },
-      { key: "limit", label: "Лимит", kind: "number" }
-    ]
-  },
-  Ranker: {
-    section: "ranker",
-    title: "Настройки ранжирования",
-    fields: [
-      { key: "scoreField", label: "Поле score", kind: "text", placeholder: "score" },
-      { key: "textField", label: "Текстовое поле", kind: "text", placeholder: "text" },
-      {
-        key: "order",
-        label: "Порядок",
-        kind: "select",
-        options: [
-          { value: "desc", label: "по убыванию" },
-          { value: "asc", label: "по возрастанию" }
-        ]
-      },
-      { key: "topK", label: "Top K", kind: "number" },
-      { key: "query", label: "Запрос", kind: "textarea" }
-    ]
-  }
 };
 
 function readSection(node: NodeRecord, section: string): Record<string, unknown> {
@@ -101,31 +26,10 @@ function valueToDraft(value: unknown): string {
   return String(value);
 }
 
-function parseFieldValue(field: FieldConfig, rawValue: string): unknown {
-  const trimmed = rawValue.trim();
-  if (!trimmed) return undefined;
-  if (field.kind === "number") {
-    const value = Number(trimmed);
-    return Number.isFinite(value) ? value : undefined;
-  }
-  if (field.key === "value") {
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return trimmed;
-    }
-  }
-  return rawValue;
-}
-
-export function isConfigurableNodeType(nodeTypeName: string): boolean {
-  return Boolean(CONFIG_FIELDS[normalizeNodeTypeName(nodeTypeName)]);
-}
-
 export function NodeConfigDialog({ node, nodeType, onClose, onSave }: NodeConfigDialogProps): React.ReactElement | null {
   const portalRef = React.useRef<HTMLDivElement | null>(null);
   const nodeTypeName = nodeType ? normalizeNodeTypeName(nodeType.name) : "";
-  const config = CONFIG_FIELDS[nodeTypeName];
+  const config = NODE_CONFIG_DEFINITIONS[nodeTypeName];
   const [draft, setDraft] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
@@ -156,20 +60,10 @@ export function NodeConfigDialog({ node, nodeType, onClose, onSave }: NodeConfig
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    const nextSection: JsonRecord = {};
-    for (const field of config.fields) {
-      const value = parseFieldValue(field, draft[field.key] ?? "");
-      if (value !== undefined) {
-        nextSection[field.key] = value;
-      }
+    const patch = buildNodeConfigPatch(node, nodeTypeName, draft);
+    if (patch) {
+      onSave(node.node_id, patch);
     }
-
-    onSave(node.node_id, {
-      ui_json: {
-        ...node.ui_json,
-        [config.section]: nextSection
-      }
-    });
     onClose();
   };
 

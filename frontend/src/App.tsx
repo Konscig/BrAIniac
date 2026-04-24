@@ -51,6 +51,7 @@ function MainPage(): React.ReactElement {
   const [activePipelineId, setActivePipelineId] = React.useState<number | null>(null);
   const [dataError, setDataError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [isGraphRunning, setIsGraphRunning] = React.useState(false);
   const [graphRefreshToken, setGraphRefreshToken] = React.useState(0);
   const [graphState, setGraphState] = React.useState<{ nodes: NodeRecord[]; edges: EdgeRecord[] }>({
     nodes: [],
@@ -330,6 +331,7 @@ function MainPage(): React.ReactElement {
             nodes={graphState.nodes}
             nodeTypes={nodeTypes}
             onError={setDataError}
+            onRunningChange={setIsGraphRunning}
             onExecutionComplete={() => setGraphRefreshToken((current) => current + 1)}
           />
 
@@ -345,6 +347,7 @@ function MainPage(): React.ReactElement {
             pipelineId={activePipelineId}
             nodeTypes={nodeTypes}
             refreshToken={graphRefreshToken}
+            isGraphRunning={isGraphRunning}
             className="min-h-0"
             onGraphChange={setGraphState}
             onError={setDataError}

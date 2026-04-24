@@ -17,6 +17,7 @@ import {
   type NodeTypeRecord
 } from "../lib/api";
 import { normalizeNodeTypeName } from "../lib/node-catalog";
+import { toReadableError, type ReadableError } from "../lib/readable-errors";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 
@@ -27,6 +28,7 @@ interface RunPanelProps {
   nodes: NodeRecord[];
   nodeTypes: NodeTypeRecord[];
   onError?: (message: string | null) => void;
+  onRunningChange?: (isRunning: boolean) => void;
   onExecutionComplete?: () => void;
 }
 
@@ -103,6 +105,7 @@ export function RunPanel({
   nodes,
   nodeTypes,
   onError,
+  onRunningChange,
   onExecutionComplete
 }: RunPanelProps): React.ReactElement {
   const [datasets, setDatasets] = React.useState<DatasetRecord[]>([]);
@@ -111,11 +114,23 @@ export function RunPanel({
   const [isRunning, setIsRunning] = React.useState(false);
   const [validation, setValidation] = React.useState<GraphValidationResult | null>(null);
   const [execution, setExecution] = React.useState<ExecutionSnapshot | null>(null);
-  const [localError, setLocalError] = React.useState<string | null>(null);
+  const [localError, setLocalError] = React.useState<ReadableError | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+  const [startedAt, setStartedAt] = React.useState<number | null>(null);
+  const [now, setNow] = React.useState(Date.now());
 
   const question = React.useMemo(() => readManualQuestion(nodes, nodeTypes), [nodes, nodeTypes]);
   const agentDebug = React.useMemo(() => readAgentDebug(nodes, nodeTypes), [nodes, nodeTypes]);
+
+  React.useEffect(() => {
+    onRunningChange?.(isRunning);
+  }, [isRunning, onRunningChange]);
+
+  React.useEffect(() => {
+    if (!isRunning) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [isRunning]);
 
   const refreshDatasets = React.useCallback(async () => {
     if (!pipelineId) {
@@ -139,7 +154,7 @@ export function RunPanel({
     setIsDrawerOpen(false);
     void refreshDatasets().catch((error) => {
       console.error("Failed to load datasets", error);
-      setLocalError("Не удалось загрузить dataset.");
+      setLocalError(toReadableError(error, "Не удалось загрузить dataset."));
       setIsDrawerOpen(true);
     });
   }, [refreshDatasets]);
@@ -165,8 +180,7 @@ export function RunPanel({
         setSelectedDatasetId(uploaded.dataset_id);
       } catch (error) {
         console.error("Failed to upload dataset", error);
-        const message = error instanceof Error ? error.message : "Не удалось загрузить dataset.";
-        setLocalError(message);
+        setLocalError(toReadableError(error, "Не удалось загрузить dataset."));
         setIsDrawerOpen(true);
       } finally {
         setIsDatasetBusy(false);
@@ -184,7 +198,7 @@ export function RunPanel({
       await refreshDatasets();
     } catch (error) {
       console.error("Failed to delete dataset", error);
-      setLocalError(error instanceof Error ? error.message : "Не удалось удалить dataset.");
+      setLocalError(toReadableError(error, "Не удалось удалить dataset."));
       setIsDrawerOpen(true);
     } finally {
       setIsDatasetBusy(false);
@@ -195,12 +209,14 @@ export function RunPanel({
     if (!pipelineId) return;
     const currentQuestion = question.trim();
     if (!currentQuestion) {
-      setLocalError("Введите вопрос в узле ManualInput.");
+      setLocalError(toReadableError("ManualInput question is empty", "Введите вопрос в узле ManualInput."));
       setIsDrawerOpen(true);
       return;
     }
 
     setIsRunning(true);
+    setStartedAt(Date.now());
+    setNow(Date.now());
     setIsDrawerOpen(true);
     setLocalError(null);
     setExecution(null);
@@ -210,7 +226,7 @@ export function RunPanel({
       const validationResult = await validatePipelineGraph(pipelineId, "default");
       setValidation(validationResult);
       if (!validationResult.valid) {
-        setLocalError("Граф не прошел backend validation.");
+        setLocalError(toReadableError({ message: "Graph validation failed", details: validationResult }));
         return;
       }
 
@@ -234,8 +250,7 @@ export function RunPanel({
       onExecutionComplete?.();
     } catch (error) {
       console.error("Failed to run pipeline", error);
-      const message = error instanceof Error ? error.message : "Не удалось запустить pipeline.";
-      setLocalError(message);
+      setLocalError(toReadableError(error, "Не удалось запустить pipeline."));
       setIsDrawerOpen(true);
     } finally {
       setIsRunning(false);
@@ -244,7 +259,8 @@ export function RunPanel({
 
   const diagnostics = formatDiagnostics(validation);
   const hasDetails = Boolean(execution || agentDebug.length > 0 || diagnostics.length > 0 || localError);
-  const runStatus = isRunning ? "Выполняется" : execution ? `Статус: ${execution.status}` : "Готов к запуску";
+  const elapsedSeconds = isRunning && startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
+  const runStatus = isRunning ? `Выполняется ${elapsedSeconds}с` : execution ? `Статус: ${execution.status}` : "Готов к запуску";
 
   return (
     <Card className="shrink-0 rounded-xl border-border/60 bg-card/80 px-3 py-2">
@@ -350,7 +366,18 @@ export function RunPanel({
               )}
               {localError && (
                 <div className="mt-2 flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-red-200">
-                  <div className="min-w-0 flex-1">{localError}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-red-100">{localError.title}</div>
+                    <div>{localError.message}</div>
+                    {localError.raw !== undefined && (
+                      <details className="mt-1 text-red-100/80">
+                        <summary className="cursor-pointer">Технические детали</summary>
+                        <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-words text-[10px]">
+                          {summarizeJson(localError.raw)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
                   <button
                     type="button"
                     className="rounded text-red-100/80 transition hover:text-red-100"

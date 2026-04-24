@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertCircle, Bot, Braces, Cable, CirclePlay, Database, Save, Settings, Wrench } from "lucide-react";
+import { AlertCircle, Bot, Braces, Cable, CirclePlay, Database, Save, Settings, Wrench, X } from "lucide-react";
 import { Handle, Position, type NodeProps } from "reactflow";
 
 import type { ToolRecord } from "../lib/api";
@@ -61,6 +61,7 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
   const isSaveResult = data.nodeTypeName === "SaveResult";
   const [questionDraft, setQuestionDraft] = React.useState(data.manualQuestion ?? "");
   const [isToolPickerOpen, setIsToolPickerOpen] = React.useState(!data.selectedToolId);
+  const [isTraceHidden, setIsTraceHidden] = React.useState(false);
 
   React.useEffect(() => {
     setQuestionDraft(data.manualQuestion ?? "");
@@ -69,6 +70,10 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
   React.useEffect(() => {
     setIsToolPickerOpen(!data.selectedToolId);
   }, [data.selectedToolId]);
+
+  React.useEffect(() => {
+    setIsTraceHidden(false);
+  }, [data.tracePreview]);
 
   const stopCanvasGesture = (event: React.SyntheticEvent) => {
     event.stopPropagation();
@@ -191,11 +196,25 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
         <div className="line-clamp-2 text-[10px] leading-4 text-muted-foreground">{data.description}</div>
       )}
 
-      {data.tracePreview && (
+      {data.tracePreview && !isTraceHidden && (
         <details className="nodrag rounded-md border border-border/50 bg-background/70 px-2 py-1.5 text-[10px] leading-4 text-muted-foreground">
           <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10px] font-medium text-foreground">
-            <AlertCircle className="h-3.5 w-3.5 text-amber-300" />
-            Трейс узла
+            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-300" />
+            <span className="min-w-0 flex-1">Трейс узла</span>
+            <button
+              type="button"
+              className="rounded text-muted-foreground transition hover:text-foreground"
+              onClick={(event) => {
+                stopCanvasGesture(event);
+                event.preventDefault();
+                setIsTraceHidden(true);
+              }}
+              onMouseDown={stopCanvasGesture}
+              onPointerDown={stopCanvasGesture}
+              aria-label="Скрыть трейс узла"
+            >
+              <X className="h-3 w-3" />
+            </button>
           </summary>
           <div className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-words">{data.tracePreview}</div>
         </details>

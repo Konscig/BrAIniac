@@ -44,9 +44,10 @@ import {
   getToolUiLabel,
   normalizeNodeTypeName
 } from "../lib/node-catalog";
+import { isConfigurableNodeType } from "../lib/node-config";
 import { cn } from "../lib/utils";
 import { type CanvasNodeData, nodeTypes } from "./custom-nodes";
-import { isConfigurableNodeType, NodeConfigDialog } from "./node-config-dialog";
+import { NodeConfigDialog } from "./node-config-dialog";
 import { Card } from "./ui/card";
 
 const defaultEdgeStyle = {
@@ -283,6 +284,7 @@ export interface CanvasBoardProps {
   pipelineId: number | null;
   nodeTypes: NodeTypeRecord[];
   refreshToken?: number;
+  isGraphRunning?: boolean;
   className?: string;
   onGraphChange?: (state: GraphState) => void;
   onError?: (message: string | null) => void;
@@ -292,6 +294,7 @@ export function CanvasBoard({
   pipelineId,
   nodeTypes: nodeTypesCatalog,
   refreshToken = 0,
+  isGraphRunning = false,
   className,
   onGraphChange,
   onError
@@ -792,6 +795,13 @@ export function CanvasBoard({
         {emptyStateMessage && !isLoading && !fetchError && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-10 text-center text-sm text-muted-foreground">
             {emptyStateMessage}
+          </div>
+        )}
+
+        {isGraphRunning && !isLoading && (
+          <div className="pointer-events-none absolute left-4 top-4 z-10 rounded-full border border-primary/35 bg-primary/10 px-3 py-1.5 text-[11px] text-primary-foreground shadow-sm backdrop-blur">
+            <span className="mr-2 inline-flex h-2 w-2 animate-pulse rounded-full bg-primary" />
+            Граф выполняется
           </div>
         )}
 
