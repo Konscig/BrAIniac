@@ -230,12 +230,12 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
   const diagnostics = formatDiagnostics(validation);
 
   return (
-    <Card className="shrink-0 border-border/60 bg-card/80">
-      <CardHeader className="space-y-2 pb-3">
-        <div className="flex items-center justify-between gap-3">
+    <Card className="shrink-0 rounded-xl border-border/60 bg-card/80">
+      <CardHeader className="space-y-1.5 pb-2.5">
+        <div className="flex items-center justify-between gap-2">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Запуск</div>
-            <div className="mt-1 text-base font-semibold">Dataset и вопрос</div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Запуск</div>
+            <div className="mt-0.5 text-sm font-semibold">Dataset и вопрос</div>
           </div>
           <Button type="button" size="icon" disabled={!pipelineId || isRunning} onClick={handleRun}>
             <Play className="h-4 w-4" />
@@ -243,10 +243,10 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
         </div>
       </CardHeader>
       <Separator />
-      <CardContent className="space-y-3 p-3">
-        <div className="rounded-lg border border-border/50 bg-muted/10 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">ManualInput</div>
-          <div className="mt-1 line-clamp-3 text-xs leading-5 text-foreground">
+      <CardContent className="space-y-2 p-2">
+        <div className="rounded-lg border border-border/50 bg-muted/10 px-2.5 py-2">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">ManualInput</div>
+          <div className="mt-0.5 line-clamp-3 text-[11px] leading-4 text-foreground">
             {question || "Вопрос не задан"}
           </div>
         </div>
@@ -259,7 +259,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
               setSelectedDatasetId(Number.isInteger(value) && value > 0 ? value : "");
             }}
             disabled={!pipelineId || isDatasetBusy}
-            className="h-9 min-w-0 flex-1 rounded-lg border border-border/60 bg-background/85 px-2.5 text-xs text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+            className="h-8 min-w-0 flex-1 rounded-md border border-border/60 bg-background/85 px-2 text-[11px] text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
           >
             <option value="">Без dataset</option>
             {datasets.map((dataset) => (
@@ -268,7 +268,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
               </option>
             ))}
           </select>
-          <label className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border/60 bg-background/85 text-muted-foreground transition hover:text-foreground">
+          <label className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border/60 bg-background/85 text-muted-foreground transition hover:text-foreground">
             <Upload className="h-4 w-4" />
             <input
               type="file"
@@ -290,7 +290,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
         </div>
 
         {execution && (
-          <div className="rounded-lg border border-border/50 bg-muted/10 px-3 py-2 text-xs leading-5">
+          <div className="rounded-lg border border-border/50 bg-muted/10 px-2.5 py-2 text-[11px] leading-4">
             <div className="font-medium text-foreground">Execution: {execution.status}</div>
             {execution.final_result?.text && (
               <div className="mt-1 line-clamp-4 text-muted-foreground">{execution.final_result.text}</div>
@@ -302,7 +302,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
         )}
 
         {agentDebug.length > 0 && (
-          <div className="max-h-40 overflow-auto rounded-lg border border-border/50 bg-muted/10 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+          <div className="max-h-40 overflow-auto rounded-lg border border-border/50 bg-muted/10 px-2.5 py-2 text-[11px] leading-4 text-muted-foreground">
             {agentDebug.map((entry) => (
               <div key={entry.id} className="space-y-1 border-b border-border/40 py-2 last:border-0">
                 <div className="font-medium text-foreground">AgentCall #{entry.id}</div>
@@ -321,7 +321,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
         )}
 
         {diagnostics.length > 0 && (
-          <div className="max-h-28 overflow-auto rounded-lg border border-border/50 bg-muted/10 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+          <div className="max-h-28 overflow-auto rounded-lg border border-border/50 bg-muted/10 px-2.5 py-2 text-[11px] leading-4 text-muted-foreground">
             {diagnostics.map((item) => (
               <div key={item}>{item}</div>
             ))}
@@ -329,7 +329,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
         )}
 
         {localError && (
-          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-2 text-[11px] text-red-200">
             {localError}
           </div>
         )}

@@ -101,19 +101,17 @@ export function SidebarProjects({
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col border-r border-border/60 bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--card))_100%)] backdrop-blur">
-      <div className="border-b border-border/60 px-4 py-3">
+      <div className="border-b border-border/60 px-3 py-2.5">
         <button
           type="button"
           onClick={() => setIsProjectsOpen((current) => !current)}
-          className="flex w-full items-center justify-between rounded-xl px-1 text-left transition hover:text-foreground"
+          className="flex w-full items-center justify-between rounded-lg px-1 text-left transition hover:text-foreground"
         >
           <div>
-            <div className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-              Проекты
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Рабочая область
             </div>
-            <div className="mt-1 text-sm font-semibold text-foreground">
-              Проекты и агенты
-            </div>
+            <div className="mt-0.5 text-sm font-semibold text-foreground">Проекты</div>
           </div>
           {isProjectsOpen ? (
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -125,19 +123,19 @@ export function SidebarProjects({
 
       {isProjectsOpen && (
         <ScrollArea className="min-h-0 flex-1">
-          <div className="space-y-4 px-3 py-3">
-            <section className="rounded-2xl border border-border/60 bg-card/45 p-3">
+          <div className="space-y-3 px-2.5 py-2.5">
+            <section className="rounded-xl border border-border/60 bg-card/45 p-2">
               <div className="flex items-center gap-2">
                 <input
                   value={projectDraft}
                   onChange={(event) => setProjectDraft(event.target.value)}
                   placeholder="Новый проект"
-                  className="h-9 flex-1 rounded-lg border border-border/60 bg-background/80 px-3 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+                  className="h-8 flex-1 rounded-md border border-border/60 bg-background/80 px-2.5 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring"
                 />
                 <Button
                   type="button"
                   size="icon"
-                  className="h-9 w-9 rounded-full"
+                  className="h-8 w-8 rounded-md"
                   onClick={() => {
                     const name = projectDraft.trim();
                     if (!name) return;
@@ -166,18 +164,18 @@ export function SidebarProjects({
                 return (
                   <div
                     key={project.project_id}
-                    className={cn(
-                      "overflow-hidden rounded-2xl border transition",
+                  className={cn(
+                      "overflow-hidden rounded-xl border transition",
                       isActiveProject
                         ? "border-primary/45 bg-primary/8 shadow-[inset_0_0_0_1px_rgba(39,135,245,0.12)]"
                         : "border-border/50 bg-card/30"
                     )}
                   >
-                    <div className="flex items-center gap-1 px-2 py-2">
+                    <div className="flex items-center gap-1 px-1.5 py-1.5">
                       <button
                         type="button"
                         onClick={() => toggleProject(project.project_id)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
                       >
                         {isExpanded ? (
                           <ChevronDown className="h-4 w-4" />
@@ -187,7 +185,7 @@ export function SidebarProjects({
                       </button>
 
                       {isEditingProject ? (
-                        <div className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2">
+                        <div className="flex min-w-0 flex-1 items-center gap-2 px-1.5 py-1.5">
                           <FolderKanban className="h-4 w-4 shrink-0" />
                           <div className="min-w-0 flex-1">
                             <input
@@ -210,7 +208,7 @@ export function SidebarProjects({
                                 }
                               }}
                               autoFocus
-                              className="h-8 w-full rounded-lg border border-primary/40 bg-background/85 px-3 text-sm font-semibold text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+                              className="h-8 w-full rounded-md border border-primary/40 bg-background/85 px-2.5 text-sm font-semibold text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
                             />
                           </div>
                         </div>
@@ -222,7 +220,7 @@ export function SidebarProjects({
                             onSelectProject(project.project_id);
                             setExpandedProjects((current) => ({ ...current, [project.project_id]: true }));
                           }}
-                          className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-muted/15"
+                          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition hover:bg-muted/15"
                         >
                           <FolderKanban className="h-4 w-4 shrink-0" />
                           <div className="min-w-0">
@@ -239,7 +237,7 @@ export function SidebarProjects({
                           <button
                             type="button"
                             onClick={commitEditing}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-emerald-200 transition hover:bg-emerald-500/10"
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-emerald-200 transition hover:bg-emerald-500/10"
                             aria-label="Сохранить проект"
                           >
                             <Check className="h-3.5 w-3.5" />
@@ -247,7 +245,7 @@ export function SidebarProjects({
                           <button
                             type="button"
                             onClick={cancelEditing}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
                             aria-label="Отменить редактирование проекта"
                           >
                             <X className="h-3.5 w-3.5" />
@@ -258,7 +256,7 @@ export function SidebarProjects({
                           <button
                             type="button"
                             onClick={() => setEditing({ kind: "project", id: project.project_id, value: project.name })}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
                             aria-label="Переименовать проект"
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -270,7 +268,7 @@ export function SidebarProjects({
                               if (!window.confirm(`Удалить проект "${project.name}"?`)) return;
                               onDeleteProject(project.project_id);
                             }}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-500/10 hover:text-red-200"
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-red-500/10 hover:text-red-200"
                             aria-label="Удалить проект"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -280,7 +278,7 @@ export function SidebarProjects({
                     </div>
 
                     {isExpanded && (
-                      <div className="border-t border-border/50 px-3 py-3">
+                      <div className="border-t border-border/50 px-2 py-2">
                         <div className="space-y-1.5">
                           {projectPipelines.map((pipeline) => {
                             const isEditingPipeline =
@@ -290,14 +288,14 @@ export function SidebarProjects({
                               <div
                                 key={pipeline.pipeline_id}
                                 className={cn(
-                                  "flex items-center gap-2 rounded-xl border px-2 py-2 transition",
+                                  "flex items-center gap-2 rounded-lg border px-2 py-1.5 transition",
                                   pipeline.pipeline_id === activePipelineId
                                     ? "border-primary/50 bg-primary/12"
                                     : "border-border/40 bg-background/20"
                                 )}
                               >
                                 {isEditingPipeline ? (
-                                  <div className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1.5 py-1">
+                                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5">
                                     <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
                                     <input
                                       value={editing.value}
@@ -319,7 +317,7 @@ export function SidebarProjects({
                                         }
                                       }}
                                       autoFocus
-                                      className="h-8 min-w-0 flex-1 rounded-lg border border-primary/40 bg-background/85 px-3 text-sm font-medium text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+                                      className="h-8 min-w-0 flex-1 rounded-md border border-primary/40 bg-background/85 px-2.5 text-sm font-medium text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
                                     />
                                   </div>
                                 ) : (
@@ -330,7 +328,7 @@ export function SidebarProjects({
                                       onSelectProject(project.project_id);
                                       onSelectPipeline(pipeline.pipeline_id);
                                     }}
-                                    className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1.5 py-1 text-left"
+                                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left"
                                   >
                                     <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
                                     <span className="truncate text-sm font-medium text-foreground">
@@ -344,7 +342,7 @@ export function SidebarProjects({
                                     <button
                                       type="button"
                                       onClick={commitEditing}
-                                      className="flex h-8 w-8 items-center justify-center rounded-lg text-emerald-200 transition hover:bg-emerald-500/10"
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-emerald-200 transition hover:bg-emerald-500/10"
                                       aria-label="Сохранить агента"
                                     >
                                       <Check className="h-3.5 w-3.5" />
@@ -352,7 +350,7 @@ export function SidebarProjects({
                                     <button
                                       type="button"
                                       onClick={cancelEditing}
-                                      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
                                       aria-label="Отменить редактирование агента"
                                     >
                                       <X className="h-3.5 w-3.5" />
@@ -370,7 +368,7 @@ export function SidebarProjects({
                                           value: pipeline.name
                                         })
                                       }
-                                      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
                                       aria-label="Переименовать агента"
                                     >
                                       <Pencil className="h-3.5 w-3.5" />
@@ -382,7 +380,7 @@ export function SidebarProjects({
                                         if (!window.confirm(`Удалить агента "${pipeline.name}"?`)) return;
                                         onDeletePipeline(pipeline.pipeline_id);
                                       }}
-                                      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-500/10 hover:text-red-200"
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-red-500/10 hover:text-red-200"
                                       aria-label="Удалить агента"
                                     >
                                       <Trash2 className="h-3.5 w-3.5" />
@@ -403,12 +401,12 @@ export function SidebarProjects({
                                 }))
                               }
                               placeholder="Новый агент"
-                              className="h-9 flex-1 rounded-lg border border-border/60 bg-background/80 px-3 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+                              className="h-8 flex-1 rounded-md border border-border/60 bg-background/80 px-2.5 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring"
                             />
                             <Button
                               type="button"
                               size="icon"
-                              className="h-9 w-9 rounded-full"
+                              className="h-8 w-8 rounded-md"
                               onClick={() => {
                                 const name = (pipelineDraftByProject[project.project_id] ?? "").trim();
                                 if (!name) return;
@@ -432,6 +430,11 @@ export function SidebarProjects({
           </div>
         </ScrollArea>
       )}
+      <div className="border-t border-border/60 px-3 py-2">
+        <div className="rounded-lg border border-dashed border-border/60 bg-muted/10 px-2.5 py-2 text-[11px] leading-4 text-muted-foreground">
+          Инспектор узла появится здесь позже.
+        </div>
+      </div>
     </aside>
   );
 }

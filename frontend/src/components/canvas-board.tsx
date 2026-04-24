@@ -3,6 +3,7 @@ import ReactFlow, {
   Background,
   BackgroundVariant,
   ConnectionLineType,
+  ConnectionMode,
   Controls,
   MarkerType,
   applyEdgeChanges,
@@ -49,6 +50,13 @@ const defaultMarker = {
   width: 18,
   height: 18,
   color: "rgba(39, 135, 245, 0.85)"
+} as const;
+
+const capabilityMarker = {
+  type: MarkerType.ArrowClosed,
+  width: 16,
+  height: 16,
+  color: "rgba(245, 158, 11, 0.9)"
 } as const;
 
 type DraggedNodePayload = {
@@ -183,21 +191,44 @@ function isCapabilityEdge(
   return normalizeNodeTypeName(fromType?.name ?? "") === "ToolNode" && normalizeNodeTypeName(toType?.name ?? "") === "AgentCall";
 }
 
+function getNodeTypeName(node: NodeRecord | undefined, nodeTypeMap: Map<number, NodeTypeRecord>): string {
+  if (!node) return "";
+  return normalizeNodeTypeName(nodeTypeMap.get(node.fk_type_id)?.name ?? "");
+}
+
+function resolveCapabilityHandles(
+  edge: EdgeRecord,
+  backendNodes: NodeRecord[]
+): { sourceHandle: string; targetHandle: string } {
+  const fromNode = backendNodes.find((node) => node.node_id === edge.fk_from_node);
+  const toNode = backendNodes.find((node) => node.node_id === edge.fk_to_node);
+  const fromPosition = fromNode ? readNodePosition(fromNode) : { x: 0, y: 0 };
+  const toPosition = toNode ? readNodePosition(toNode) : { x: 0, y: 0 };
+  const toolBelowAgent = fromPosition.y >= toPosition.y;
+
+  return {
+    sourceHandle: toolBelowAgent ? "capability-target-top" : "capability-target-bottom",
+    targetHandle: toolBelowAgent ? "capability-target-bottom" : "capability-target-top"
+  };
+}
+
 function toFlowEdge(edge: EdgeRecord, backendNodes: NodeRecord[], nodeTypeMap: Map<number, NodeTypeRecord>): Edge {
   const capability = isCapabilityEdge(edge, backendNodes, nodeTypeMap);
+  const capabilityHandles = capability ? resolveCapabilityHandles(edge, backendNodes) : null;
   return {
     id: String(edge.edge_id),
     source: String(edge.fk_from_node),
     target: String(edge.fk_to_node),
-    sourceHandle: capability ? "capability-bottom" : "flow-out",
-    targetHandle: capability ? "capability-top" : "flow-in",
+    sourceHandle: capability ? capabilityHandles?.sourceHandle : "flow-out",
+    targetHandle: capability ? capabilityHandles?.targetHandle : "flow-in",
     type: "smoothstep",
-    animated: true,
+    animated: false,
     style: {
       ...defaultEdgeStyle,
-      ...(capability ? { stroke: "rgba(245, 158, 11, 0.82)", strokeDasharray: "7 5" } : {})
+      ...(capability ? { stroke: "rgba(245, 158, 11, 0.82)", strokeDasharray: "5 5", strokeWidth: 2 } : {})
     },
-    markerEnd: { ...defaultMarker, ...(capability ? { color: "rgba(245, 158, 11, 0.9)" } : {}) }
+    markerStart: capability ? { ...capabilityMarker } : undefined,
+    markerEnd: capability ? { ...capabilityMarker } : { ...defaultMarker }
   };
 }
 
@@ -228,6 +259,8 @@ export function CanvasBoard({
   const [emptyStateMessage, setEmptyStateMessage] = React.useState<string | null>(null);
   const reactFlowWrapper = React.useRef<HTMLDivElement | null>(null);
   const reactFlowInstance = React.useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
+  const backendNodesRef = React.useRef<NodeRecord[]>([]);
+  const backendEdgesRef = React.useRef<EdgeRecord[]>([]);
 
   const nodeTypeMap = React.useMemo(
     () => new Map(nodeTypesCatalog.map((nodeType) => [nodeType.type_id, nodeType])),
@@ -242,6 +275,14 @@ export function CanvasBoard({
   );
   const nodeCallbacksRef = React.useRef<NodeCallbacks>({});
 
+  React.useEffect(() => {
+    backendNodesRef.current = backendNodes;
+  }, [backendNodes]);
+
+  React.useEffect(() => {
+    backendEdgesRef.current = backendEdges;
+  }, [backendEdges]);
+
   const updateBackendNode = React.useCallback(
     (nodeId: number, updater: (node: NodeRecord) => NodeRecord) => {
       setBackendNodes((currentNodes) => {
@@ -250,7 +291,8 @@ export function CanvasBoard({
         const updated = updater(existing);
         const nextNodes = currentNodes.map((node) => (node.node_id === nodeId ? updated : node));
         setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id), tools, nodeCallbacksRef.current)));
-        emitGraphChange(nextNodes, backendEdges);
+        setEdges(backendEdgesRef.current.map((edge) => toFlowEdge(edge, nextNodes, nodeTypeMap)));
+        emitGraphChange(nextNodes, backendEdgesRef.current);
 
         void updateNode(nodeId, {
           top_k: updated.top_k,
@@ -263,7 +305,7 @@ export function CanvasBoard({
         return nextNodes;
       });
     },
-    [backendEdges, emitGraphChange, nodeTypeMap, onError, tools]
+    [emitGraphChange, nodeTypeMap, onError, tools]
   );
 
   const handleManualQuestionCommit = React.useCallback(
@@ -350,7 +392,9 @@ export function CanvasBoard({
     try {
       const [nextNodes, nextEdges] = await Promise.all([listNodes(pipelineId), listEdges(pipelineId)]);
       setBackendNodes(nextNodes);
+      backendNodesRef.current = nextNodes;
       setBackendEdges(nextEdges);
+      backendEdgesRef.current = nextEdges;
       setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id), tools, nodeCallbacksRef.current)));
       setEdges(nextEdges.map((edge) => toFlowEdge(edge, nextNodes, nodeTypeMap)));
       setEmptyStateMessage(nextNodes.length === 0 ? "Перетащите узел из библиотеки, чтобы начать собирать схему." : null);
@@ -373,6 +417,7 @@ export function CanvasBoard({
   const updateNodeCache = React.useCallback(
     (nextNodes: NodeRecord[]) => {
       setBackendNodes(nextNodes);
+      backendNodesRef.current = nextNodes;
       setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id), tools, nodeCallbacksRef.current)));
       emitGraphChange(nextNodes, backendEdges);
     },
@@ -382,6 +427,7 @@ export function CanvasBoard({
   const updateEdgeCache = React.useCallback(
     (nextEdges: EdgeRecord[]) => {
       setBackendEdges(nextEdges);
+      backendEdgesRef.current = nextEdges;
       setEdges(nextEdges.map((edge) => toFlowEdge(edge, backendNodes, nodeTypeMap)));
       emitGraphChange(backendNodes, nextEdges);
     },
@@ -390,39 +436,59 @@ export function CanvasBoard({
 
   const handleNodesChange = React.useCallback(
     (changes: NodeChange[]) => {
-      setNodes((current) => applyNodeChanges(changes, current));
-
       const finishedMoves = changes.filter(
         (change): change is NodePositionChange => change.type === "position" && !change.dragging
       );
 
-      for (const change of finishedMoves) {
-        const nodeId = Number(change.id);
-        const existing = backendNodes.find((node) => node.node_id === nodeId);
-        if (!existing || !change.position) continue;
+      setNodes((current) => {
+        const nextFlowNodes = applyNodeChanges(changes, current);
+        if (finishedMoves.length === 0) return nextFlowNodes;
 
-        const nextUiJson = {
-          ...existing.ui_json,
-          x: change.position.x,
-          y: change.position.y
-        };
+        const movedPositions = new Map<number, { x: number; y: number }>();
+        for (const change of finishedMoves) {
+          const nodeId = Number(change.id);
+          const movedNode = nextFlowNodes.find((node) => Number(node.id) === nodeId);
+          if (!movedNode) continue;
+          movedPositions.set(nodeId, movedNode.position);
+        }
 
-        const nextNodes = backendNodes.map((node) =>
-          node.node_id === nodeId ? { ...node, ui_json: nextUiJson } : node
-        );
-        setBackendNodes(nextNodes);
-        emitGraphChange(nextNodes, backendEdges);
+        if (movedPositions.size === 0) return nextFlowNodes;
 
-        void updateNode(nodeId, {
-          top_k: existing.top_k,
-          ui_json: nextUiJson
-        }).catch((error) => {
-          console.error("Failed to update node position", error);
-          onError?.("Не удалось сохранить позицию узла.");
+        setBackendNodes((currentNodes) => {
+          const nextBackendNodes = currentNodes.map((node) => {
+            const position = movedPositions.get(node.node_id);
+            if (!position) return node;
+            return {
+              ...node,
+              ui_json: {
+                ...node.ui_json,
+                x: position.x,
+                y: position.y
+              }
+            };
+          });
+          backendNodesRef.current = nextBackendNodes;
+          setEdges(backendEdgesRef.current.map((edge) => toFlowEdge(edge, nextBackendNodes, nodeTypeMap)));
+          emitGraphChange(nextBackendNodes, backendEdgesRef.current);
+
+          for (const node of nextBackendNodes) {
+            if (!movedPositions.has(node.node_id)) continue;
+            void updateNode(node.node_id, {
+              top_k: node.top_k,
+              ui_json: node.ui_json
+            }).catch((error) => {
+              console.error("Failed to update node position", error);
+              onError?.("Не удалось сохранить позицию узла.");
+            });
+          }
+
+          return nextBackendNodes;
         });
-      }
+
+        return nextFlowNodes;
+      });
     },
-    [backendEdges, backendNodes, emitGraphChange, onError]
+    [emitGraphChange, nodeTypeMap, onError]
   );
 
   const handleEdgesChange = React.useCallback((changes: EdgeChange[]) => {
@@ -432,13 +498,21 @@ export function CanvasBoard({
   const handleConnect = React.useCallback(
     (connection: Connection) => {
       if (!connection.source || !connection.target) return;
+      const sourceId = Number(connection.source);
+      const targetId = Number(connection.target);
+      const sourceNode = backendNodesRef.current.find((node) => node.node_id === sourceId);
+      const targetNode = backendNodesRef.current.find((node) => node.node_id === targetId);
+      const sourceType = getNodeTypeName(sourceNode, nodeTypeMap);
+      const targetType = getNodeTypeName(targetNode, nodeTypeMap);
+      const isAgentToTool = sourceType === "AgentCall" && targetType === "ToolNode";
 
-      void createEdge({
-        fk_from_node: Number(connection.source),
-        fk_to_node: Number(connection.target)
-      })
+      const edgePayload = isAgentToTool
+        ? { fk_from_node: targetId, fk_to_node: sourceId }
+        : { fk_from_node: sourceId, fk_to_node: targetId };
+
+      void createEdge(edgePayload)
         .then((edge) => {
-          const nextEdges = [...backendEdges, edge];
+          const nextEdges = [...backendEdgesRef.current, edge];
           updateEdgeCache(nextEdges);
           setFetchError(null);
           onError?.(null);
@@ -450,7 +524,7 @@ export function CanvasBoard({
           onError?.(message);
         });
     },
-    [backendEdges, onError, updateEdgeCache]
+    [nodeTypeMap, onError, updateEdgeCache]
   );
 
   const handleNodesDelete = React.useCallback(
@@ -523,7 +597,7 @@ export function CanvasBoard({
         }
       })
         .then((created) => {
-          const nextNodes = [...backendNodes, created];
+          const nextNodes = [...backendNodesRef.current, created];
           updateNodeCache(nextNodes);
           setEmptyStateMessage(null);
           setFetchError(null);
@@ -536,7 +610,7 @@ export function CanvasBoard({
           onError?.(message);
         });
     },
-    [backendNodes, nodeTypeMap, onError, pipelineId, updateNodeCache]
+    [nodeTypeMap, onError, pipelineId, updateNodeCache]
   );
 
   const handleDragOver = React.useCallback((event: React.DragEvent) => {
@@ -569,10 +643,11 @@ export function CanvasBoard({
           snapGrid={[16, 16]}
           defaultEdgeOptions={{
             type: "smoothstep",
-            animated: true,
+            animated: false,
             style: { ...defaultEdgeStyle },
             markerEnd: { ...defaultMarker }
           }}
+          connectionMode={ConnectionMode.Loose}
           connectionLineType={ConnectionLineType.SmoothStep}
           className="bg-[radial-gradient(circle_at_center,_rgba(39,135,245,0.06),_transparent_40%)]"
           proOptions={{ hideAttribution: true }}

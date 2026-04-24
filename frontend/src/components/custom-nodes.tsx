@@ -88,37 +88,41 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
   const commitQuestion = () => {
     data.onManualQuestionCommit?.(data.nodeId, questionDraft);
   };
+  const handleClassName = cn(
+    "!h-2 !w-2 !border-2 !border-background shadow-glow transition group-hover:scale-110",
+    tokens.handle
+  );
 
   return (
     <div
       className={cn(
-        "group relative flex min-w-[220px] max-w-[260px] flex-col gap-2.5 rounded-[1.15rem] border px-3.5 py-3 shadow-soft transition",
+        "group relative flex min-w-[190px] max-w-[224px] flex-col gap-2 rounded-xl border px-3 py-2.5 shadow-sm transition",
         tokens.frame,
         selected && "ring-2 ring-ring",
         data.isIncomplete && "border-dashed border-amber-400/60"
       )}
     >
-      <div className="flex items-start gap-2.5">
-        <div className={cn("flex h-[2.125rem] w-[2.125rem] items-center justify-center rounded-2xl", tokens.badge)}>
-          <Icon className="h-[1.125rem] w-[1.125rem]" />
+      <div className="flex items-start gap-2">
+        <div className={cn("flex h-7 w-7 items-center justify-center rounded-lg", tokens.badge)}>
+          <Icon className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold leading-5 text-foreground">{data.label}</div>
-          <div className="truncate text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+          <div className="truncate text-xs font-semibold leading-4 text-foreground">{data.label}</div>
+          <div className="truncate text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
             {data.nodeTypeName}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-2 text-[11px]">
+      <div className="flex items-center justify-between gap-2 text-[10px]">
         <span className={cn("font-medium", status.tone)}>{status.label}</span>
-        <span className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+        <span className="rounded-md border border-border/50 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
           {data.role}
         </span>
       </div>
 
       {data.isIncomplete && (
-        <div className="text-[11px] text-amber-200">
+        <div className="text-[10px] text-amber-200">
           Требуется настройка узла
         </div>
       )}
@@ -137,7 +141,7 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
             }
           }}
           placeholder="Вопрос пользователя"
-          className="nodrag min-h-[78px] resize-none rounded-lg border border-border/60 bg-background/85 px-2.5 py-2 text-xs leading-5 text-foreground outline-none ring-offset-background placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
+          className="nodrag min-h-[64px] resize-none rounded-md border border-border/60 bg-background/85 px-2 py-1.5 text-[11px] leading-4 text-foreground outline-none ring-offset-background placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
         />
       )}
 
@@ -150,7 +154,7 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
           }}
           onMouseDown={stopCanvasGesture}
           onPointerDown={stopCanvasGesture}
-          className="nodrag h-9 rounded-lg border border-border/60 bg-background/85 px-2.5 text-xs text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+          className="nodrag h-8 rounded-md border border-border/60 bg-background/85 px-2 text-[11px] text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
         >
           <option value="">Выберите инструмент</option>
           {(data.tools ?? []).map((tool) => (
@@ -162,77 +166,37 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
       )}
 
       {isSaveResult && data.finalOutputPreview && (
-        <div className="max-h-28 overflow-auto rounded-lg border border-border/50 bg-background/85 px-2.5 py-2 text-xs leading-5 text-muted-foreground">
+        <div className="max-h-24 overflow-auto rounded-md border border-border/50 bg-background/85 px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
           {data.finalOutputPreview}
         </div>
       )}
 
       {data.description && (
-        <div className="line-clamp-2 text-[11px] leading-[1.125rem] text-muted-foreground">{data.description}</div>
+        <div className="line-clamp-2 text-[10px] leading-4 text-muted-foreground">{data.description}</div>
       )}
 
-      <Handle
-        type="target"
-        id="flow-in"
-        position={Position.Left}
-        className={cn(
-          "!h-2.5 !w-2.5 !border-2 !border-background shadow-glow transition group-hover:scale-110",
-          tokens.handle
-        )}
-      />
-      <Handle
-        type="source"
-        id="flow-out"
-        position={Position.Right}
-        className={cn(
-          "!h-2.5 !w-2.5 !border-2 !border-background shadow-glow transition group-hover:scale-110",
-          tokens.handle
-        )}
-      />
+      {!isToolNode && (
+        <>
+          <Handle type="target" id="flow-in" position={Position.Left} className={handleClassName} />
+          <Handle type="source" id="flow-out" position={Position.Right} className={handleClassName} />
+        </>
+      )}
 
       {isToolNode && (
         <>
-          <Handle
-            type="source"
-            id="capability-top"
-            position={Position.Top}
-            className={cn(
-              "!h-2.5 !w-2.5 !border-2 !border-background shadow-glow transition group-hover:scale-110",
-              tokens.handle
-            )}
-          />
-          <Handle
-            type="source"
-            id="capability-bottom"
-            position={Position.Bottom}
-            className={cn(
-              "!h-2.5 !w-2.5 !border-2 !border-background shadow-glow transition group-hover:scale-110",
-              tokens.handle
-            )}
-          />
+          <Handle type="source" id="capability-target-top" position={Position.Top} className={handleClassName} />
+          <Handle type="target" id="capability-target-top" position={Position.Top} className={handleClassName} />
+          <Handle type="source" id="capability-target-bottom" position={Position.Bottom} className={handleClassName} />
+          <Handle type="target" id="capability-target-bottom" position={Position.Bottom} className={handleClassName} />
         </>
       )}
 
       {isAgentCall && (
         <>
-          <Handle
-            type="target"
-            id="capability-top"
-            position={Position.Top}
-            className={cn(
-              "!h-2.5 !w-2.5 !border-2 !border-background shadow-glow transition group-hover:scale-110",
-              tokens.handle
-            )}
-          />
-          <Handle
-            type="target"
-            id="capability-bottom"
-            position={Position.Bottom}
-            className={cn(
-              "!h-2.5 !w-2.5 !border-2 !border-background shadow-glow transition group-hover:scale-110",
-              tokens.handle
-            )}
-          />
+          <Handle type="source" id="capability-target-top" position={Position.Top} className={handleClassName} />
+          <Handle type="target" id="capability-target-top" position={Position.Top} className={handleClassName} />
+          <Handle type="source" id="capability-target-bottom" position={Position.Bottom} className={handleClassName} />
+          <Handle type="target" id="capability-target-bottom" position={Position.Bottom} className={handleClassName} />
         </>
       )}
     </div>

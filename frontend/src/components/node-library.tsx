@@ -67,14 +67,14 @@ export function NodeLibrary({ nodeTypes }: NodeLibraryProps): React.ReactElement
   }, []);
 
   return (
-    <Card className="flex h-full min-h-0 max-w-full flex-col overflow-hidden rounded-[1.35rem] border-border/60 bg-card/80">
-      <CardHeader className="space-y-2 pb-3">
-        <div className="flex items-end justify-between gap-3">
+    <Card className="flex h-full min-h-0 max-w-full flex-col overflow-hidden rounded-xl border-border/60 bg-card/80">
+      <CardHeader className="space-y-1.5 pb-2.5">
+        <div className="flex items-end justify-between gap-2">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Библиотека</div>
-            <div className="mt-1 text-base font-semibold">Узлы</div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Библиотека</div>
+            <div className="mt-0.5 text-sm font-semibold">Узлы</div>
           </div>
-          <div className="rounded-full border border-border/50 px-2 py-1 text-[11px] text-muted-foreground">
+          <div className="rounded-md border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
             {groups.reduce((count, group) => count + group.items.length, 0)}
           </div>
         </div>
@@ -82,9 +82,9 @@ export function NodeLibrary({ nodeTypes }: NodeLibraryProps): React.ReactElement
       <Separator />
       <CardContent className="min-h-0 flex-1 p-0">
         <ScrollArea className="h-full">
-          <div className="space-y-2 p-3">
+          <div className="space-y-1.5 p-2">
             {groups.length === 0 && (
-              <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
+              <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 p-2 text-xs text-muted-foreground">
                 Нет доступных узлов. Проверьте, что backend отдал каталог типов.
               </div>
             )}
@@ -96,18 +96,18 @@ export function NodeLibrary({ nodeTypes }: NodeLibraryProps): React.ReactElement
                 <section
                   key={group.id}
                   className={cn(
-                    "overflow-hidden rounded-2xl border transition",
+                    "overflow-hidden rounded-lg border transition",
                     isOpen ? "border-primary/45 bg-primary/8" : "border-border/50 bg-muted/8"
                   )}
                 >
                   <button
                     type="button"
                     onClick={() => setActiveGroupId((current) => (current === group.id ? null : group.id))}
-                    className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+                    className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left"
                   >
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-foreground">{group.name}</div>
-                      <div className="text-xs text-muted-foreground">{group.items.length} узлов</div>
+                      <div className="truncate text-xs font-semibold text-foreground">{group.name}</div>
+                      <div className="text-[11px] text-muted-foreground">{group.items.length} узлов</div>
                     </div>
                     {isOpen ? (
                       <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -117,8 +117,8 @@ export function NodeLibrary({ nodeTypes }: NodeLibraryProps): React.ReactElement
                   </button>
 
                   {isOpen && (
-                    <div className="border-t border-border/50 px-3 py-3">
-                      <div className="space-y-2">
+                    <div className="border-t border-border/50 px-2 py-2">
+                      <div className="space-y-1.5">
                         {group.items.map((item) => (
                           <button
                             key={item.type_id}
@@ -131,12 +131,12 @@ export function NodeLibrary({ nodeTypes }: NodeLibraryProps): React.ReactElement
                                 label: getNodeTypeUiLabel(item)
                               })
                             }
-                            className="w-full rounded-xl border border-border/50 bg-muted/15 px-3 py-2.5 text-left transition hover:border-primary/40 hover:bg-primary/10"
+                            className="w-full rounded-lg border border-border/50 bg-muted/15 px-2.5 py-2 text-left transition hover:border-primary/40 hover:bg-primary/10"
                           >
-                            <div className="text-sm font-medium text-foreground">
+                            <div className="text-xs font-medium text-foreground">
                               {getNodeTypeUiLabel(item)}
                             </div>
-                            <div className="mt-1 line-clamp-3 text-xs leading-5 text-muted-foreground">
+                            <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
                               {getNodeTypeUiTagline(item)}
                             </div>
                           </button>

@@ -286,7 +286,7 @@ function MainPage(): React.ReactElement {
 
   return (
     <div className="App flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex items-center justify-between border-b border-border/60 px-5 py-3 backdrop-blur">
+      <header className="flex items-center justify-between border-b border-border/60 px-4 py-2.5 backdrop-blur">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">BrAIniac</p>
           <h1 className="text-2xl font-semibold">Конструктор агентов</h1>
@@ -306,7 +306,7 @@ function MainPage(): React.ReactElement {
         </div>
       </header>
 
-      <main className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_300px] overflow-hidden">
+      <main className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)_286px] overflow-hidden">
         <SidebarProjects
           projects={projects}
           pipelinesByProject={pipelinesByProject}
@@ -322,7 +322,7 @@ function MainPage(): React.ReactElement {
           onDeletePipeline={handleDeletePipeline}
         />
 
-        <section className="flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden border-r border-border/60 border-l border-border/60 px-4 py-4">
+        <section className="flex min-h-0 min-w-0 flex-col gap-2.5 overflow-hidden border-r border-border/60 border-l border-border/60 px-3 py-3">
           <div className="shrink-0 px-1 pt-0.5">
             <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground">
               <span className="truncate">{activeProject?.name ?? "Проект не выбран"}</span>
@@ -351,7 +351,7 @@ function MainPage(): React.ReactElement {
           />
         </section>
 
-        <aside className="flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden px-3 py-4 xl:px-4">
+        <aside className="flex min-h-0 min-w-0 flex-col gap-2.5 overflow-hidden px-2.5 py-3">
           <div className="min-h-0 flex-1">
             <NodeLibrary nodeTypes={nodeTypes} />
           </div>
@@ -362,9 +362,6 @@ function MainPage(): React.ReactElement {
             onError={setDataError}
             onExecutionComplete={() => setGraphRefreshToken((current) => current + 1)}
           />
-          <div className="shrink-0 rounded-xl border border-dashed border-border/60 bg-muted/10 px-3 py-3 text-xs leading-5 text-muted-foreground">
-            Место под инспектор узла зарезервировано для следующего этапа.
-          </div>
         </aside>
       </main>
     </div>
