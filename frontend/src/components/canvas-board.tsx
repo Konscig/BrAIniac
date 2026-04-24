@@ -16,6 +16,7 @@ import ReactFlow, {
   type NodePositionChange,
   type ReactFlowInstance
 } from "reactflow";
+import { Info } from "lucide-react";
 
 import "reactflow/dist/style.css";
 
@@ -196,6 +197,17 @@ function getNodeTypeName(node: NodeRecord | undefined, nodeTypeMap: Map<number, 
   return normalizeNodeTypeName(nodeTypeMap.get(node.fk_type_id)?.name ?? "");
 }
 
+function isCapabilityConnectionHandle(handleId: string | null | undefined): boolean {
+  return Boolean(handleId?.startsWith("capability-"));
+}
+
+function isToolAgentConnection(sourceType: string, targetType: string): boolean {
+  return (
+    (sourceType === "ToolNode" && targetType === "AgentCall") ||
+    (sourceType === "AgentCall" && targetType === "ToolNode")
+  );
+}
+
 function resolveCapabilityHandles(
   edge: EdgeRecord,
   backendNodes: NodeRecord[]
@@ -274,6 +286,10 @@ export function CanvasBoard({
     [onGraphChange]
   );
   const nodeCallbacksRef = React.useRef<NodeCallbacks>({});
+
+  const showCanvasNotice = React.useCallback((message: string) => {
+    setFetchError(message);
+  }, []);
 
   React.useEffect(() => {
     backendNodesRef.current = backendNodes;
@@ -495,6 +511,26 @@ export function CanvasBoard({
     setEdges((current) => applyEdgeChanges(changes, current));
   }, []);
 
+  const isValidCanvasConnection = React.useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target || connection.source === connection.target) return false;
+
+      const sourceNode = backendNodesRef.current.find((node) => node.node_id === Number(connection.source));
+      const targetNode = backendNodesRef.current.find((node) => node.node_id === Number(connection.target));
+      const sourceType = getNodeTypeName(sourceNode, nodeTypeMap);
+      const targetType = getNodeTypeName(targetNode, nodeTypeMap);
+      const usesCapabilityHandle =
+        isCapabilityConnectionHandle(connection.sourceHandle) || isCapabilityConnectionHandle(connection.targetHandle);
+
+      if (usesCapabilityHandle) {
+        return isToolAgentConnection(sourceType, targetType);
+      }
+
+      return connection.sourceHandle === "flow-out" && connection.targetHandle === "flow-in";
+    },
+    [nodeTypeMap]
+  );
+
   const handleConnect = React.useCallback(
     (connection: Connection) => {
       if (!connection.source || !connection.target) return;
@@ -505,10 +541,26 @@ export function CanvasBoard({
       const sourceType = getNodeTypeName(sourceNode, nodeTypeMap);
       const targetType = getNodeTypeName(targetNode, nodeTypeMap);
       const isAgentToTool = sourceType === "AgentCall" && targetType === "ToolNode";
+      const usesCapabilityHandle =
+        isCapabilityConnectionHandle(connection.sourceHandle) || isCapabilityConnectionHandle(connection.targetHandle);
+
+      if (usesCapabilityHandle && !isToolAgentConnection(sourceType, targetType)) {
+        showCanvasNotice("Нельзя создать такую связь.");
+        return;
+      }
 
       const edgePayload = isAgentToTool
         ? { fk_from_node: targetId, fk_to_node: sourceId }
         : { fk_from_node: sourceId, fk_to_node: targetId };
+
+      const alreadyExists = backendEdgesRef.current.some(
+        (edge) => edge.fk_from_node === edgePayload.fk_from_node && edge.fk_to_node === edgePayload.fk_to_node
+      );
+      if (alreadyExists) {
+        setFetchError(null);
+        onError?.(null);
+        return;
+      }
 
       void createEdge(edgePayload)
         .then((edge) => {
@@ -519,12 +571,10 @@ export function CanvasBoard({
         })
         .catch((error) => {
           console.error("Failed to create edge", error);
-          const message = "Не удалось создать связь.";
-          setFetchError(message);
-          onError?.(message);
+          showCanvasNotice("Нельзя создать такую связь.");
         });
     },
-    [nodeTypeMap, onError, updateEdgeCache]
+    [nodeTypeMap, onError, showCanvasNotice, updateEdgeCache]
   );
 
   const handleNodesDelete = React.useCallback(
@@ -634,6 +684,7 @@ export function CanvasBoard({
           onConnect={handleConnect}
           onNodesDelete={handleNodesDelete}
           onEdgesDelete={handleEdgesDelete}
+          isValidConnection={isValidCanvasConnection}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onInit={setInstance}
@@ -673,8 +724,13 @@ export function CanvasBoard({
       )}
 
       {fetchError && !isLoading && (
-        <div className="pointer-events-none absolute inset-x-6 bottom-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {fetchError}
+        <div className="group pointer-events-auto absolute right-4 top-4 z-10 flex max-w-[320px] items-center gap-1.5 overflow-hidden rounded-full border border-red-400/45 bg-red-500/10 px-2 py-1 text-red-100 shadow-sm backdrop-blur">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-100">
+            <Info className="h-3.5 w-3.5" />
+          </span>
+          <span className="max-w-0 whitespace-nowrap text-[11px] leading-4 opacity-0 transition-all duration-200 group-hover:max-w-[280px] group-hover:opacity-100">
+            {fetchError}
+          </span>
         </div>
       )}
 
