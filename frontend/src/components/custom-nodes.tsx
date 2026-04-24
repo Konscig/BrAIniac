@@ -21,11 +21,13 @@ export type CanvasNodeData = {
   manualQuestion?: string;
   selectedToolId?: number | null;
   selectedToolLabel?: string;
+  isConfigurable?: boolean;
   finalOutputPreview?: string;
   tracePreview?: string;
   tools?: ToolRecord[];
   onManualQuestionCommit?: (nodeId: number, question: string) => void;
   onToolSelect?: (nodeId: number, toolId: number | null) => void;
+  onConfigureNode?: (nodeId: number) => void;
 };
 
 const statusTokens: Record<CanvasNodeStatus, { label: string; tone: string }> = {
@@ -101,17 +103,21 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
             {data.technicalLabel}
           </div>
         </div>
-        {isToolNode && data.selectedToolId && (
+        {((isToolNode && data.selectedToolId) || data.isConfigurable) && (
           <button
             type="button"
             className="nodrag flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
             onClick={(event) => {
               stopCanvasGesture(event);
-              setIsToolPickerOpen((current) => !current);
+              if (isToolNode) {
+                setIsToolPickerOpen((current) => !current);
+                return;
+              }
+              data.onConfigureNode?.(data.nodeId);
             }}
             onMouseDown={stopCanvasGesture}
             onPointerDown={stopCanvasGesture}
-            aria-label="Сменить инструмент"
+            aria-label={isToolNode ? "Сменить инструмент" : "Настроить узел"}
           >
             <Settings className="h-3.5 w-3.5" />
           </button>

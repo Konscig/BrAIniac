@@ -46,6 +46,7 @@ import {
 } from "../lib/node-catalog";
 import { cn } from "../lib/utils";
 import { type CanvasNodeData, nodeTypes } from "./custom-nodes";
+import { isConfigurableNodeType, NodeConfigDialog } from "./node-config-dialog";
 import { Card } from "./ui/card";
 
 const defaultEdgeStyle = {
@@ -78,7 +79,7 @@ type GraphState = {
   edges: EdgeRecord[];
 };
 
-type NodeCallbacks = Pick<CanvasNodeData, "onManualQuestionCommit" | "onToolSelect">;
+type NodeCallbacks = Pick<CanvasNodeData, "onManualQuestionCommit" | "onToolSelect" | "onConfigureNode">;
 
 function readManualQuestion(node: NodeRecord): string {
   const manualInput = node.ui_json?.manualInput;
@@ -204,6 +205,7 @@ function toFlowNode(
       manualQuestion: nodeTypeName === "ManualInput" ? readManualQuestion(node) : undefined,
       selectedToolId: nodeTypeName === "ToolNode" ? readSelectedToolId(node) : undefined,
       selectedToolLabel: selectedToolName ? getToolUiLabel(selectedToolName) : undefined,
+      isConfigurable: isConfigurableNodeType(nodeTypeName),
       finalOutputPreview: readFinalOutputPreview(node, nodeTypeName),
       tracePreview: readTracePreview(node),
       tools,
@@ -302,6 +304,7 @@ export function CanvasBoard({
   const [isLoading, setIsLoading] = React.useState(false);
   const [fetchError, setFetchError] = React.useState<string | null>(null);
   const [emptyStateMessage, setEmptyStateMessage] = React.useState<string | null>(null);
+  const [configNodeId, setConfigNodeId] = React.useState<number | null>(null);
   const reactFlowWrapper = React.useRef<HTMLDivElement | null>(null);
   const reactFlowInstance = React.useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
   const backendNodesRef = React.useRef<NodeRecord[]>([]);
@@ -399,12 +402,17 @@ export function CanvasBoard({
     [tools, updateBackendNode]
   );
 
+  const handleConfigureNode = React.useCallback((nodeId: number) => {
+    setConfigNodeId(nodeId);
+  }, []);
+
   const nodeCallbacks = React.useMemo<NodeCallbacks>(
     () => ({
       onManualQuestionCommit: handleManualQuestionCommit,
-      onToolSelect: handleToolSelect
+      onToolSelect: handleToolSelect,
+      onConfigureNode: handleConfigureNode
     }),
-    [handleManualQuestionCommit, handleToolSelect]
+    [handleConfigureNode, handleManualQuestionCommit, handleToolSelect]
   );
 
   React.useEffect(() => {
@@ -705,77 +713,98 @@ export function CanvasBoard({
     reactFlowInstance.current = instance;
   }, []);
 
+  const configNode = configNodeId ? backendNodes.find((node) => node.node_id === configNodeId) ?? null : null;
+  const configNodeType = configNode ? nodeTypeMap.get(configNode.fk_type_id) ?? null : null;
+
+  const handleConfigSave = React.useCallback(
+    (nodeId: number, patch: { ui_json: NodeRecord["ui_json"] }) => {
+      updateBackendNode(nodeId, (node) => ({
+        ...node,
+        ui_json: patch.ui_json
+      }));
+    },
+    [updateBackendNode]
+  );
+
   return (
-    <Card className={cn("relative flex-1 min-h-0 overflow-hidden border-border/60", className)}>
-      <div ref={reactFlowWrapper} className="h-full w-full">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          onNodesChange={handleNodesChange}
-          onEdgesChange={handleEdgesChange}
-          onConnect={handleConnect}
-          onNodesDelete={handleNodesDelete}
-          onEdgesDelete={handleEdgesDelete}
-          isValidConnection={isValidCanvasConnection}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onInit={setInstance}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          snapToGrid
-          snapGrid={[16, 16]}
-          defaultEdgeOptions={{
-            type: "smoothstep",
-            animated: false,
-            style: { ...defaultEdgeStyle },
-            markerEnd: { ...defaultMarker }
-          }}
-          connectionMode={ConnectionMode.Loose}
-          connectionLineType={ConnectionLineType.SmoothStep}
-          className="bg-[radial-gradient(circle_at_center,_rgba(39,135,245,0.06),_transparent_40%)]"
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={22}
-            size={1.6}
-            color="rgba(148, 163, 184, 0.3)"
-          />
-          <Controls
-            showInteractive={false}
-            className="!border-none !bg-transparent !shadow-none"
-            style={{ left: "50%", transform: "translateX(-50%)", bottom: 24 }}
-          />
-        </ReactFlow>
-      </div>
-
-      {isLoading && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 text-sm text-muted-foreground">
-          Загружаем схему...
+    <>
+      <Card className={cn("relative flex-1 min-h-0 overflow-hidden border-border/60", className)}>
+        <div ref={reactFlowWrapper} className="h-full w-full">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
+            onConnect={handleConnect}
+            onNodesDelete={handleNodesDelete}
+            onEdgesDelete={handleEdgesDelete}
+            isValidConnection={isValidCanvasConnection}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onInit={setInstance}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            snapToGrid
+            snapGrid={[16, 16]}
+            defaultEdgeOptions={{
+              type: "smoothstep",
+              animated: false,
+              style: { ...defaultEdgeStyle },
+              markerEnd: { ...defaultMarker }
+            }}
+            connectionMode={ConnectionMode.Loose}
+            connectionLineType={ConnectionLineType.SmoothStep}
+            className="bg-[radial-gradient(circle_at_center,_rgba(39,135,245,0.06),_transparent_40%)]"
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={22}
+              size={1.6}
+              color="rgba(148, 163, 184, 0.3)"
+            />
+            <Controls
+              showInteractive={false}
+              className="!border-none !bg-transparent !shadow-none"
+              style={{ left: "50%", transform: "translateX(-50%)", bottom: 24 }}
+            />
+          </ReactFlow>
         </div>
-      )}
 
-      {fetchError && !isLoading && (
-        <div className="group pointer-events-auto absolute right-4 top-4 z-10 flex max-w-[320px] items-center gap-1.5 overflow-hidden rounded-full border border-red-400/45 bg-red-500/10 px-2 py-1 text-red-100 shadow-sm backdrop-blur">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-100">
-            <Info className="h-3.5 w-3.5" />
-          </span>
-          <span className="max-w-0 whitespace-nowrap text-[11px] leading-4 opacity-0 transition-all duration-200 group-hover:max-w-[280px] group-hover:opacity-100">
-            {fetchError}
-          </span>
+        {isLoading && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 text-sm text-muted-foreground">
+            Загружаем схему...
+          </div>
+        )}
+
+        {fetchError && !isLoading && (
+          <div className="group pointer-events-auto absolute right-4 top-4 z-10 flex max-w-[320px] items-center gap-1.5 overflow-hidden rounded-full border border-red-400/45 bg-red-500/10 px-2 py-1 text-red-100 shadow-sm backdrop-blur">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-100">
+              <Info className="h-3.5 w-3.5" />
+            </span>
+            <span className="max-w-0 whitespace-nowrap text-[11px] leading-4 opacity-0 transition-all duration-200 group-hover:max-w-[280px] group-hover:opacity-100">
+              {fetchError}
+            </span>
+          </div>
+        )}
+
+        {emptyStateMessage && !isLoading && !fetchError && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-10 text-center text-sm text-muted-foreground">
+            {emptyStateMessage}
+          </div>
+        )}
+
+        <div className="pointer-events-none absolute left-4 bottom-4 max-w-sm rounded-lg bg-background/85 px-3 py-2 text-xs text-muted-foreground shadow-sm">
+          Перетаскивайте узлы из библиотеки и соединяйте их стрелками.
         </div>
-      )}
-
-      {emptyStateMessage && !isLoading && !fetchError && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-10 text-center text-sm text-muted-foreground">
-          {emptyStateMessage}
-        </div>
-      )}
-
-      <div className="pointer-events-none absolute left-4 bottom-4 max-w-sm rounded-lg bg-background/85 px-3 py-2 text-xs text-muted-foreground shadow-sm">
-        Перетаскивайте узлы из библиотеки и соединяйте их стрелками.
-      </div>
-    </Card>
+      </Card>
+      <NodeConfigDialog
+        node={configNode}
+        nodeType={configNodeType}
+        onClose={() => setConfigNodeId(null)}
+        onSave={handleConfigSave}
+      />
+    </>
   );
 }
