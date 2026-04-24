@@ -55,6 +55,8 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   let providerCallsAttempted = 0;
   let providerLastErrorCode = '';
   let providerLastErrorStatus: number | null = null;
+  let providerLastErrorMessage = '';
+  let providerLastErrorDetails: Record<string, any> | undefined;
   let providerSoftFailures = 0;
   let providerSuccessfulResponses = 0;
   let finalTextSource = '';
@@ -84,6 +86,8 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
     providerSuccessfulResponses += providerTurn.providerSuccessfulResponses;
     providerLastErrorCode = providerTurn.providerLastErrorCode;
     providerLastErrorStatus = providerTurn.providerLastErrorStatus;
+    providerLastErrorMessage = providerTurn.providerLastErrorMessage;
+    providerLastErrorDetails = providerTurn.providerLastErrorDetails;
     finalModel = providerTurn.model;
     finalProviderResponseId = providerTurn.providerResponseId || finalProviderResponseId;
     finalUsage = providerTurn.usage;
@@ -162,6 +166,8 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
       providerSoftFailures,
       providerLastErrorCode,
       providerLastErrorStatus,
+      providerLastErrorMessage,
+      providerLastErrorDetails,
       attemptsUsed,
       llmTurns,
       maxAttempts,

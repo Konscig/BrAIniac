@@ -70,6 +70,8 @@ type BuildAgentCallOutputOptions = {
   providerSoftFailures: number;
   providerLastErrorCode: string;
   providerLastErrorStatus: number | null;
+  providerLastErrorMessage: string;
+  providerLastErrorDetails: Record<string, any> | undefined;
   attemptsUsed: number;
   llmTurns: number;
   maxAttempts: number;
@@ -104,10 +106,12 @@ export function buildAgentCallOutput(options: BuildAgentCallOutputOptions): Reco
     provider_calls_attempted: options.providerCallsAttempted,
     provider_soft_failures: options.providerSoftFailures,
     provider_last_error:
-      options.providerLastErrorCode || options.providerLastErrorStatus
+      options.providerLastErrorCode || options.providerLastErrorStatus || options.providerLastErrorMessage
         ? {
             ...(options.providerLastErrorCode ? { code: options.providerLastErrorCode } : {}),
             ...(options.providerLastErrorStatus ? { status: options.providerLastErrorStatus } : {}),
+            ...(options.providerLastErrorMessage ? { message: options.providerLastErrorMessage } : {}),
+            ...(options.providerLastErrorDetails ? { details: options.providerLastErrorDetails } : {}),
           }
         : null,
     attempts_used: options.attemptsUsed,

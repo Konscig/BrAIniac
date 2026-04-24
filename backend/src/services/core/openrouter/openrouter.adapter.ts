@@ -108,6 +108,17 @@ function toProviderMessage(payload: any): string {
   return 'openrouter request failed';
 }
 
+function toProviderErrorDetails(payload: any): Record<string, any> | undefined {
+  const error = payload && typeof payload === 'object' ? (payload as any).error : null;
+  if (!error || typeof error !== 'object') return undefined;
+
+  return {
+    ...(typeof error.code === 'string' || typeof error.code === 'number' ? { provider_code: error.code } : {}),
+    ...(typeof error.message === 'string' ? { provider_message: error.message } : {}),
+    ...(error.metadata && typeof error.metadata === 'object' ? { provider_metadata: error.metadata } : {}),
+  };
+}
+
 export class OpenRouterAdapter {
   private readonly semaphore: Semaphore;
 
@@ -176,6 +187,7 @@ export class OpenRouterAdapter {
             error: toProviderMessage(parsed),
             details: {
               status: response.status,
+              ...toProviderErrorDetails(parsed),
             },
           });
         } catch (error) {

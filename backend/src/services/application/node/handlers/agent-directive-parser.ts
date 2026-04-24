@@ -233,6 +233,19 @@ export function getHttpErrorStatus(error: unknown): number | null {
   return null;
 }
 
+export function getHttpErrorMessage(error: unknown): string {
+  if (!(error instanceof HttpError)) return error instanceof Error ? error.message : '';
+  const body = error.body as Record<string, unknown> | undefined;
+  const message = body?.error;
+  if (typeof message === 'string' && message.trim().length > 0) return message.trim();
+  return error.message;
+}
+
+export function getHttpErrorDetails(error: unknown): Record<string, any> | undefined {
+  if (!(error instanceof HttpError)) return undefined;
+  return toObjectRecord((error.body as Record<string, unknown> | undefined)?.details) ?? undefined;
+}
+
 export function isSoftOpenRouterError(error: unknown): boolean {
   const code = getHttpErrorCode(error);
   if (code === 'OPENROUTER_UNAVAILABLE') return true;

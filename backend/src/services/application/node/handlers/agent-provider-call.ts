@@ -1,5 +1,5 @@
 import type { OpenRouterAdapter } from '../../../core/openrouter/openrouter.adapter.js';
-import { getHttpErrorCode, getHttpErrorStatus, isSoftOpenRouterError } from './agent-directive-parser.js';
+import { getHttpErrorCode, getHttpErrorDetails, getHttpErrorMessage, getHttpErrorStatus, isSoftOpenRouterError } from './agent-directive-parser.js';
 
 export type AgentMessage = {
   role: 'system' | 'user' | 'assistant';
@@ -13,6 +13,8 @@ export type AgentProviderTurnResult = {
   providerSuccessfulResponses: number;
   providerLastErrorCode: string;
   providerLastErrorStatus: number | null;
+  providerLastErrorMessage: string;
+  providerLastErrorDetails: Record<string, any> | undefined;
   completionText: string;
   model: string;
   providerResponseId: string;
@@ -42,6 +44,8 @@ export async function requestAgentCompletion(options: RequestAgentCompletionOpti
   let providerSuccessfulResponses = 0;
   let providerLastErrorCode = '';
   let providerLastErrorStatus: number | null = null;
+  let providerLastErrorMessage = '';
+  let providerLastErrorDetails: Record<string, any> | undefined;
   let completionText = '';
   let finalModel = model ?? '';
   let finalProviderResponseId = '';
@@ -65,11 +69,15 @@ export async function requestAgentCompletion(options: RequestAgentCompletionOpti
       providerSuccessfulResponses += 1;
       providerLastErrorCode = '';
       providerLastErrorStatus = null;
+      providerLastErrorMessage = '';
+      providerLastErrorDetails = undefined;
       completionText = completion.text.trim();
       if (completionText.length > 0) break;
     } catch (error) {
       providerLastErrorCode = getHttpErrorCode(error) ?? '';
       providerLastErrorStatus = getHttpErrorStatus(error);
+      providerLastErrorMessage = getHttpErrorMessage(error);
+      providerLastErrorDetails = getHttpErrorDetails(error);
       const openRouterCode = getHttpErrorCode(error);
       const isOpenRouterError = typeof openRouterCode === 'string' && openRouterCode.startsWith('OPENROUTER_');
       const isRecoverableSoftError = isSoftOpenRouterError(error);
@@ -98,6 +106,8 @@ export async function requestAgentCompletion(options: RequestAgentCompletionOpti
     providerSuccessfulResponses,
     providerLastErrorCode,
     providerLastErrorStatus,
+    providerLastErrorMessage,
+    providerLastErrorDetails,
     completionText,
     model: finalModel,
     providerResponseId: finalProviderResponseId,

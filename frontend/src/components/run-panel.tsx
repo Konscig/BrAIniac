@@ -396,7 +396,19 @@ export function RunPanel({
               {agentDebug.map((entry) => (
                 <div key={entry.id} className="mt-1 space-y-1 border-b border-border/40 pb-2 last:border-0">
                   <div className="font-medium text-foreground">AgentCall #{entry.id}</div>
-                  {["text", "final_text_source", "final_text_origin", "available_tools", "tool_calls_executed", "tool_call_trace"].map((key) => {
+                  {[
+                    "text",
+                    "final_text_source",
+                    "final_text_origin",
+                    "provider_last_error",
+                    "provider_calls_attempted",
+                    "provider_soft_failures",
+                    "provider_response_id",
+                    "raw_completion_text",
+                    "available_tools",
+                    "tool_calls_executed",
+                    "tool_call_trace"
+                  ].map((key) => {
                     const value = summarizeJson(entry.data[key]);
                     if (!value) return null;
                     return (
