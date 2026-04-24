@@ -18,8 +18,7 @@ import {
 } from "../lib/api";
 import { normalizeNodeTypeName } from "../lib/node-catalog";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardHeader } from "./ui/card";
-import { Separator } from "./ui/separator";
+import { Card } from "./ui/card";
 
 interface RunPanelProps {
   pipelineId: number | null;
@@ -128,7 +127,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
     setLocalError(null);
     void refreshDatasets().catch((error) => {
       console.error("Failed to load datasets", error);
-      setLocalError("Не удалось загрузить датасеты.");
+      setLocalError("Не удалось загрузить dataset.");
     });
   }, [refreshDatasets]);
 
@@ -221,37 +220,29 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
       console.error("Failed to run pipeline", error);
       const message = error instanceof Error ? error.message : "Не удалось запустить pipeline.";
       setLocalError(message);
-      onError?.(message);
     } finally {
       setIsRunning(false);
     }
   }, [onError, onExecutionComplete, pipelineId, question, selectedDatasetId]);
 
   const diagnostics = formatDiagnostics(validation);
+  const hasDetails = Boolean(execution || agentDebug.length > 0 || diagnostics.length > 0 || localError);
 
   return (
-    <Card className="shrink-0 rounded-xl border-border/60 bg-card/80">
-      <CardHeader className="space-y-1.5 pb-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Запуск</div>
-            <div className="mt-0.5 text-sm font-semibold">Dataset и вопрос</div>
-          </div>
-          <Button type="button" size="icon" disabled={!pipelineId || isRunning} onClick={handleRun}>
-            <Play className="h-4 w-4" />
-          </Button>
-        </div>
-      </CardHeader>
-      <Separator />
-      <CardContent className="space-y-2 p-2">
-        <div className="rounded-lg border border-border/50 bg-muted/10 px-2.5 py-2">
-          <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">ManualInput</div>
-          <div className="mt-0.5 line-clamp-3 text-[11px] leading-4 text-foreground">
+    <Card className="w-[min(58vw,620px)] shrink-0 rounded-xl border-border/60 bg-card/80 px-2 py-2">
+      <div className="flex items-center gap-2">
+        <Button type="button" size="icon" className="h-9 w-9 shrink-0" disabled={!pipelineId || isRunning} onClick={handleRun}>
+          <Play className="h-4 w-4" />
+        </Button>
+
+        <div className="min-w-[150px] flex-1">
+          <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Запуск</div>
+          <div className="line-clamp-1 text-[11px] leading-4 text-foreground">
             {question || "Вопрос не задан"}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-[210px] items-center gap-1.5">
           <select
             value={selectedDatasetId ? String(selectedDatasetId) : ""}
             onChange={(event) => {
@@ -268,6 +259,7 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
               </option>
             ))}
           </select>
+
           <label className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border/60 bg-background/85 text-muted-foreground transition hover:text-foreground">
             <Upload className="h-4 w-4" />
             <input
@@ -278,31 +270,36 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
               onChange={handleUpload}
             />
           </label>
+
           <Button
             type="button"
             size="icon"
             variant="ghost"
+            className="h-8 w-8"
             disabled={!selectedDatasetId || isDatasetBusy}
             onClick={handleDeleteDataset}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
+      </div>
 
-        {execution && (
-          <div className="rounded-lg border border-border/50 bg-muted/10 px-2.5 py-2 text-[11px] leading-4">
-            <div className="font-medium text-foreground">Execution: {execution.status}</div>
-            {execution.final_result?.text && (
-              <div className="mt-1 line-clamp-4 text-muted-foreground">{execution.final_result.text}</div>
+      {hasDetails && (
+        <details className="mt-2 rounded-lg border border-border/50 bg-muted/10 px-2.5 py-1.5 text-[11px] leading-4 text-muted-foreground">
+          <summary className="cursor-pointer list-none font-medium text-foreground">Детали запуска</summary>
+          <div className="mt-2 max-h-36 space-y-2 overflow-auto">
+            {execution && (
+              <div>
+                <div className="font-medium text-foreground">Execution: {execution.status}</div>
+                {execution.final_result?.text && (
+                  <div className="mt-1 line-clamp-4 text-muted-foreground">{execution.final_result.text}</div>
+                )}
+                {!execution.final_result?.text && execution.final_result?.output_preview && (
+                  <div className="mt-1 line-clamp-4 text-muted-foreground">{execution.final_result.output_preview}</div>
+                )}
+              </div>
             )}
-            {!execution.final_result?.text && execution.final_result?.output_preview && (
-              <div className="mt-1 line-clamp-4 text-muted-foreground">{execution.final_result.output_preview}</div>
-            )}
-          </div>
-        )}
 
-        {agentDebug.length > 0 && (
-          <div className="max-h-40 overflow-auto rounded-lg border border-border/50 bg-muted/10 px-2.5 py-2 text-[11px] leading-4 text-muted-foreground">
             {agentDebug.map((entry) => (
               <div key={entry.id} className="space-y-1 border-b border-border/40 py-2 last:border-0">
                 <div className="font-medium text-foreground">AgentCall #{entry.id}</div>
@@ -317,23 +314,19 @@ export function RunPanel({ pipelineId, nodes, nodeTypes, onError, onExecutionCom
                 })}
               </div>
             ))}
-          </div>
-        )}
 
-        {diagnostics.length > 0 && (
-          <div className="max-h-28 overflow-auto rounded-lg border border-border/50 bg-muted/10 px-2.5 py-2 text-[11px] leading-4 text-muted-foreground">
             {diagnostics.map((item) => (
               <div key={item}>{item}</div>
             ))}
-          </div>
-        )}
 
-        {localError && (
-          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-2 text-[11px] text-red-200">
-            {localError}
+            {localError && (
+              <div className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-red-200">
+                {localError}
+              </div>
+            )}
           </div>
-        )}
-      </CardContent>
+        </details>
+      )}
     </Card>
   );
 }

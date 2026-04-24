@@ -100,7 +100,7 @@ export function SidebarProjects({
   }, [editing, onRenamePipeline, onRenameProject, pipelinesByProject, projects]);
 
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col border-r border-border/60 bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--card))_100%)] backdrop-blur">
+    <aside className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-x-hidden border-r border-border/60 bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--card))_100%)] backdrop-blur">
       <div className="border-b border-border/60 px-3 py-2.5">
         <button
           type="button"
@@ -122,15 +122,15 @@ export function SidebarProjects({
       </div>
 
       {isProjectsOpen && (
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="space-y-3 px-2.5 py-2.5">
+        <ScrollArea className="min-h-0 min-w-0 flex-1">
+          <div className="min-w-0 space-y-3 px-2.5 py-2.5">
             <section className="rounded-xl border border-border/60 bg-card/45 p-2">
               <div className="flex items-center gap-2">
                 <input
                   value={projectDraft}
                   onChange={(event) => setProjectDraft(event.target.value)}
                   placeholder="Новый проект"
-                  className="h-8 flex-1 rounded-md border border-border/60 bg-background/80 px-2.5 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+                  className="h-8 min-w-0 flex-1 rounded-md border border-border/60 bg-background/80 px-2.5 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring"
                 />
                 <Button
                   type="button"
@@ -164,7 +164,7 @@ export function SidebarProjects({
                 return (
                   <div
                     key={project.project_id}
-                  className={cn(
+                    className={cn(
                       "overflow-hidden rounded-xl border transition",
                       isActiveProject
                         ? "border-primary/45 bg-primary/8 shadow-[inset_0_0_0_1px_rgba(39,135,245,0.12)]"
@@ -208,7 +208,7 @@ export function SidebarProjects({
                                 }
                               }}
                               autoFocus
-                              className="h-8 w-full rounded-md border border-primary/40 bg-background/85 px-2.5 text-sm font-semibold text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+                              className="h-8 min-w-0 w-full rounded-md border border-primary/40 bg-background/85 px-2.5 text-sm font-semibold text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
                             />
                           </div>
                         </div>
@@ -223,7 +223,7 @@ export function SidebarProjects({
                           className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition hover:bg-muted/15"
                         >
                           <FolderKanban className="h-4 w-4 shrink-0" />
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="truncate text-sm font-semibold text-foreground">{project.name}</div>
                             <div className="text-xs text-muted-foreground">
                               {projectPipelines.length} агент{projectPipelines.length === 1 ? "" : projectPipelines.length < 5 ? "а" : "ов"}
@@ -401,7 +401,7 @@ export function SidebarProjects({
                                 }))
                               }
                               placeholder="Новый агент"
-                              className="h-8 flex-1 rounded-md border border-border/60 bg-background/80 px-2.5 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+                              className="h-8 min-w-0 flex-1 rounded-md border border-border/60 bg-background/80 px-2.5 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring"
                             />
                             <Button
                               type="button"

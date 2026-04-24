@@ -36,7 +36,13 @@ import {
   type ToolRecord,
   updateNode
 } from "../lib/api";
-import { getNodeTypeRole, getNodeTypeUiLabel, normalizeNodeTypeName } from "../lib/node-catalog";
+import {
+  getNodeTypeRole,
+  getNodeTypeTechnicalLabel,
+  getNodeTypeUiLabel,
+  getToolUiLabel,
+  normalizeNodeTypeName
+} from "../lib/node-catalog";
 import { cn } from "../lib/utils";
 import { type CanvasNodeData, nodeTypes } from "./custom-nodes";
 import { Card } from "./ui/card";
@@ -90,6 +96,12 @@ function readSelectedToolId(node: NodeRecord): number | null {
   return Number.isInteger(toolId) && toolId > 0 ? toolId : null;
 }
 
+function readSelectedToolName(node: NodeRecord): string {
+  const tool = node.ui_json?.tool;
+  const record = tool && typeof tool === "object" && !Array.isArray(tool) ? (tool as Record<string, unknown>) : null;
+  return typeof record?.name === "string" ? record.name : "";
+}
+
 function toPreviewText(value: unknown, maxLength = 420): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") {
@@ -129,6 +141,16 @@ function readFinalOutputPreview(node: NodeRecord, nodeTypeName: string): string 
   return preview || undefined;
 }
 
+function readTracePreview(node: NodeRecord): string | undefined {
+  const wrapper = node.output_json && typeof node.output_json === "object" ? (node.output_json as Record<string, unknown>) : null;
+  const candidates = [wrapper?.error, wrapper?.node_error, wrapper?.trace, wrapper?.diagnostics];
+  for (const candidate of candidates) {
+    const preview = toPreviewText(candidate, 520);
+    if (preview) return preview;
+  }
+  return undefined;
+}
+
 function getExecutionStatus(node: NodeRecord): CanvasNodeData["status"] {
   const wrapper = node.output_json && typeof node.output_json === "object" ? (node.output_json as Record<string, unknown>) : null;
   const raw = wrapper?.status;
@@ -157,6 +179,13 @@ function toFlowNode(
   const position = readNodePosition(node);
   const role = nodeType ? getNodeTypeRole(nodeType) : "transform";
   const nodeTypeName = nodeType ? normalizeNodeTypeName(nodeType.name) : `NodeType ${node.fk_type_id}`;
+  const selectedToolName = nodeTypeName === "ToolNode" ? readSelectedToolName(node) : "";
+  const label =
+    nodeTypeName === "ToolNode" && selectedToolName
+      ? getToolUiLabel(selectedToolName)
+      : nodeType
+        ? getNodeTypeUiLabel(nodeType)
+        : readNodeLabel(node);
 
   return {
     id: String(node.node_id),
@@ -164,15 +193,18 @@ function toFlowNode(
     position,
     data: {
       nodeId: node.node_id,
-      label: readNodeLabel(node),
+      label,
       nodeTypeName,
+      technicalLabel: getNodeTypeTechnicalLabel(nodeTypeName),
       role,
       status: getExecutionStatus(node),
       isIncomplete: isNodeIncomplete(node, nodeType),
       description: nodeType?.desc ?? undefined,
       manualQuestion: nodeTypeName === "ManualInput" ? readManualQuestion(node) : undefined,
       selectedToolId: nodeTypeName === "ToolNode" ? readSelectedToolId(node) : undefined,
+      selectedToolLabel: selectedToolName ? getToolUiLabel(selectedToolName) : undefined,
       finalOutputPreview: readFinalOutputPreview(node, nodeTypeName),
+      tracePreview: readTracePreview(node),
       tools,
       ...callbacks
     }
@@ -353,7 +385,7 @@ export function CanvasBoard({
             name: selectedTool.name,
             config_json: selectedTool.config_json
           };
-          nextUiJson.label = `Узел инструмента (${selectedTool.name})`;
+          nextUiJson.label = getToolUiLabel(selectedTool.name);
         } else {
           delete nextUiJson.tool;
         }

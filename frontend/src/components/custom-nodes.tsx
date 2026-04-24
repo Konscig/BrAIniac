@@ -1,8 +1,9 @@
 import React from "react";
-import { Bot, Braces, Cable, CirclePlay, Database, Save, Wrench } from "lucide-react";
+import { AlertCircle, Bot, Braces, Cable, CirclePlay, Database, Save, Settings, Wrench } from "lucide-react";
 import { Handle, Position, type NodeProps } from "reactflow";
 
 import type { ToolRecord } from "../lib/api";
+import { getToolUiLabel } from "../lib/node-catalog";
 import { cn } from "../lib/utils";
 
 type CanvasNodeStatus = "idle" | "completed" | "failed" | "skipped" | "running";
@@ -11,13 +12,16 @@ export type CanvasNodeData = {
   nodeId: number;
   label: string;
   nodeTypeName: string;
+  technicalLabel: string;
   role: string;
   status: CanvasNodeStatus;
   isIncomplete?: boolean;
   description?: string;
   manualQuestion?: string;
   selectedToolId?: number | null;
+  selectedToolLabel?: string;
   finalOutputPreview?: string;
+  tracePreview?: string;
   tools?: ToolRecord[];
   onManualQuestionCommit?: (nodeId: number, question: string) => void;
   onToolSelect?: (nodeId: number, toolId: number | null) => void;
@@ -54,6 +58,13 @@ const roleTokens: Record<string, { badge: string; frame: string; handle: string 
   }
 };
 
+const roleLabels: Record<string, string> = {
+  source: "источник",
+  transform: "шаг",
+  control: "контроль",
+  sink: "выход"
+};
+
 const iconByType: Record<string, React.ComponentType<{ className?: string }>> = {
   Trigger: CirclePlay,
   ManualInput: Database,
@@ -76,10 +87,15 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
   const isAgentCall = data.nodeTypeName === "AgentCall";
   const isSaveResult = data.nodeTypeName === "SaveResult";
   const [questionDraft, setQuestionDraft] = React.useState(data.manualQuestion ?? "");
+  const [isToolPickerOpen, setIsToolPickerOpen] = React.useState(!data.selectedToolId);
 
   React.useEffect(() => {
     setQuestionDraft(data.manualQuestion ?? "");
   }, [data.manualQuestion]);
+
+  React.useEffect(() => {
+    setIsToolPickerOpen(!data.selectedToolId);
+  }, [data.selectedToolId]);
 
   const stopCanvasGesture = (event: React.SyntheticEvent) => {
     event.stopPropagation();
@@ -96,7 +112,7 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
   return (
     <div
       className={cn(
-        "group relative flex min-w-[190px] max-w-[224px] flex-col gap-2 rounded-xl border px-3 py-2.5 shadow-sm transition",
+        "group relative flex min-w-[210px] max-w-[292px] flex-col gap-2 rounded-xl border px-3 py-2.5 shadow-sm transition",
         tokens.frame,
         selected && "ring-2 ring-ring",
         data.isIncomplete && "border-dashed border-amber-400/60"
@@ -107,17 +123,32 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
           <Icon className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-semibold leading-4 text-foreground">{data.label}</div>
+          <div className="whitespace-normal break-words text-xs font-semibold leading-4 text-foreground">{data.label}</div>
           <div className="truncate text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
-            {data.nodeTypeName}
+            {data.technicalLabel}
           </div>
         </div>
+        {isToolNode && data.selectedToolId && (
+          <button
+            type="button"
+            className="nodrag flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
+            onClick={(event) => {
+              stopCanvasGesture(event);
+              setIsToolPickerOpen((current) => !current);
+            }}
+            onMouseDown={stopCanvasGesture}
+            onPointerDown={stopCanvasGesture}
+            aria-label="Сменить инструмент"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-2 text-[10px]">
         <span className={cn("font-medium", status.tone)}>{status.label}</span>
         <span className="rounded-md border border-border/50 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
-          {data.role}
+          {roleLabels[data.role] ?? data.role}
         </span>
       </div>
 
@@ -145,7 +176,7 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
         />
       )}
 
-      {isToolNode && (
+      {isToolNode && (isToolPickerOpen || !data.selectedToolId) && (
         <select
           value={data.selectedToolId ? String(data.selectedToolId) : ""}
           onChange={(event) => {
@@ -159,10 +190,16 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
           <option value="">Выберите инструмент</option>
           {(data.tools ?? []).map((tool) => (
             <option key={tool.tool_id} value={tool.tool_id}>
-              {tool.name}
+              {getToolUiLabel(tool.name)}
             </option>
           ))}
         </select>
+      )}
+
+      {isToolNode && data.selectedToolId && !isToolPickerOpen && (
+        <div className="rounded-md border border-border/50 bg-background/70 px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
+          {data.selectedToolLabel}
+        </div>
       )}
 
       {isSaveResult && data.finalOutputPreview && (
@@ -173,6 +210,16 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
 
       {data.description && (
         <div className="line-clamp-2 text-[10px] leading-4 text-muted-foreground">{data.description}</div>
+      )}
+
+      {data.tracePreview && (
+        <details className="nodrag rounded-md border border-border/50 bg-background/70 px-2 py-1.5 text-[10px] leading-4 text-muted-foreground">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10px] font-medium text-foreground">
+            <AlertCircle className="h-3.5 w-3.5 text-amber-300" />
+            Трейс узла
+          </summary>
+          <div className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-words">{data.tracePreview}</div>
+        </details>
       )}
 
       {!isToolNode && (

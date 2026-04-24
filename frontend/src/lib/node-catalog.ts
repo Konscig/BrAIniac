@@ -123,6 +123,68 @@ export function getNodeTypeUiLabel(nodeType: NodeTypeRecord): string {
   }
 }
 
+export function getNodeTypeTechnicalLabel(name: string): string {
+  switch (normalizeNodeTypeName(name)) {
+    case "Trigger":
+      return "триггер";
+    case "ManualInput":
+      return "ввод";
+    case "PromptBuilder":
+      return "промпт";
+    case "Filter":
+      return "фильтр";
+    case "Ranker":
+      return "ранжирование";
+    case "LLMCall":
+      return "модель";
+    case "AgentCall":
+      return "агент";
+    case "ToolNode":
+      return "инструмент";
+    case "Parser":
+      return "парсер";
+    case "SaveResult":
+      return "финал";
+    default:
+      return normalizeNodeTypeName(name);
+  }
+}
+
+export function getToolUiLabel(name: string): string {
+  switch (name.trim()) {
+    case "DocumentLoader":
+      return "Загрузчик документов";
+    case "Chunker":
+      return "Разбиение на фрагменты";
+    case "ContextAssembler":
+      return "Сборщик контекста";
+    case "LLMAnswer":
+      return "Ответ модели";
+    case "CitationFormatter":
+      return "Оформление цитат";
+    case "Embedder":
+      return "Векторизация";
+    case "VectorUpsert":
+      return "Запись в векторный индекс";
+    case "HybridRetriever":
+      return "Гибридный поиск";
+    case "QueryBuilder":
+      return "Сборка поискового запроса";
+    case "Reranker":
+      return "Переранжирование";
+    case "OutputValidator":
+      return "Проверка ответа";
+    case "TraceLogger":
+      return "Логирование трассы";
+    case "GroundingChecker":
+      return "Проверка обоснованности";
+    case "TextNormalizer":
+      return "Нормализация текста";
+    default:
+      return name.trim();
+  }
+}
+
 export function getNodeTypeUiTagline(nodeType: NodeTypeRecord): string {
   switch (normalizeNodeTypeName(nodeType.name)) {
     case "Trigger":

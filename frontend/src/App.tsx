@@ -323,14 +323,23 @@ function MainPage(): React.ReactElement {
         />
 
         <section className="flex min-h-0 min-w-0 flex-col gap-2.5 overflow-hidden border-r border-border/60 border-l border-border/60 px-3 py-3">
-          <div className="shrink-0 px-1 pt-0.5">
-            <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground">
-              <span className="truncate">{activeProject?.name ?? "Проект не выбран"}</span>
-              <span className="shrink-0 text-muted-foreground/70">&gt;</span>
-              <span className="truncate text-primary">
-                {activePipeline?.name ?? "Пайплайн не выбран"}
-              </span>
+          <div className="flex shrink-0 items-start gap-3 px-1 pt-0.5">
+            <div className="min-w-0 flex-1 pt-1">
+              <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground">
+                <span className="truncate">{activeProject?.name ?? "Проект не выбран"}</span>
+                <span className="shrink-0 text-muted-foreground/70">&gt;</span>
+                <span className="truncate text-primary">
+                  {activePipeline?.name ?? "Агент не выбран"}
+                </span>
+              </div>
             </div>
+            <RunPanel
+              pipelineId={activePipelineId}
+              nodes={graphState.nodes}
+              nodeTypes={nodeTypes}
+              onError={setDataError}
+              onExecutionComplete={() => setGraphRefreshToken((current) => current + 1)}
+            />
           </div>
 
           {isLoading && <div className="shrink-0 text-sm text-muted-foreground">Загружаем каталог узлов...</div>}
@@ -355,13 +364,6 @@ function MainPage(): React.ReactElement {
           <div className="min-h-0 flex-1">
             <NodeLibrary nodeTypes={nodeTypes} />
           </div>
-          <RunPanel
-            pipelineId={activePipelineId}
-            nodes={graphState.nodes}
-            nodeTypes={nodeTypes}
-            onError={setDataError}
-            onExecutionComplete={() => setGraphRefreshToken((current) => current + 1)}
-          />
         </aside>
       </main>
     </div>
