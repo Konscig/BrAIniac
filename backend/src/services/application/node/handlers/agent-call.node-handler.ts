@@ -57,7 +57,6 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   let providerLastErrorStatus: number | null = null;
   let providerSoftFailures = 0;
   let providerSuccessfulResponses = 0;
-  let plannerFallbackUsed = false;
   let finalTextSource = '';
   let finalTextOrigin = '';
   let rawCompletionText = '';
@@ -101,20 +100,15 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
     const hasToolBudget = toolCallsExecuted < maxToolCalls;
     const directive: AgentDirective = completionText ? parseAgentDirective(completionText) : { kind: 'none', raw: null };
     lastDirectiveSummary = summarizeDirective(directive);
-    const fallbackTool = hasToolBudget ? toolResolution.orderedBindings.find((entry) => !attemptedToolKeys.has(entry.key)) : undefined;
     const artifactAnswer = extractAgentArtifactAnswer(workingInputs);
     const turnDecision = resolveAgentTurnDecision({
       directive,
       hasToolBudget,
-      ...(fallbackTool ? { fallbackTool: { key: fallbackTool.key, name: fallbackTool.binding.name } } : {}),
       artifactAnswer,
       completionText,
     });
 
     if (turnDecision.kind === 'tool_call') {
-      if (turnDecision.plannerFallbackUsed) {
-        plannerFallbackUsed = true;
-      }
       toolCallsExecuted += 1;
       const toolCallResult = await runAgentToolCall({
         index: toolCallsExecuted,
@@ -174,7 +168,7 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
       maxToolCalls,
       toolCallsExecuted,
       toolCallTrace,
-      plannerFallbackUsed,
+      plannerFallbackUsed: false,
       availableTools,
       unresolvedTools: toolResolution.unresolvedTools,
       providerSuccessfulResponses,

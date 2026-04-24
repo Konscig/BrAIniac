@@ -58,21 +58,20 @@ function testSoftErrorClassification() {
   assert.equal(isSoftOpenRouterError(error), true);
 }
 
-function testFinalFallsBackToLlmAnswerWhenNoArtifactAnswerYet() {
+function testFinalDoesNotAutoCallLlmAnswerWhenNoArtifactAnswerYet() {
   const decision = resolveAgentTurnDecision({
     directive: parseAgentDirective('{"type":"final","text":"premature"}'),
     hasToolBudget: true,
-    fallbackTool: { key: 'llmanswer', name: 'LLMAnswer' },
     artifactAnswer: null,
     completionText: '{"type":"final","text":"premature"}',
   });
 
-  assert.equal(decision.kind, 'tool_call');
-  assert.equal(decision.requestedToolName, 'LLMAnswer');
-  assert.equal(decision.source, 'fallback');
+  assert.equal(decision.kind, 'final');
+  assert.equal(decision.text, 'premature');
+  assert.equal(decision.finalTextOrigin, 'model');
 }
 
-function testArtifactAnswerWinsWhenNoFallbackToolLeft() {
+function testArtifactAnswerWinsWhenModelHasNoNextDirective() {
   const decision = resolveAgentTurnDecision({
     directive: { kind: 'none', raw: null },
     hasToolBudget: false,
@@ -85,13 +84,25 @@ function testArtifactAnswerWinsWhenNoFallbackToolLeft() {
   assert.equal(decision.finalTextSource, 'artifact.answer');
 }
 
+function testToolCallOverBudgetDoesNotBecomeFinalText() {
+  const decision = resolveAgentTurnDecision({
+    directive: parseAgentDirective('{"type":"tool_call","tool_name":"DocumentLoader","input":{}}'),
+    hasToolBudget: false,
+    artifactAnswer: null,
+    completionText: '{"type":"tool_call","tool_name":"DocumentLoader","input":{}}',
+  });
+
+  assert.equal(decision.kind, 'none');
+}
+
 testParseFinal();
 testParseToolCall();
 testRecoverMalformedToolCall();
 testRejectUnknownToolIsRepresentedAsFinalMarkup();
 testToolAdvertisingInputsAreExcludedFromPrompt();
 testSoftErrorClassification();
-testFinalFallsBackToLlmAnswerWhenNoArtifactAnswerYet();
-testArtifactAnswerWinsWhenNoFallbackToolLeft();
+testFinalDoesNotAutoCallLlmAnswerWhenNoArtifactAnswerYet();
+testArtifactAnswerWinsWhenModelHasNoNextDirective();
+testToolCallOverBudgetDoesNotBecomeFinalText();
 
 console.log('[agent-runtime-unit] SUCCESS');

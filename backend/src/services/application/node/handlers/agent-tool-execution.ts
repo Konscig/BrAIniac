@@ -146,6 +146,32 @@ function assertToolContractExecutorCompatibility(contract: ResolvedToolContract,
 
 function resolveToolExecutorConfig(toolConfig: any): ResolvedToolExecutorConfig {
   const executor = toolConfig?.executor;
+  if (typeof executor === 'string') {
+    const rawKind = executor.trim();
+    const normalizedKind = rawKind.toLowerCase();
+    const options = {
+      kind: rawKind,
+      ...(typeof toolConfig?.url === 'string' ? { url: toolConfig.url } : {}),
+      ...(typeof toolConfig?.method === 'string' ? { method: toolConfig.method } : {}),
+      ...(toolConfig?.headers && typeof toolConfig.headers === 'object' ? { headers: toolConfig.headers } : {}),
+      ...(toolConfig?.timeoutMs !== undefined ? { timeoutMs: toolConfig.timeoutMs } : {}),
+    };
+
+    if (normalizedKind === 'openrouter-embeddings' || normalizedKind === 'http-json') {
+      return {
+        kind: normalizedKind,
+        rawKind,
+        options,
+      };
+    }
+
+    return {
+      kind: undefined,
+      rawKind,
+      options,
+    };
+  }
+
   if (!executor || typeof executor !== 'object') {
     return {
       kind: undefined,

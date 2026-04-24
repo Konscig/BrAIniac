@@ -40,18 +40,18 @@ export type AgentResolvedFinalText = {
   origin: string;
 };
 
-export function resolveEmptyAgentFinalText(fallbackAnswer: string | null): AgentResolvedFinalText {
-  if (fallbackAnswer) {
+export function resolveEmptyAgentFinalText(artifactAnswer: string | null): AgentResolvedFinalText {
+  if (artifactAnswer) {
     return {
-      text: fallbackAnswer,
+      text: artifactAnswer,
       source: 'artifact.answer',
       origin: 'tool-artifact',
     };
   }
 
   return {
-    text: 'AgentCall completed with empty answer.',
-    source: 'fallback.empty',
+    text: 'AgentCall completed without a final answer.',
+    source: 'agent.empty',
     origin: 'runtime',
   };
 }

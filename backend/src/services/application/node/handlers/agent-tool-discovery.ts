@@ -11,15 +11,8 @@ export type AgentToolBinding = {
   config_json?: Record<string, any>;
 };
 
-export type AgentResolvedToolBinding = {
-  key: string;
-  binding: ResolvedToolBinding;
-  advertised: Record<string, any>;
-};
-
 export type AgentToolResolution = {
   advertised: Array<Record<string, any>>;
-  orderedBindings: AgentResolvedToolBinding[];
   byKey: Map<string, ResolvedToolBinding>;
   unresolvedTools: string[];
 };
@@ -88,45 +81,6 @@ function listAdvertisedAgentTools(bindings: AgentToolBinding[]): Array<Record<st
   }));
 }
 
-function buildAgentFallbackSequence(orderedBindings: AgentResolvedToolBinding[]): AgentResolvedToolBinding[] {
-  const preferredOrder = [
-    'documentloader',
-    'chunker',
-    'embedder',
-    'vectorupsert',
-    'querybuilder',
-    'hybridretriever',
-    'contextassembler',
-    'llmanswer',
-    'citationformatter',
-  ];
-
-  const byKey = new Map<string, AgentResolvedToolBinding>();
-  for (const entry of orderedBindings) {
-    if (!byKey.has(entry.key)) {
-      byKey.set(entry.key, entry);
-    }
-  }
-
-  const out: AgentResolvedToolBinding[] = [];
-  const seen = new Set<string>();
-
-  for (const key of preferredOrder) {
-    const row = byKey.get(key);
-    if (!row) continue;
-    out.push(row);
-    seen.add(row.key);
-  }
-
-  for (const row of orderedBindings) {
-    if (seen.has(row.key)) continue;
-    out.push(row);
-    seen.add(row.key);
-  }
-
-  return out;
-}
-
 export function isToolAdvertisingInput(value: unknown, depth = 0): boolean {
   if (depth > 6 || value === undefined || value === null) return false;
 
@@ -158,7 +112,6 @@ export async function resolveAgentToolBindings(_runtime: RuntimeNode, inputs: an
   if (requestedBindings.length === 0) {
     return {
       advertised,
-      orderedBindings: [],
       byKey: new Map<string, ResolvedToolBinding>(),
       unresolvedTools: [],
     };
@@ -178,7 +131,6 @@ export async function resolveAgentToolBindings(_runtime: RuntimeNode, inputs: an
     byNameKey.set(normalizeToolLookupKey(toolName), tool);
   }
 
-  const orderedBindings: AgentResolvedToolBinding[] = [];
   const byKey = new Map<string, ResolvedToolBinding>();
   const unresolvedTools: string[] = [];
 
@@ -210,17 +162,6 @@ export async function resolveAgentToolBindings(_runtime: RuntimeNode, inputs: an
       source: linkedId ? 'node.tool_id' : 'node.tool',
     };
 
-    const resolved: AgentResolvedToolBinding = {
-      key: bindingKey,
-      binding: resolvedBinding,
-      advertised: {
-        name: requestedBinding.name,
-        ...(requestedBinding.desc ? { desc: requestedBinding.desc } : {}),
-        ...(requestedBinding.schema ? { schema: requestedBinding.schema } : {}),
-      },
-    };
-
-    orderedBindings.push(resolved);
     if (!byKey.has(bindingKey)) {
       byKey.set(bindingKey, resolvedBinding);
     }
@@ -233,7 +174,6 @@ export async function resolveAgentToolBindings(_runtime: RuntimeNode, inputs: an
 
   return {
     advertised,
-    orderedBindings: buildAgentFallbackSequence(orderedBindings),
     byKey,
     unresolvedTools,
   };
