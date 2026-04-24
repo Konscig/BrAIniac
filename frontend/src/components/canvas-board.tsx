@@ -40,6 +40,7 @@ import {
   getNodeTypeRole,
   getNodeTypeTechnicalLabel,
   getNodeTypeUiLabel,
+  getNodeTypeUiTagline,
   getToolUiLabel,
   normalizeNodeTypeName
 } from "../lib/node-catalog";
@@ -199,7 +200,7 @@ function toFlowNode(
       role,
       status: getExecutionStatus(node),
       isIncomplete: isNodeIncomplete(node, nodeType),
-      description: nodeType?.desc ?? undefined,
+      description: nodeType ? getNodeTypeUiTagline(nodeType) : undefined,
       manualQuestion: nodeTypeName === "ManualInput" ? readManualQuestion(node) : undefined,
       selectedToolId: nodeTypeName === "ToolNode" ? readSelectedToolId(node) : undefined,
       selectedToolLabel: selectedToolName ? getToolUiLabel(selectedToolName) : undefined,

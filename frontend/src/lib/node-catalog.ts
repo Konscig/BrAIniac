@@ -81,14 +81,14 @@ export function getNodeTypeGroupLabel(nodeType: NodeTypeRecord): string {
   switch (normalizeNodeTypeName(nodeType.name)) {
     case "Trigger":
     case "ManualInput":
-      return "Источники";
+      return "Вход";
     case "AgentCall":
     case "LLMCall":
       return "Агент и модели";
     case "ToolNode":
       return "Инструменты";
     case "SaveResult":
-      return "Завершение";
+      return "Выход";
     default:
       return "Обработка";
   }
@@ -117,7 +117,7 @@ export function getNodeTypeUiLabel(nodeType: NodeTypeRecord): string {
     case "SaveResult":
       return "Сохранение результата";
     case "DatasetInput":
-      return "Входной датасет";
+      return "Входной dataset";
     default:
       return normalizeNodeTypeName(nodeType.name);
   }
@@ -126,25 +126,25 @@ export function getNodeTypeUiLabel(nodeType: NodeTypeRecord): string {
 export function getNodeTypeTechnicalLabel(name: string): string {
   switch (normalizeNodeTypeName(name)) {
     case "Trigger":
-      return "триггер";
+      return "вход";
     case "ManualInput":
-      return "ввод";
+      return "вход";
     case "PromptBuilder":
-      return "промпт";
+      return "обработка";
     case "Filter":
-      return "фильтр";
+      return "обработка";
     case "Ranker":
-      return "ранжирование";
+      return "обработка";
     case "LLMCall":
-      return "модель";
+      return "обработка";
     case "AgentCall":
       return "агент";
     case "ToolNode":
       return "инструмент";
     case "Parser":
-      return "парсер";
+      return "обработка";
     case "SaveResult":
-      return "финал";
+      return "выход";
     default:
       return normalizeNodeTypeName(name);
   }
@@ -188,28 +188,28 @@ export function getToolUiLabel(name: string): string {
 export function getNodeTypeUiTagline(nodeType: NodeTypeRecord): string {
   switch (normalizeNodeTypeName(nodeType.name)) {
     case "Trigger":
-      return "Старт по событию или вручную";
+      return "Запускает граф вручную или по событию.";
     case "ManualInput":
-      return "Передаёт вопрос в граф";
+      return "Передает вопрос пользователя в граф.";
     case "PromptBuilder":
-      return "Готовит контекст для модели";
+      return "Собирает текст промпта из входных данных.";
     case "Filter":
-      return "Оставляет только нужные записи";
+      return "Отбирает записи по заданному правилу.";
     case "Ranker":
-      return "Упорядочивает кандидатов";
+      return "Сортирует кандидатов и ограничивает выдачу.";
     case "LLMCall":
-      return "Прямой вызов модели";
+      return "Отправляет прямой запрос в модель.";
     case "AgentCall":
-      return "Оркестрирует инструменты через агентный runtime";
+      return "Оркестрирует модель и подключенные инструменты.";
     case "ToolNode":
-      return "Представляет конкретный инструмент";
+      return "Объявляет инструмент для агента или исполняет его как шаг.";
     case "Parser":
-      return "Нормализует и структурирует output";
+      return "Преобразует текстовый ответ в структурированные данные.";
     case "SaveResult":
-      return "Финальная точка сохранения результата";
+      return "Показывает и сохраняет финальный результат.";
     case "DatasetInput":
-      return "Скрытый источник для расширенного сценария";
+      return "Передает dataset в расширенные сценарии.";
     default:
-      return nodeType.desc;
+      return "Узел графа выполнения.";
   }
 }
