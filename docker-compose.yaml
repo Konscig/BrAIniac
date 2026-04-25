@@ -90,10 +90,30 @@ services:
     networks:
       - brainiac-network
 
+  judge-eval-worker:
+    build: ./judge-eval-worker
+    container_name: judge-eval-worker
+    profiles: ["app"]
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - brainiac-network
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health', timeout=3).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
 
 networks:
   brainiac-network:
     driver: bridge
 
 volumes:
-  postgres_data:    
+  postgres_data:
