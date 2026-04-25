@@ -2370,7 +2370,7 @@ async function run() {
     !String(llmAnswerContractOutput?.answer ?? '').toLowerCase().includes('rag') ||
     llmAnswerContractOutput?.grounded !== true
   ) {
-    return fail('LLMAnswer contract happy output should include grounded deterministic answer', {
+    return fail('LLMAnswer contract happy output should include grounded provider answer', {
       status: 500,
       body: llmAnswerHappyOutput,
     });

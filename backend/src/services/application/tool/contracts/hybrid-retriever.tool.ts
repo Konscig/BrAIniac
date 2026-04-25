@@ -280,42 +280,25 @@ function shouldUseDenseSimilarity(record: IndexedVectorRecord): boolean {
   return record.provider === 'http-json';
 }
 
-function buildSyntheticHybridRetrieverContractOutput(input: Record<string, any>): Record<string, any> {
+function buildNoResultsHybridRetrieverContractOutput(input: Record<string, any>, indexedRecordCount = 0): Record<string, any> {
   const retrievalQuery = normalizeText(String(input.retrieval_query ?? ''));
   const topK = resolveTopK(input.top_k);
   const mode = resolveMode(input.mode);
   const alpha = resolveAlpha(input.alpha);
-
-  const terms = tokenize(retrievalQuery);
-  const fallbackTerms = terms.length > 0 ? terms : ['context'];
-  const modeBaseScore = mode === 'dense' ? 0.9 : mode === 'sparse' ? 0.82 : 0.86;
-
-  const candidates = Array.from({ length: topK }, (_, index) => {
-    const primary = fallbackTerms[index % fallbackTerms.length] ?? 'context';
-    const secondary = fallbackTerms[(index + 1) % fallbackTerms.length] ?? 'passage';
-    const rank = index + 1;
-    const score = Number(Math.max(0.05, modeBaseScore - index * 0.06 + (mode === 'hybrid' ? alpha * 0.02 : 0)).toFixed(3));
-
-    return {
-      rank,
-      document_id: `doc_${rank}`,
-      chunk_id: `chunk_${rank}`,
-      score,
-      mode,
-      snippet: `${primary} ${secondary} context passage ${rank}`,
-    };
-  });
 
   return {
     retrieval_query: retrievalQuery,
     top_k: topK,
     mode,
     alpha,
-    candidate_count: candidates.length,
-    retrieval_source: 'synthetic-fallback',
-    candidates,
-    candidates_manifest: buildInlineArtifactManifest('retrieval_candidates', candidates, {
-      retrieval_source: 'synthetic-fallback',
+    candidate_count: 0,
+    indexed_record_count: indexedRecordCount,
+    retrieval_source: 'no-results',
+    no_results: true,
+    candidates: [],
+    candidates_manifest: buildInlineArtifactManifest('retrieval_candidates', [], {
+      retrieval_source: 'no-results',
+      indexed_record_count: indexedRecordCount,
       top_k: topK,
       mode,
       alpha,
@@ -386,7 +369,7 @@ function buildArtifactBackedHybridRetrieverContractOutput(input: Record<string, 
     }));
 
   if (candidates.length === 0) {
-    return buildSyntheticHybridRetrieverContractOutput(input);
+    return buildNoResultsHybridRetrieverContractOutput(input, records.length);
   }
 
   return {
@@ -424,7 +407,7 @@ function buildHybridRetrieverContractOutput(input: Record<string, any>): Record<
 
   return records.length > 0
     ? buildArtifactBackedHybridRetrieverContractOutput(input)
-    : buildSyntheticHybridRetrieverContractOutput(input);
+    : buildNoResultsHybridRetrieverContractOutput(input, 0);
 }
 
 export function resolveHybridRetrieverContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {

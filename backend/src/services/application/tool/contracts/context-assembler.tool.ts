@@ -91,6 +91,25 @@ function collectCandidates(value: unknown, out: RetrievalCandidate[]) {
   pushCandidate(out, record.candidate);
 }
 
+function hasNoResultsSignal(value: unknown, depth = 0): boolean {
+  if (depth > 6 || value === undefined || value === null) return false;
+
+  if (Array.isArray(value)) {
+    return value.some((entry) => hasNoResultsSignal(entry, depth + 1));
+  }
+
+  const unwrapped = unwrapPayload(value);
+  if (!unwrapped || typeof unwrapped !== 'object') return false;
+
+  const record = unwrapped as Record<string, unknown>;
+  if (record.no_results === true || record.retrieval_source === 'no-results') {
+    return true;
+  }
+
+  const nestedKeys = ['value', 'data', 'payload', 'output', 'contract_output', 'response'];
+  return nestedKeys.some((key) => key in record && hasNoResultsSignal(record[key], depth + 1));
+}
+
 function normalizeInputCandidates(raw: unknown): RetrievalCandidate[] {
   if (!Array.isArray(raw)) return [];
 
@@ -107,6 +126,7 @@ function normalizeInputCandidates(raw: unknown): RetrievalCandidate[] {
 
 function buildContextAssemblerContractOutput(input: Record<string, any>): Record<string, any> {
   const candidates = normalizeInputCandidates(input.candidates);
+  const noResults = input.no_results === true;
   const maxTokens = clampInt(
     coerceOptionalPositiveInt(input.max_context_tokens) ?? DEFAULT_MAX_CONTEXT_TOKENS,
     8,
@@ -143,6 +163,7 @@ function buildContextAssemblerContractOutput(input: Record<string, any>): Record
     text: contextText,
     token_estimate: usedTokens,
     sources,
+    ...(noResults ? { no_results: true } : {}),
   };
 
   return {
@@ -151,6 +172,7 @@ function buildContextAssemblerContractOutput(input: Record<string, any>): Record
     candidate_count: candidates.length,
     selected_count: selected.length,
     truncated: selected.length < candidates.length,
+    ...(noResults ? { no_results: true } : {}),
     context_bundle: contextBundle,
     context_bundle_manifest: buildInlineArtifactManifest('context_bundle', [contextBundle], {
       strategy: readNonEmptyText(input.strategy) ?? 'topk-pack',
@@ -168,7 +190,9 @@ export function resolveContextAssemblerContractInput(inputs: any[], context: Nod
     collectCandidates(source, candidates);
   }
 
-  if (candidates.length === 0) {
+  const noResults = hasNoResultsSignal(context.input_json) || inputs.some((source) => hasNoResultsSignal(source));
+
+  if (candidates.length === 0 && !noResults) {
     throw new HttpError(400, {
       code: 'EXECUTOR_TOOLNODE_CONTRACT_INPUT_INVALID',
       error: 'ContextAssembler contract requires non-empty candidates',
@@ -187,6 +211,7 @@ export function resolveContextAssemblerContractInput(inputs: any[], context: Nod
     candidates,
     max_context_tokens: maxContextTokens,
     strategy: readNonEmptyText(inputRecord.strategy) ?? 'topk-pack',
+    ...(noResults ? { no_results: true } : {}),
   };
 }
 

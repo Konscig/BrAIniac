@@ -184,7 +184,7 @@ MVP-инструменты (фактический статус):
 - QueryBuilder: Contract-ready, Integration-ready: не требуется как локальная трансформация.
 - HybridRetriever: Contract-ready, Integration-ready: частично да (artifact-backed retrieval path подтверждён; внешний vector search backend не реализован).
 - ContextAssembler: Contract-ready, Integration-ready: не требуется как локальная трансформация.
-- LLMAnswer: Contract-ready, Integration-ready: нет (в ToolNode-контракте используется deterministic answer path).
+- LLMAnswer: Contract-ready, Integration-ready: частично да (ToolNode-контракт вызывает OpenRouter chat; качество зависит от provider/key/rate limits).
 - CitationFormatter: Contract-ready, Integration-ready: не требуется как локальная трансформация.
 
 Критичные расхождения, влияющие на восприятие "готово":
@@ -325,3 +325,10 @@ MVP-инструменты (фактический статус):
 - AgentCall -> HybridRetriever -> LLMAnswer -> GroundingChecker
 - при низком качестве возврат на HybridRetriever или QueryBuilder
 - обязательное условие: loop.maxIterations >= 1
+
+## Update 2026-04-25: Tool Honesty Fix
+
+- `HybridRetriever` must not synthesize fake passages for runtime answers. If no artifact-backed vector records or candidates are available, it returns `retrieval_source: "no-results"`, `no_results: true`, `candidate_count: 0`, and an empty `candidates` array.
+- `ContextAssembler` accepts explicit retriever `no-results` output and produces an empty `context_bundle` instead of failing the run.
+- `LLMAnswer` is now a provider-backed answer tool. It calls OpenRouter chat through the existing adapter, requires a user question, uses context when present, and can answer directly when context is absent.
+- Artifact-backed storage remains the MVP baseline for `Embedder`, `VectorUpsert`, and `HybridRetriever`; no external vector DB is introduced in this step.
