@@ -91,7 +91,7 @@
   "agent": {
     "enabled": true,
     "maxAttempts": 3,
-    "maxToolCalls": 8,
+    "maxToolCalls": 20,
     "maxTimeMs": 20000,
     "maxCostUsd": 0.5,
     "maxTokens": 12000

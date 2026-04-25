@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { buildPrompt } from '../src/services/application/pipeline/pipeline.executor.utils.ts';
+import { agentCallNodeHandler } from '../src/services/application/node/handlers/agent-call.node-handler.ts';
 import {
   getHttpErrorCode,
   getHttpErrorStatus,
@@ -9,6 +10,11 @@ import {
 import { isToolAdvertisingInput } from '../src/services/application/node/handlers/agent-tool-discovery.ts';
 import { resolveAgentTurnDecision } from '../src/services/application/node/handlers/agent-turn-resolution.ts';
 import { HttpError } from '../src/common/http-error.ts';
+
+function testAgentCallRuntimeAllowsTwentyToolCalls() {
+  const source = agentCallNodeHandler.toString();
+  assert.match(source, /readBoundedInteger\(agentConfig\.maxToolCalls,\s*3,\s*1,\s*20\)/);
+}
 
 function testParseFinal() {
   const directive = parseAgentDirective('{"type":"final","text":"done"}');
@@ -96,6 +102,7 @@ function testToolCallOverBudgetDoesNotBecomeFinalText() {
 }
 
 testParseFinal();
+testAgentCallRuntimeAllowsTwentyToolCalls();
 testParseToolCall();
 testRecoverMalformedToolCall();
 testRejectUnknownToolIsRepresentedAsFinalMarkup();

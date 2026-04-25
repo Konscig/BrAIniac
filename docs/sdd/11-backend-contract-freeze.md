@@ -94,6 +94,9 @@ Frontend не должен пытаться синтезировать `tool_ref
 - `agent.temperature?: number`
 - `agent.maxTokens?: number`
 
+Runtime clamp:
+- `AgentCall` accepts `agent.maxToolCalls` in the range `1..20`.
+
 Правило:
 - frontend для обычного агентного сценария должен использовать именно `ui_json.agent`.
 - `PromptBuilder` не является обязательной частью этого контракта.

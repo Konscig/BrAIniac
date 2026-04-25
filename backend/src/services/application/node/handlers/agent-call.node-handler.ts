@@ -28,7 +28,7 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? (context.input_json as Record<string, unknown>) : {};
   const runModel = typeof inputRecord.model === 'string' && inputRecord.model.trim().length > 0 ? inputRecord.model.trim() : undefined;
 
-  const maxToolCalls = readBoundedInteger(agentConfig.maxToolCalls, 3, 1, 8);
+  const maxToolCalls = readBoundedInteger(agentConfig.maxToolCalls, 3, 1, 20);
   const maxAttempts = readBoundedInteger(agentConfig.maxAttempts, 1, 1, 5);
   const softRetryDelayMs = readBoundedInteger(agentConfig.softRetryDelayMs ?? llmConfig.softRetryDelayMs, 1200, 100, 15000);
   const agentModel = resolveAgentChatModel(runtime) ?? runModel;
