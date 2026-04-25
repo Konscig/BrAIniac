@@ -7,7 +7,7 @@ export type ApiError = Error & { status?: number; details?: unknown };
 
 const TOKENS_STORAGE_KEY = "brainiac.tokens";
 const DEFAULT_PIPELINE_LIMITS = {
-  max_time: 30,
+  max_time: 120,
   max_cost: 100,
   max_reject: 0.15
 } as const;
