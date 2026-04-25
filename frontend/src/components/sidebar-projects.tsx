@@ -13,6 +13,8 @@ import {
 
 import type { PipelineRecord, ProjectRecord } from "../lib/api";
 import { cn } from "../lib/utils";
+import { Button } from "./ui/button";
+import { ScrollArea } from "./ui/scroll-area";
 
 function ScoreBadge({ score }: { score: number }): React.ReactElement {
   const pct = Math.round(score * 100);
@@ -26,8 +28,6 @@ function ScoreBadge({ score }: { score: number }): React.ReactElement {
     </span>
   );
 }
-import { Button } from "./ui/button";
-import { ScrollArea } from "./ui/scroll-area";
 
 export interface SidebarProjectsProps {
   projects: ProjectRecord[];
