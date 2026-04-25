@@ -7,6 +7,7 @@ import "./App.css";
 import { CanvasBoard } from "./components/canvas-board";
 import { ModeToggle } from "./components/mode-toggle";
 import { NodeLibrary } from "./components/node-library";
+import { AgentChatDock } from "./components/agent-chat-dock";
 import { RunPanel } from "./components/run-panel";
 import { SidebarProjects } from "./components/sidebar-projects";
 import { Button } from "./components/ui/button";
@@ -53,6 +54,7 @@ function MainPage(): React.ReactElement {
   const [isLoading, setIsLoading] = React.useState(false);
   const [isGraphRunning, setIsGraphRunning] = React.useState(false);
   const [graphRefreshToken, setGraphRefreshToken] = React.useState(0);
+  const [selectedNodeId, setSelectedNodeId] = React.useState<number | null>(null);
   const [graphState, setGraphState] = React.useState<{ nodes: NodeRecord[]; edges: EdgeRecord[] }>({
     nodes: [],
     edges: []
@@ -351,13 +353,21 @@ function MainPage(): React.ReactElement {
             className="min-h-0"
             onGraphChange={setGraphState}
             onError={setDataError}
+            onNodeSelect={setSelectedNodeId}
           />
         </section>
 
         <aside className="flex min-h-0 min-w-0 flex-col gap-2.5 overflow-hidden px-2.5 py-3">
-          <div className="min-h-0 flex-1">
+          <div className="min-h-0 flex-1 overflow-hidden">
             <NodeLibrary nodeTypes={nodeTypes} />
           </div>
+          <AgentChatDock
+            pipelineId={activePipelineId}
+            pipelineName={activePipeline?.name ?? null}
+            pipelineScore={activePipeline?.score}
+            focusedNode={graphState.nodes.find(n => n.node_id === selectedNodeId) ?? null}
+            nodeTypes={nodeTypes}
+          />
         </aside>
       </main>
     </div>
