@@ -99,6 +99,10 @@ services:
       - .env.docker
     environment:
       - PYTHONUNBUFFERED=1
+      - HF_HOME=/cache/huggingface
+      - TRANSFORMERS_CACHE=/cache/huggingface
+    volumes:
+      - hf_cache:/cache/huggingface
     networks:
       - brainiac-network
     ports:
@@ -117,3 +121,4 @@ networks:
 
 volumes:
   postgres_data:
+  hf_cache:
