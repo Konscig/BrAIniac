@@ -131,13 +131,36 @@ async function toolGetAssessmentReport(pipelineId: number): Promise<object> {
 
 // --- Главная функция ---
 
-export async function judgeChat(req: JudgeChatRequest): Promise<JudgeChatResponse> {
-  const config = getOpenRouterConfig();
-  if (!config.enabled || !config.apiKey) {
-    return { reply: 'OpenRouter не настроен. Убедитесь что OPENROUTER_API_KEY задан в .env.', tool_calls_used: [] };
+function resolveChatProvider(): { baseUrl: string; apiKey: string; model: string } | null {
+  const orConfig = getOpenRouterConfig();
+  if (orConfig.enabled && orConfig.apiKey) {
+    return {
+      baseUrl: orConfig.baseUrl,
+      apiKey: orConfig.apiKey,
+      model: orConfig.defaultChatModel || 'openai/gpt-4o-mini',
+    };
   }
 
-  const model = config.defaultChatModel || 'openai/gpt-4o-mini';
+  const mistralKey = process.env.JUDGE_MISTRAL_API_KEY?.trim();
+  if (mistralKey) {
+    return {
+      baseUrl: 'https://api.mistral.ai/v1',
+      apiKey: mistralKey,
+      // mistral-small has reliable tool calling; ministral-3b may struggle
+      model: process.env.JUDGE_CHAT_MODEL?.trim() || 'mistral-small-latest',
+    };
+  }
+
+  return null;
+}
+
+export async function judgeChat(req: JudgeChatRequest): Promise<JudgeChatResponse> {
+  const provider = resolveChatProvider();
+  if (!provider) {
+    return { reply: 'Чат с судьёй недоступен: задайте OPENROUTER_API_KEY или JUDGE_MISTRAL_API_KEY в .env.', tool_calls_used: [] };
+  }
+
+  const { baseUrl, apiKey, model } = provider;
 
   const systemMsg = { role: 'system', content: buildSystemPrompt(req.pipeline_id, req.focused_node_id) };
   const historyMsgs = (req.history ?? []).map(m => ({ role: m.role, content: m.content }));
@@ -149,15 +172,15 @@ export async function judgeChat(req: JudgeChatRequest): Promise<JudgeChatRespons
   // Agentic loop — до 4 итераций tool use
   for (let iter = 0; iter < 4; iter++) {
     const body = { model, messages, tools: TOOLS, tool_choice: 'auto', max_tokens: 1024 };
-    const res = await fetch(`${config.baseUrl}/chat/completions`, {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(body),
     });
 
     if (!res.ok) {
       const err = await res.text().catch(() => '');
-      throw new Error(`OpenRouter ${res.status}: ${err.slice(0, 200)}`);
+      throw new Error(`LLM provider ${res.status}: ${err.slice(0, 200)}`);
     }
 
     const data: any = await res.json();
