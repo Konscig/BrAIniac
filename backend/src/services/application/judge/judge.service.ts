@@ -196,12 +196,23 @@ export async function runAssessment(req: AssessRequest): Promise<AssessReport> {
     },
   });
 
-  // Записываем per-node метрики в Node.output_json
-  for (const nr of perNode) {
-    await prisma.node.update({
-      where: { node_id: nr.node_id },
-      data: { output_json: nr as any },
+  // Записываем per-node метрики в Node.output_json.judge, не трогая существующие поля
+  // (executor/frontend читают execution_id/status/runs/data/error из того же объекта)
+  if (perNode.length > 0) {
+    const nodeIds = perNode.map(nr => nr.node_id);
+    const existingNodes = await prisma.node.findMany({
+      where: { node_id: { in: nodeIds } },
+      select: { node_id: true, output_json: true },
     });
+    const existingMap = new Map(existingNodes.map(n => [n.node_id, (n.output_json ?? {}) as Record<string, any>]));
+
+    for (const nr of perNode) {
+      const existing = existingMap.get(nr.node_id) ?? {};
+      await prisma.node.update({
+        where: { node_id: nr.node_id },
+        data: { output_json: { ...existing, judge: nr } as any },
+      });
+    }
   }
 
   return report;

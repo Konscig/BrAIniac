@@ -16,14 +16,33 @@ async def _startup() -> None:
 def health() -> JSONResponse:
     ready = list_ready_models()
     if not ready.all_ready:
+        # Возвращаем 200 с degraded-статусом, чтобы compose healthcheck не блокировал
+        # сервис во время загрузки моделей — нативные метрики работают без моделей.
         return JSONResponse(
-            status_code=503,
-            content={"status": "starting", "pending_models": ready.pending},
+            status_code=200,
+            content={
+                "status": "degraded",
+                "version": "0.1.0",
+                "models_loaded": ready.loaded,
+                "pending_models": ready.pending,
+            },
         )
     return JSONResponse(
         status_code=200,
         content={"status": "ok", "version": "0.1.0", "models_loaded": ready.loaded},
     )
+
+
+@app.get("/ready")
+def ready() -> JSONResponse:
+    """Readiness probe: 200 только когда все модели загружены."""
+    r = list_ready_models()
+    if not r.all_ready:
+        return JSONResponse(
+            status_code=503,
+            content={"ready": False, "pending_models": r.pending},
+        )
+    return JSONResponse(status_code=200, content={"ready": True})
 
 
 @app.exception_handler(ValueError)

@@ -3,12 +3,16 @@ import { requireAuth } from '../../../middleware/auth.middleware.js';
 import { sendRouteError } from '../../shared/route-error.js';
 import { runAssessment } from '../../../services/application/judge/judge.service.js';
 import type { AssessItem } from '../../../services/application/judge/judge.service.js';
+import { ensurePipelineOwnedByUser } from '../../../services/core/ownership.service.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
 /**
- * POST /judge/assess
+ * POST /judge/assessments
+ *
+ * Синхронная оценка пайплайна по набору тестовых item'ов (MVP-режим).
+ * Результат сохраняется в Pipeline.score, Pipeline.report_json и Node.output_json.judge.
  *
  * Тело запроса:
  * {
@@ -24,9 +28,9 @@ router.use(requireAuth);
  *   ]
  * }
  *
- * Ответ: полный отчёт оценки. Результат также сохраняется в Pipeline.score и Pipeline.report_json.
+ * Ответ: полный отчёт оценки (200 OK).
  */
-router.post('/assess', async (req: any, res) => {
+router.post('/assessments', async (req: any, res) => {
   try {
     const body = req.body ?? {};
     const pipelineId = Number(body.pipeline_id);
@@ -37,6 +41,8 @@ router.post('/assess', async (req: any, res) => {
     if (!items.length) {
       return res.status(400).json({ error: 'items array required and must not be empty' });
     }
+
+    await ensurePipelineOwnedByUser(pipelineId, req.user.user_id);
 
     const report = await runAssessment({
       pipeline_id: pipelineId,

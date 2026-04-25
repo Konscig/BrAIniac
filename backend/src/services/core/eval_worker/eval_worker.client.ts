@@ -45,15 +45,75 @@ async function doFetch(url: string, init: RequestInit, timeout: number): Promise
 
 export const isSidecarAvailable = healthCheck;
 
-export async function computeSidecarMetric(code: string, item: any): Promise<number> {
-  const payload: Record<string, any> = {
-    agent_output: { text: item.agent_output?.text ?? '' },
-    reference: item.reference ?? {},
-  };
-  // f_judge_ref expects rubric in config, not reference
-  if (code === 'f_judge_ref' && item.reference?.rubric) {
-    payload.config = { rubric: item.reference.rubric, scale: 5 };
+function buildSidecarPayload(code: string, item: any): Record<string, any> {
+  const agentOut = item.agent_output ?? {};
+  const reference = item.reference ?? {};
+
+  switch (code) {
+    case 'f_faith':
+      // Faithfulness: нужны текст + контекст источников
+      return {
+        agent_output: { text: agentOut.text ?? '' },
+        reference: {
+          relevant_docs: reference.relevant_docs ?? [],
+          context_texts: reference.context_texts ?? reference.relevant_docs ?? [],
+        },
+      };
+
+    case 'f_sim':
+      // Semantic similarity: текст + эталонный ответ
+      return {
+        agent_output: { text: agentOut.text ?? '' },
+        reference: { answer: reference.answer ?? '' },
+      };
+
+    case 'f_ctx_prec':
+    case 'f_ctx_rec':
+      // Context precision/recall: retrieved_ids + relevant_docs
+      return {
+        agent_output: {
+          text: agentOut.text ?? '',
+          retrieved_ids: agentOut.retrieved_ids ?? [],
+        },
+        reference: { relevant_docs: reference.relevant_docs ?? [] },
+      };
+
+    case 'f_judge_ref':
+      // LLM-as-judge: рубрика передаётся через config
+      return {
+        agent_output: { text: agentOut.text ?? '' },
+        reference: { answer: reference.answer ?? '' },
+        config: { rubric: reference.rubric ?? '', scale: 5 },
+      };
+
+    case 'f_toxicity':
+      return { agent_output: { text: agentOut.text ?? '' } };
+
+    case 'f_halluc':
+      return {
+        agent_output: { text: agentOut.text ?? '' },
+        reference: {
+          claims: reference.claims ?? [],
+          context_texts: reference.context_texts ?? reference.relevant_docs ?? [],
+        },
+      };
+
+    default:
+      // Общий случай: полная передача доступных данных
+      return {
+        agent_output: {
+          text: agentOut.text ?? '',
+          ...(agentOut.structured_output !== undefined ? { structured_output: agentOut.structured_output } : {}),
+          ...(agentOut.tool_call_trace !== undefined ? { tool_call_trace: agentOut.tool_call_trace } : {}),
+          ...(agentOut.retrieved_ids !== undefined ? { retrieved_ids: agentOut.retrieved_ids } : {}),
+        },
+        reference,
+      };
   }
+}
+
+export async function computeSidecarMetric(code: string, item: any): Promise<number> {
+  const payload = buildSidecarPayload(code, item);
   const res = await computeMetric(code, payload);
   return res.value;
 }
@@ -61,7 +121,10 @@ export async function computeSidecarMetric(code: string, item: any): Promise<num
 export async function healthCheck(): Promise<boolean> {
   try {
     const res = await doFetch(`${baseUrl()}/health`, { method: 'GET' }, 5_000);
-    return res.ok;
+    if (!res.ok) return false;
+    // Принимаем как "доступный" и ok, и degraded — метрики без ML-зависимостей работают в обоих случаях
+    const body: any = await res.json().catch(() => ({}));
+    return body?.status === 'ok' || body?.status === 'degraded';
   } catch {
     return false;
   }
