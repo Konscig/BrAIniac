@@ -1,5 +1,7 @@
 import React from "react";
 import { Send, Scale, ChevronDown, ChevronUp, MessageCircle } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { judgeChat, readNodeLabel, type ChatMessage, type NodeRecord, type NodeTypeRecord } from "../lib/api";
 import { Button } from "./ui/button";
@@ -187,7 +189,40 @@ export function AgentChatDock({
                   <div className="mb-0.5 text-[10px] uppercase tracking-wide opacity-50">
                     {msg.role === "user" ? "Вы" : "Судья"}
                   </div>
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  {msg.role === "assistant" ? (
+                    <div className="prose-judge">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          p: ({ children }) => <p className="my-1 leading-[1.45]">{children}</p>,
+                          ul: ({ children }) => <ul className="my-1 ml-4 list-disc space-y-0.5">{children}</ul>,
+                          ol: ({ children }) => <ol className="my-1 ml-4 list-decimal space-y-0.5">{children}</ol>,
+                          li: ({ children }) => <li className="leading-[1.4]">{children}</li>,
+                          h1: ({ children }) => <h3 className="mt-2 mb-1 text-[13px] font-semibold text-foreground">{children}</h3>,
+                          h2: ({ children }) => <h3 className="mt-2 mb-1 text-[13px] font-semibold text-foreground">{children}</h3>,
+                          h3: ({ children }) => <h4 className="mt-1.5 mb-0.5 text-[12px] font-semibold text-foreground">{children}</h4>,
+                          h4: ({ children }) => <h4 className="mt-1.5 mb-0.5 text-[12px] font-semibold text-foreground">{children}</h4>,
+                          strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                          em: ({ children }) => <em className="italic">{children}</em>,
+                          code: ({ children, ...props }) => {
+                            const inline = !(props as any).className;
+                            return inline ? (
+                              <code className="rounded bg-muted/50 px-1 py-0.5 font-mono text-[11px] text-foreground">{children}</code>
+                            ) : (
+                              <code className="block overflow-x-auto rounded bg-muted/40 px-2 py-1.5 font-mono text-[11px] leading-[1.4] text-foreground">{children}</code>
+                            );
+                          },
+                          pre: ({ children }) => <pre className="my-1.5 overflow-x-auto rounded bg-muted/40 p-0">{children}</pre>,
+                          a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer" className="underline text-primary">{children}</a>,
+                          hr: () => <hr className="my-2 border-border/40" />,
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  )}
                   {msg.tool_calls_used && <ToolCallBadges tools={msg.tool_calls_used} />}
                 </div>
               ))}
