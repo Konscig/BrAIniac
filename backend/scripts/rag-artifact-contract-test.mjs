@@ -15,6 +15,7 @@ process.env.EXECUTOR_ARTIFACT_STORE_DIR = path.join(tempRoot, '.artifacts');
 process.env.EXECUTOR_ARTIFACT_INLINE_MAX_ITEMS = '1';
 process.env.EXECUTOR_ARTIFACT_INLINE_MAX_BYTES = '256';
 process.env.EXECUTOR_ARTIFACT_PREVIEW_ITEMS = '2';
+process.env.EXECUTOR_DATASET_INDEX_DIR = path.join(tempRoot, '.dataset-indexes');
 process.env.OPENROUTER_LLM_MODEL = 'google/gemini-2.5-flash-preview';
 process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
 process.env.OPENROUTER_MAX_RETRIES = '0';
@@ -43,6 +44,9 @@ const manifestModule = await import(
 const artifactStoreModule = await import(
   pathToFileURL(path.join(backendRoot, 'src/services/application/pipeline/pipeline.executor.artifact-store.ts')).href
 );
+const datasetIndexModule = await import(
+  pathToFileURL(path.join(backendRoot, 'src/services/application/dataset/dataset-index.service.ts')).href
+);
 
 const { resolveDocumentLoaderContractInput, documentLoaderToolContractDefinition } = documentLoaderModule;
 const { resolveEmbedderContractInput, embedderToolContractDefinition } = embedderModule;
@@ -52,6 +56,7 @@ const { resolveContextAssemblerContractInput, contextAssemblerToolContractDefini
 const { resolveLlmAnswerContractInput, llmAnswerToolContractDefinition } = llmAnswerModule;
 const { buildInlineArtifactManifest, listArtifactManifestItems } = manifestModule;
 const { externalizeNodeStateArtifacts } = artifactStoreModule;
+const { ensureDatasetArtifactIndex } = datasetIndexModule;
 
 function log(message) {
   console.log(`[rag-artifacts] ${message}`);
@@ -164,6 +169,48 @@ async function testExternalBlobRoundTrip() {
   assert.deepEqual(restoredChunks, chunks);
 
   log('external-blob manifests round-trip through local-file pointers');
+}
+
+async function testDatasetArtifactIndexBuildAndReuse() {
+  await writeFixture(
+    'index-source/pushkin.txt',
+    'Отец — Сергей Львович Пушкин (1770—1948). Мать — Надежда Осиповна (1775—1936).',
+  );
+  const dataset = {
+    dataset_id: 501,
+    uri: 'workspace://index-source/pushkin.txt',
+    desc: null,
+  };
+
+  const built = await ensureDatasetArtifactIndex(77, dataset);
+  assert.equal(built.kind, 'dataset_artifact_index');
+  assert.equal(built.index_reused, false);
+  assert.equal(built.stats.document_count, 1);
+  assert.ok(Number(built.stats.chunk_count) > 0);
+  assert.ok(Number(built.stats.vector_count) > 0);
+  assert.ok(listArtifactManifestItems(built.vectors_manifest, ['vectors']).length > 0);
+
+  const reused = await ensureDatasetArtifactIndex(77, dataset);
+  assert.equal(reused.index_reused, true);
+  assert.equal(reused.source_signature.uri, dataset.uri);
+
+  const retrieverInput = resolveHybridRetrieverContractInput([], {
+    dataset,
+    input_json: {
+      retrieval_query: 'Сергей Львович годы жизни',
+      dataset_index: reused,
+    },
+  });
+  const retrieverOutput = await hybridRetrieverToolContractDefinition.buildHttpSuccessOutput({
+    input: retrieverInput,
+    status: 200,
+    response: { ok: true },
+  });
+  assert.equal(retrieverOutput.retrieval_source, 'artifact-vectors');
+  assert.ok(retrieverOutput.candidate_count > 0);
+  assert.match(JSON.stringify(retrieverOutput.candidates), /1948/);
+
+  log('Dataset artifact index builds once, is reused, and feeds HybridRetriever');
 }
 
 async function testArtifactBackedRetrieverPath() {
@@ -437,6 +484,7 @@ try {
   await testDocumentLoaderLocalText();
   await testDocumentLoaderJsonBundle();
   await testExternalBlobRoundTrip();
+  await testDatasetArtifactIndexBuildAndReuse();
   await testArtifactBackedRetrieverPath();
   await testRetrieverNoResultsPath();
   await testLlmAnswerIgnoresEmbeddingModelFromUpstream();

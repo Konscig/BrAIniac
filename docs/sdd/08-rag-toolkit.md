@@ -332,3 +332,10 @@ MVP-инструменты (фактический статус):
 - `ContextAssembler` accepts explicit retriever `no-results` output and produces an empty `context_bundle` instead of failing the run.
 - `LLMAnswer` is now a provider-backed answer tool. It calls OpenRouter chat through the existing adapter, requires a user question, uses context when present, and can answer directly when context is absent.
 - Artifact-backed storage remains the MVP baseline for `Embedder`, `VectorUpsert`, and `HybridRetriever`; no external vector DB is introduced in this step.
+
+## Update 2026-04-25: Dataset Artifact Index
+
+- Pipeline execution prepares a dataset artifact index when a dataset is selected. The index is stored under server artifacts and contains document, chunk, and vector manifests produced by the existing RAG contracts.
+- The index is reused when the dataset source signature has not changed. This avoids repeating `DocumentLoader -> Chunker -> Embedder -> VectorUpsert` on every run.
+- The execution input receives `input_json.dataset_index`, so `HybridRetriever` can search already prepared artifact vectors even when the agent does not call ingest tools during the current run.
+- If a selected dataset has no prepared or reusable vectors, `HybridRetriever` still returns the honest `no-results` shape. No external vector database or DB schema migration is introduced.
