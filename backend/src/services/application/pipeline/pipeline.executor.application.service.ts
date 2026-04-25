@@ -12,7 +12,6 @@ import { listNodesByPipeline } from '../../data/node.service.js';
 import { getNodeTypeById } from '../../data/node_type.service.js';
 import { getPipelineById, updatePipeline } from '../../data/pipeline.service.js';
 import { getToolById } from '../../data/tool.service.js';
-import { ensureDatasetArtifactIndex } from '../dataset/dataset-index.service.js';
 import { externalizeNodeStateArtifacts } from './pipeline.executor.artifact-store.js';
 import { buildFinalResult, buildPipelineReport, buildSummary, executeGraph, persistNodeOutputs } from './pipeline.executor.graph.js';
 import {
@@ -509,35 +508,13 @@ async function runExecutionJob(job: ExecutionJob) {
       });
     }
 
-    const datasetIndex = await ensureDatasetArtifactIndex(job.pipeline_id, datasetContext);
-    if (datasetIndex) {
-      job.warnings.push(
-        datasetIndex.index_reused
-          ? `dataset artifact index reused for dataset ${datasetIndex.dataset_id}`
-          : `dataset artifact index built for dataset ${datasetIndex.dataset_id}`,
-      );
-    }
-
-    const baseInputJson =
-      job.request.input_json && typeof job.request.input_json === 'object' && !Array.isArray(job.request.input_json)
-        ? job.request.input_json
-        : job.request.input_json === undefined
-        ? {}
-        : { value: job.request.input_json };
-    const executionInputJson = datasetIndex
-      ? {
-          ...baseInputJson,
-          dataset_index: datasetIndex,
-        }
-      : job.request.input_json;
-
     const result = await executeGraph(
       pipeline,
       runtimeByNodeId,
       edges,
       {
         dataset: datasetContext,
-        input_json: executionInputJson,
+        input_json: job.request.input_json,
       },
       preflight.metrics.estimatedMaxSteps,
     );

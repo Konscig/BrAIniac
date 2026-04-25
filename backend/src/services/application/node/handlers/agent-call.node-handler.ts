@@ -35,19 +35,14 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   const temperatureRaw = Number(agentConfig.temperature ?? llmConfig.temperature);
   const maxTokensRaw = Number(agentConfig.maxTokens ?? llmConfig.maxTokens);
   const configuredSystemPrompt = agentConfig.systemPrompt;
-  const baseSystemPrompt =
+  const systemPromptText =
     typeof configuredSystemPrompt === 'string' && configuredSystemPrompt.trim().length > 0
       ? configuredSystemPrompt
       : 'You are AgentCall runtime in a pipeline graph. Return concise, actionable output. Use JSON when structure is useful.';
-  const hasDatasetIndex =
-    inputRecord.dataset_index && typeof inputRecord.dataset_index === 'object' && !Array.isArray(inputRecord.dataset_index);
-  const datasetIndexGuidance = hasDatasetIndex
-    ? '\nDataset artifact index is already prepared in input_json.dataset_index. For document questions, prefer QueryBuilder -> HybridRetriever -> ContextAssembler -> LLMAnswer. Do not call DocumentLoader, Chunker, Embedder, or VectorUpsert unless the user explicitly asks to rebuild the index.'
-    : '';
 
   const toolResolution = await resolveAgentToolBindings(runtime, inputs);
   const availableTools = toolResolution.advertised;
-  const systemPrompt = buildAgentSystemPrompt(`${baseSystemPrompt}${datasetIndexGuidance}`);
+  const systemPrompt = buildAgentSystemPrompt(systemPromptText);
   const messages: AgentMessage[] = buildAgentMessages(systemPrompt, availableTools, toolResolution.unresolvedTools, prompt);
 
   let attemptsUsed = 0;

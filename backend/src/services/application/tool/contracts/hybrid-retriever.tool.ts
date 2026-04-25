@@ -427,7 +427,6 @@ export function resolveHybridRetrieverContractInput(inputs: any[], context: Node
 
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? (context.input_json as Record<string, unknown>) : {};
   const records: IndexedVectorRecord[] = [];
-  collectIndexedVectorRecords(context.input_json, records);
   for (const source of inputs.slice(0, 16)) {
     if (records.length >= MAX_RETRIEVER_RECORDS) break;
     collectIndexedVectorRecords(source, records);

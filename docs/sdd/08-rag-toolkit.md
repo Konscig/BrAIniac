@@ -333,9 +333,9 @@ MVP-инструменты (фактический статус):
 - `LLMAnswer` is now a provider-backed answer tool. It calls OpenRouter chat through the existing adapter, requires a user question, uses context when present, and can answer directly when context is absent.
 - Artifact-backed storage remains the MVP baseline for `Embedder`, `VectorUpsert`, and `HybridRetriever`; no external vector DB is introduced in this step.
 
-## Update 2026-04-25: Dataset Artifact Index
+## Update 2026-04-25: Explicit Tool Semantics
 
-- Pipeline execution prepares a dataset artifact index when a dataset is selected. The index is stored under server artifacts and contains document, chunk, and vector manifests produced by the existing RAG contracts.
-- The index is reused when the dataset source signature has not changed. This avoids repeating `DocumentLoader -> Chunker -> Embedder -> VectorUpsert` on every run.
-- The execution input receives `input_json.dataset_index`, so `HybridRetriever` can search already prepared artifact vectors even when the agent does not call ingest tools during the current run.
-- If a selected dataset has no prepared or reusable vectors, `HybridRetriever` still returns the honest `no-results` shape. No external vector database or DB schema migration is introduced.
+- Pipeline execution must not run hidden RAG preparation steps before the graph. The runtime graph and the agent's explicit tool calls are the only execution surface.
+- `HybridRetriever` must only retrieve from artifact vectors that are present in explicit predecessor/tool inputs. It must not search arbitrary vectors from `context.input_json` or depend on a hidden `input_json.dataset_index` injected by the pipeline executor.
+- Any future reuse/cache behavior belongs inside a concrete tool such as `VectorUpsert` and must preserve that tool's role. A cache hit may skip repeated internal work, but it must not create an invisible graph path.
+- `AgentCall` must not receive hardcoded RAG strategy prompts from backend runtime. Strategy belongs to user-authored agent configuration and the tools connected to the agent.
