@@ -1,5 +1,6 @@
 import prisma from '../../../db.js';
 import { getOpenRouterConfig } from '../../core/openrouter/openrouter.config.js';
+import { buildSystemPrompt } from './judge.prompt.service.js';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -126,31 +127,6 @@ async function toolGetAssessmentReport(pipelineId: number): Promise<object> {
   if (!pipeline) return { error: 'Pipeline not found' };
   if (!pipeline.report_json) return { message: 'No assessment has been run yet. Run POST /judge/assessments first.' };
   return pipeline.report_json as object;
-}
-
-// --- Системный промпт ---
-
-function buildSystemPrompt(pipelineId: number, focusedNodeId?: number): string {
-  return `Ты — ИИ-судья (AI Judge) системы BrAIniac. Твоя роль: помогать пользователю анализировать агентный граф (пайплайн), объяснять результаты оценки и давать конкретные рекомендации по улучшению.
-
-Текущий контекст:
-- pipeline_id: ${pipelineId}${focusedNodeId ? `\n- Пользователь сейчас смотрит на узел node_id: ${focusedNodeId}` : ''}
-
-Инструменты которые ты можешь использовать:
-- get_pipeline_overview — общая архитектура графа (узлы, рёбра, типы)
-- get_node_details — детали конкретного узла: конфиг, результаты выполнения, метрики судьи
-- get_assessment_report — полный отчёт последней оценки: скор, вердикт, все метрики
-
-Принципы работы:
-- Отвечай на русском языке, кратко и по делу
-- Когда пользователь спрашивает об улучшениях — сначала получи данные через инструменты, потом давай конкретные советы
-- Если метрика низкая (< 0.4) — объясни почему и предложи как исправить
-- Если пользователь кликнул на узел — фокусируйся на нём, используй get_node_details
-- Можешь говорить о компромиссах: например, увеличение точности vs. скорость ответа
-- Не придумывай данные — всегда получай их через инструменты
-
-Шкала оценки: 0..1, вердикты: fail (<0.6), improvement (0.6–0.8), pass (>0.8)
-Оси метрик: A=Correctness, B=Grounding, C=Retrieval, D=Tool-Use, E=Structure, F=Control-Flow, G=LLM-Judge, H=Safety`;
 }
 
 // --- Главная функция ---
