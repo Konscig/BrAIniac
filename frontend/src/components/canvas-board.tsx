@@ -752,7 +752,7 @@ export function CanvasBoard({
             nodeTypes={nodeTypes}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
-            onSelectionChange={React.useCallback(({ nodes: sel }) => {
+            onSelectionChange={React.useCallback(({ nodes: sel }: { nodes: import('reactflow').Node[] }) => {
               onNodeSelect?.(sel.length === 1 ? Number(sel[0]!.id) : null);
             }, [onNodeSelect])}
             onConnect={handleConnect}
