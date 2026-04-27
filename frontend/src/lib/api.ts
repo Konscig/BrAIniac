@@ -498,3 +498,47 @@ export type PipelineGraphResponse = { nodes: NodeRecord[]; edges: EdgeRecord[] }
 export type NodeExecutionResultDto = { nodeId: string; status: string; output: string };
 export type ExecutePipelineResponse = ExecutionSnapshot;
 export type PipelineNodeCategory = "Source" | "Transform" | "Control" | "Sink";
+
+// --- Judge Chat ---
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface JudgeChatRequest {
+  pipeline_id: number;
+  message: string;
+  history?: ChatMessage[];
+  focused_node_id?: number;
+}
+
+export interface JudgeChatResponse {
+  reply: string;
+  tool_calls_used: string[];
+}
+
+export function judgeChat(req: JudgeChatRequest): Promise<JudgeChatResponse> {
+  return postJson<JudgeChatResponse>("/judge/chat", req);
+}
+
+export interface AssessmentReport {
+  pipeline_id: number;
+  final_score: number;
+  verdict: "pass" | "improvement" | "fail";
+  weight_profile: string;
+  metric_scores: Array<{
+    metric_code: string;
+    axis: string;
+    value: number;
+    sample_size: number;
+    executor: string;
+  }>;
+  per_node: Array<{
+    node_id: number;
+    node_type: string;
+    metrics: Array<{ metric_code: string; axis: string; value: number; sample_size: number; executor: string }>;
+  }>;
+  skipped_metrics: string[];
+  item_count: number;
+}

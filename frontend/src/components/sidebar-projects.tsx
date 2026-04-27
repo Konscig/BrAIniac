@@ -16,6 +16,19 @@ import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
 
+function ScoreBadge({ score }: { score: number }): React.ReactElement {
+  const pct = Math.round(score * 100);
+  const color =
+    score >= 0.8 ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" :
+    score >= 0.6 ? "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" :
+    "bg-red-500/20 text-red-300 border-red-500/30";
+  return (
+    <span className={cn("ml-auto shrink-0 rounded border px-1 py-0 text-[10px] font-mono leading-4", color)}>
+      {pct}
+    </span>
+  );
+}
+
 export interface SidebarProjectsProps {
   projects: ProjectRecord[];
   pipelinesByProject: Record<number, PipelineRecord[]>;
@@ -334,6 +347,9 @@ export function SidebarProjects({
                                     <span className="truncate text-sm font-medium text-foreground">
                                       {pipeline.name}
                                     </span>
+                                    {pipeline.score != null && (
+                                      <ScoreBadge score={Number(pipeline.score)} />
+                                    )}
                                   </button>
                                 )}
 
