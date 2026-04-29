@@ -133,7 +133,7 @@ export function RagDatasetConfig({ value, onChange, disabled }: RagDatasetConfig
           Корпус пуст. Загрузите хотя бы один файл, чтобы пайплайн прошёл preflight-валидацию.
         </div>
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="max-h-[420px] space-y-1.5 overflow-y-auto pr-1">
           {uris.map((uri, index) => (
             <li
               key={uri}
