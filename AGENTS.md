@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+For MCP implementation context, technology choices, project structure,
+shell commands, and quality gates, read specs/001-mcp-backend-vscode/plan.md.
 <!-- SPECKIT END -->

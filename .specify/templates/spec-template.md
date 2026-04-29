@@ -74,6 +74,10 @@
 
 - What happens when [boundary condition]?
 - How does system handle [error scenario]?
+- What should the user see when backend validation, provider calls, tool calls,
+  or graph execution produce warnings, empty output, or diagnostic failures?
+- How does the workflow behave on narrow/mobile layouts and common desktop
+  widths without hidden or overlapping primary controls?
 
 ## Requirements *(mandatory)*
 
@@ -89,6 +93,12 @@
 - **FR-003**: Users MUST be able to [key interaction, e.g., "reset their password"]
 - **FR-004**: System MUST [data requirement, e.g., "persist user preferences"]
 - **FR-005**: System MUST [behavior, e.g., "log all security events"]
+- **FR-UX**: User-facing changes MUST expose relevant state, validation,
+  execution, and diagnostic feedback in the workflow where the user acts.
+- **FR-STACK**: Implementation MUST stay within the existing BrAIniac stack
+  unless the implementation plan documents and approves an exception.
+- **FR-SDD**: Behavior MUST align with the relevant `docs/sdd/` contracts or
+  explicitly document the contract update required by this feature.
 
 *Example of marking unclear requirements:*
 
@@ -113,6 +123,8 @@
 - **SC-002**: [Measurable metric, e.g., "System handles 1000 concurrent users without degradation"]
 - **SC-003**: [User satisfaction metric, e.g., "90% of users successfully complete primary task on first attempt"]
 - **SC-004**: [Business metric, e.g., "Reduce support tickets related to [X] by 50%"]
+- **SC-TEST**: Required automated or documented manual checks demonstrate the
+  feature works across its backend, frontend, contract, and UX surfaces.
 
 ## Assumptions
 
