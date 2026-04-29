@@ -31,7 +31,6 @@ services:
       - .env.docker
     environment:
       - PORT=3000
-      - DATABASE_URL=${DATABASE_URL}
       - PRISMA_MIGRATE=${PRISMA_MIGRATE:-deploy}
       - PRISMA_DB_PUSH_ACCEPT_DATA_LOSS=1
     depends_on:
