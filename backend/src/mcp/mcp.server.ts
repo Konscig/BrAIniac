@@ -1,4 +1,15 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { HttpError, isHttpError } from '../common/http-error.js';
+
+export const BRAINIAC_MCP_SERVER_NAME = 'brainiac-mcp';
+export const BRAINIAC_MCP_SERVER_VERSION = '0.1.0';
+
+const BRAINIAC_MCP_INSTRUCTIONS = [
+  'Use BrAIniac MCP as an authenticated adapter over existing BrAIniac backend services.',
+  'Resources and read-only tools are owner-scoped to the bearer token user.',
+  'Do not assume missing resources are public; permission and validation errors are explicit.',
+  'Large payloads are summarized or exposed as linked resources.',
+].join(' ');
 
 export type McpErrorCode = 'UNAUTHORIZED' | 'FORBIDDEN' | 'VALIDATION' | 'NOT_FOUND' | 'RUNTIME';
 
@@ -66,4 +77,21 @@ export function mapMcpError(error: unknown): McpVisibleError {
     message: 'runtime error',
     details: {},
   };
+}
+
+export function createBrainiacMcpServer(): McpServer {
+  return new McpServer(
+    {
+      name: BRAINIAC_MCP_SERVER_NAME,
+      version: BRAINIAC_MCP_SERVER_VERSION,
+    },
+    {
+      instructions: BRAINIAC_MCP_INSTRUCTIONS,
+      capabilities: {
+        resources: {},
+        tools: {},
+        logging: {},
+      },
+    },
+  );
 }
