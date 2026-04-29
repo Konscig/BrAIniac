@@ -6,6 +6,7 @@ import { llmCallNodeHandler } from './llm-call.node-handler.js';
 import { manualInputNodeHandler } from './manual-input.node-handler.js';
 import { parserNodeHandler } from './parser.node-handler.js';
 import { promptBuilderNodeHandler } from './prompt-builder.node-handler.js';
+import { ragDatasetNodeHandler } from './rag-dataset.node-handler.js';
 import { rankerNodeHandler } from './ranker.node-handler.js';
 import { saveResultNodeHandler } from './save-result.node-handler.js';
 import { toolNodeHandler } from './tool-node.node-handler.js';
@@ -15,6 +16,7 @@ const NODE_HANDLER_REGISTRY = new Map<string, NodeHandler>([
   ['Trigger', triggerNodeHandler],
   ['ManualInput', manualInputNodeHandler],
   ['DatasetInput', datasetInputNodeHandler],
+  ['RAGDataset', ragDatasetNodeHandler],
   ['PromptBuilder', promptBuilderNodeHandler],
   ['Filter', filterNodeHandler],
   ['Ranker', rankerNodeHandler],

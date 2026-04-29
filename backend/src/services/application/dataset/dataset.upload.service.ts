@@ -1,7 +1,15 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { HttpError } from '../../../common/http-error.js';
+import { isValidUtf8 } from '../../../common/text/utf8-detector.js';
+import {
+  RAG_DATASET_ALLOWED_EXTENSIONS,
+  RAG_DATASET_ERROR_CODES,
+  RAG_DATASET_ERROR_MESSAGES,
+  RAG_DATASET_MAX_FILE_BYTES,
+} from '../tool/contracts/rag-dataset.constants.js';
+import { getRagCorpusRoot, ragCorpusAbsolutePathToUri } from './rag-corpus-path.service.js';
 
 const DEFAULT_MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(['.txt', '.text', '.md', '.json']);
@@ -166,4 +174,139 @@ export async function deleteManagedDatasetSourceIfOwned(uri: string | null | und
   } catch {
     // Best effort cleanup only.
   }
+}
+
+// ============================================================================
+// RAG Corpus upload (kind=rag-corpus)
+// ============================================================================
+
+const RAG_CORPUS_ALLOWED_EXTENSIONS_SET = new Set<string>(RAG_DATASET_ALLOWED_EXTENSIONS);
+
+function sanitizeRagCorpusFilename(raw: string): string {
+  const trimmed = (raw ?? '').toString().trim();
+  if (!trimmed) {
+    throw httpError(
+      400,
+      RAG_DATASET_ERROR_CODES.FILENAME_INVALID,
+      { reason: 'empty' },
+    );
+  }
+
+  if (trimmed.includes('/') || trimmed.includes('\\') || trimmed.includes('\0') || trimmed.includes('..')) {
+    throw httpError(400, RAG_DATASET_ERROR_CODES.FILENAME_INVALID, { filename: trimmed });
+  }
+
+  const parsed = path.parse(trimmed);
+  const baseName = (parsed.name || 'corpus')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'corpus';
+  const extension = parsed.ext.toLowerCase();
+
+  if (!RAG_CORPUS_ALLOWED_EXTENSIONS_SET.has(extension)) {
+    throw httpError(400, RAG_DATASET_ERROR_CODES.FORMAT_INVALID, {
+      filename: trimmed,
+      extension: extension || null,
+      allowed: [...RAG_DATASET_ALLOWED_EXTENSIONS],
+    });
+  }
+
+  return `${baseName}${extension}`;
+}
+
+function decodeRagCorpusContent(contentBase64: string): Buffer {
+  const normalized = (contentBase64 ?? '').toString().replace(/\s+/g, '');
+  if (!normalized) {
+    throw httpError(400, RAG_DATASET_ERROR_CODES.CONTENT_INVALID, { reason: 'empty' });
+  }
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(normalized, 'base64');
+  } catch {
+    throw httpError(400, RAG_DATASET_ERROR_CODES.CONTENT_INVALID, { reason: 'base64 parse failed' });
+  }
+  if (buffer.length === 0) {
+    throw httpError(400, RAG_DATASET_ERROR_CODES.CONTENT_INVALID, { reason: 'decoded empty' });
+  }
+  return buffer;
+}
+
+function httpError(status: number, code: string, details: Record<string, unknown>): HttpError {
+  return new HttpError(status, {
+    code,
+    error:
+      RAG_DATASET_ERROR_MESSAGES[code as keyof typeof RAG_DATASET_ERROR_MESSAGES] ??
+      'rag corpus upload error',
+    details,
+  });
+}
+
+export type PersistRagCorpusUploadInput = {
+  filename: string;
+  contentBase64: string;
+  ownerToken: string;
+};
+
+export type PersistedRagCorpusUpload = {
+  uri: string;
+  filename: string;
+  size_bytes: number;
+  kind: 'rag-corpus';
+};
+
+/**
+ * Сохраняет файл корпуса в `backend/.artifacts/rag-corpus/<owner_token>/<sanitized>`.
+ * Валидирует filename, размер ≤1 МБ, кодировку UTF-8. См. контракт
+ * specs/002-rag-dataset-tool/contracts/rag-corpus-upload-endpoint.md.
+ */
+export async function persistRagCorpusUpload(input: PersistRagCorpusUploadInput): Promise<PersistedRagCorpusUpload> {
+  const filename = sanitizeRagCorpusFilename(input.filename);
+  const buffer = decodeRagCorpusContent(input.contentBase64);
+
+  if (buffer.length > RAG_DATASET_MAX_FILE_BYTES) {
+    throw new HttpError(413, {
+      code: RAG_DATASET_ERROR_CODES.SIZE_EXCEEDED,
+      error: RAG_DATASET_ERROR_MESSAGES[RAG_DATASET_ERROR_CODES.SIZE_EXCEEDED],
+      details: {
+        filename,
+        size_bytes: buffer.length,
+        limit_bytes: RAG_DATASET_MAX_FILE_BYTES,
+      },
+    });
+  }
+
+  if (!isValidUtf8(buffer)) {
+    throw httpError(400, RAG_DATASET_ERROR_CODES.ENCODING_INVALID, { filename });
+  }
+
+  const ownerToken = sanitizeOwnerToken(input.ownerToken);
+  const storageDir = path.join(getRagCorpusRoot(), ownerToken);
+  await mkdir(storageDir, { recursive: true });
+
+  const finalPath = path.join(storageDir, filename);
+  const tempPath = `${finalPath}.tmp-${randomUUID().slice(0, 8)}`;
+
+  await writeFile(tempPath, buffer);
+  try {
+    await rename(tempPath, finalPath);
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => {});
+    throw new HttpError(500, {
+      code: 'RAG_CORPUS_STORE_FAILED',
+      error: 'Не удалось сохранить файл RAG-корпуса.',
+      details: { filename, reason: error instanceof Error ? error.message : 'rename failed' },
+    });
+  }
+
+  return {
+    uri: ragCorpusAbsolutePathToUri(finalPath),
+    filename,
+    size_bytes: buffer.length,
+    kind: 'rag-corpus',
+  };
+}
+
+function sanitizeOwnerToken(raw: string): string {
+  const cleaned = (raw ?? '').toString().trim().replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  return cleaned.length > 0 ? cleaned.slice(0, 64) : 'anonymous';
 }
