@@ -16,6 +16,8 @@ process.env.EXECUTOR_ARTIFACT_INLINE_MAX_ITEMS = '1';
 process.env.EXECUTOR_ARTIFACT_INLINE_MAX_BYTES = '256';
 process.env.EXECUTOR_ARTIFACT_PREVIEW_ITEMS = '2';
 process.env.OPENROUTER_LLM_MODEL = 'google/gemini-2.5-flash-preview';
+process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+process.env.OPENROUTER_MAX_RETRIES = '0';
 
 const documentLoaderModule = await import(
   pathToFileURL(path.join(backendRoot, 'src/services/application/tool/contracts/document-loader.tool.ts')).href
@@ -28,6 +30,9 @@ const vectorUpsertModule = await import(
 );
 const hybridRetrieverModule = await import(
   pathToFileURL(path.join(backendRoot, 'src/services/application/tool/contracts/hybrid-retriever.tool.ts')).href
+);
+const contextAssemblerModule = await import(
+  pathToFileURL(path.join(backendRoot, 'src/services/application/tool/contracts/context-assembler.tool.ts')).href
 );
 const llmAnswerModule = await import(
   pathToFileURL(path.join(backendRoot, 'src/services/application/tool/contracts/llm-answer.tool.ts')).href
@@ -43,6 +48,7 @@ const { resolveDocumentLoaderContractInput, documentLoaderToolContractDefinition
 const { resolveEmbedderContractInput, embedderToolContractDefinition } = embedderModule;
 const { resolveVectorUpsertContractInput, vectorUpsertToolContractDefinition } = vectorUpsertModule;
 const { resolveHybridRetrieverContractInput, hybridRetrieverToolContractDefinition } = hybridRetrieverModule;
+const { resolveContextAssemblerContractInput, contextAssemblerToolContractDefinition } = contextAssemblerModule;
 const { resolveLlmAnswerContractInput, llmAnswerToolContractDefinition } = llmAnswerModule;
 const { buildInlineArtifactManifest, listArtifactManifestItems } = manifestModule;
 const { externalizeNodeStateArtifacts } = artifactStoreModule;
@@ -232,7 +238,83 @@ async function testArtifactBackedRetrieverPath() {
   log('HybridRetriever ranks persisted vector artifacts through external-blob pointers');
 }
 
+async function testRetrieverNoResultsPath() {
+  const ignoredInputJsonManifest = buildInlineArtifactManifest('vectors', [
+    {
+      vector_id: 'hidden_vector',
+      chunk_id: 'hidden_chunk',
+      document_id: 'hidden_doc',
+      text: 'This vector is in input_json and must not be used as retriever input.',
+      vector: [0.1, 0.2, 0.3],
+    },
+  ]);
+  const retrieverInput = resolveHybridRetrieverContractInput(
+    [],
+    {
+      dataset: null,
+      input_json: {
+        retrieval_query: 'no indexed records yet',
+        top_k: 3,
+        vectors_manifest: ignoredInputJsonManifest,
+      },
+    },
+  );
+  const retrieverOutput = await hybridRetrieverToolContractDefinition.buildHttpSuccessOutput({
+    input: retrieverInput,
+    status: 200,
+    response: { ok: true },
+  });
+
+  assert.equal(retrieverOutput.retrieval_source, 'no-results');
+  assert.equal(retrieverOutput.no_results, true);
+  assert.equal(retrieverOutput.candidate_count, 0);
+  assert.deepEqual(retrieverOutput.candidates, []);
+  assert.equal(JSON.stringify(retrieverOutput).includes('context passage'), false);
+
+  const contextInput = resolveContextAssemblerContractInput(
+    [{ contract_output: retrieverOutput }],
+    { dataset: null, input_json: {} },
+  );
+  const contextOutput = await contextAssemblerToolContractDefinition.buildHttpSuccessOutput({
+    input: contextInput,
+    status: 200,
+    response: { ok: true },
+  });
+
+  assert.equal(contextOutput.no_results, true);
+  assert.equal(contextOutput.selected_count, 0);
+  assert.equal(contextOutput.context_bundle.no_results, true);
+  assert.equal(contextOutput.context_bundle.text, '');
+
+  log('HybridRetriever no-results path does not synthesize passages and ContextAssembler accepts it');
+}
+
 async function testLlmAnswerIgnoresEmbeddingModelFromUpstream() {
+  const originalFetch = globalThis.fetch;
+  const fetchCalls = [];
+  globalThis.fetch = async (url, options) => {
+    fetchCalls.push({ url, options });
+    return new Response(
+      JSON.stringify({
+        id: 'test-llmanswer-response',
+        model: 'google/gemini-2.5-flash-preview',
+        choices: [
+          {
+            message: {
+              content: 'Artemis II tests crewed lunar mission systems before later landings.',
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 12,
+          completion_tokens: 10,
+          total_tokens: 22,
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  };
+
   const llmInput = resolveLlmAnswerContractInput(
     [
       {
@@ -252,17 +334,112 @@ async function testLlmAnswerIgnoresEmbeddingModelFromUpstream() {
     },
   );
 
-  const llmOutput = await llmAnswerToolContractDefinition.buildHttpSuccessOutput({
-    input: llmInput,
-    status: 200,
-    response: { ok: true },
-  });
+  try {
+    const llmOutput = await llmAnswerToolContractDefinition.buildHttpSuccessOutput({
+      input: llmInput,
+      status: 200,
+      response: { ok: true },
+    });
 
-  assert.equal(llmInput.model, undefined);
-  assert.equal(llmOutput.model, 'google/gemini-2.5-flash-preview');
-  assert.match(llmOutput.answer, /Artemis II/i);
+    assert.equal(llmInput.model, undefined);
+    assert.equal(llmOutput.provider, 'openrouter');
+    assert.equal(llmOutput.model, 'google/gemini-2.5-flash-preview');
+    assert.equal(llmOutput.provider_response_id, 'test-llmanswer-response');
+    assert.equal(llmOutput.context_used, true);
+    assert.match(llmOutput.answer, /Artemis II/i);
+    assert.equal(fetchCalls.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 
-  log('LLMAnswer ignores upstream embedding model and falls back to OPENROUTER_LLM_MODEL');
+  log('LLMAnswer calls OpenRouter chat and ignores upstream embedding model');
+}
+
+async function testLlmAnswerWithoutContextUsesQuestion() {
+  const originalFetch = globalThis.fetch;
+  let requestBody = null;
+  globalThis.fetch = async (_url, options) => {
+    requestBody = JSON.parse(String(options?.body ?? '{}'));
+    return new Response(
+      JSON.stringify({
+        id: 'test-llmanswer-no-context',
+        model: 'google/gemini-2.5-flash-preview',
+        choices: [
+          {
+            message: {
+              content: 'RAG combines retrieval with generation.',
+            },
+          },
+        ],
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  };
+
+  try {
+    const llmInput = resolveLlmAnswerContractInput([], {
+      dataset: null,
+      input_json: {
+        question: 'What is RAG?',
+      },
+    });
+    const llmOutput = await llmAnswerToolContractDefinition.buildHttpSuccessOutput({
+      input: llmInput,
+      status: 200,
+      response: { ok: true },
+    });
+
+    assert.equal(llmInput.user_query, 'What is RAG?');
+    assert.equal(llmOutput.context_used, false);
+    assert.equal(llmOutput.grounded, false);
+    assert.match(llmOutput.answer, /RAG/i);
+    assert.match(JSON.stringify(requestBody), /What is RAG/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  log('LLMAnswer answers with only a question when no context is available');
+}
+
+async function testLlmAnswerProviderErrorIsExposed() {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        error: {
+          code: 429,
+          message: 'Rate limit exceeded in test',
+        },
+      }),
+      { status: 429, headers: { 'Content-Type': 'application/json' } },
+    );
+
+  try {
+    const llmInput = resolveLlmAnswerContractInput([], {
+      dataset: null,
+      input_json: {
+        user_query: 'Will this fail?',
+      },
+    });
+    await assert.rejects(
+      () =>
+        llmAnswerToolContractDefinition.buildHttpSuccessOutput({
+          input: llmInput,
+          status: 200,
+          response: { ok: true },
+        }),
+      (error) => {
+        assert.equal(error?.body?.code, 'OPENROUTER_UPSTREAM_ERROR');
+        assert.equal(error?.body?.details?.status, 429);
+        assert.match(error?.body?.error ?? '', /Rate limit exceeded/i);
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  log('LLMAnswer exposes provider errors without fallback answers');
 }
 
 try {
@@ -271,7 +448,10 @@ try {
   await testDocumentLoaderJsonBundle();
   await testExternalBlobRoundTrip();
   await testArtifactBackedRetrieverPath();
+  await testRetrieverNoResultsPath();
   await testLlmAnswerIgnoresEmbeddingModelFromUpstream();
+  await testLlmAnswerWithoutContextUsesQuestion();
+  await testLlmAnswerProviderErrorIsExposed();
   log('SUCCESS');
 } catch (error) {
   console.error('[rag-artifacts] FAIL:', error instanceof Error ? error.stack ?? error.message : error);

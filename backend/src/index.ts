@@ -49,7 +49,7 @@ function createApp() {
     .filter(Boolean);
   const allowedOrigins = parsedOrigins.length > 0 ? parsedOrigins : defaultOrigins;
 
-  app.use(cors({
+  const corsOptions = {
     origin: (origin, callback) => {
       if (!origin) return callback(null, true); // allow non-browser tools
       if (allowedOrigins.includes(origin)) return callback(null, true);
@@ -57,10 +57,12 @@ function createApp() {
     },
     credentials: true,
     methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-    allowedHeaders: ['Content-Type','Authorization']
-  }));
+    allowedHeaders: ['Content-Type','Authorization','x-idempotency-key'],
+  } satisfies cors.CorsOptions;
+
+  app.use(cors(corsOptions));
   // Express 5 no longer accepts '*' in path-to-regexp; use a regex to match all paths
-  app.options(/.*/, cors());
+  app.options(/.*/, cors(corsOptions));
 
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
 

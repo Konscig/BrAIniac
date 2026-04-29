@@ -40,18 +40,18 @@ export type AgentResolvedFinalText = {
   origin: string;
 };
 
-export function resolveEmptyAgentFinalText(fallbackAnswer: string | null): AgentResolvedFinalText {
-  if (fallbackAnswer) {
+export function resolveEmptyAgentFinalText(artifactAnswer: string | null): AgentResolvedFinalText {
+  if (artifactAnswer) {
     return {
-      text: fallbackAnswer,
+      text: artifactAnswer,
       source: 'artifact.answer',
       origin: 'tool-artifact',
     };
   }
 
   return {
-    text: 'AgentCall completed with empty answer.',
-    source: 'fallback.empty',
+    text: 'AgentCall completed without a final answer.',
+    source: 'agent.empty',
     origin: 'runtime',
   };
 }
@@ -70,6 +70,8 @@ type BuildAgentCallOutputOptions = {
   providerSoftFailures: number;
   providerLastErrorCode: string;
   providerLastErrorStatus: number | null;
+  providerLastErrorMessage: string;
+  providerLastErrorDetails: Record<string, any> | undefined;
   attemptsUsed: number;
   llmTurns: number;
   maxAttempts: number;
@@ -104,10 +106,12 @@ export function buildAgentCallOutput(options: BuildAgentCallOutputOptions): Reco
     provider_calls_attempted: options.providerCallsAttempted,
     provider_soft_failures: options.providerSoftFailures,
     provider_last_error:
-      options.providerLastErrorCode || options.providerLastErrorStatus
+      options.providerLastErrorCode || options.providerLastErrorStatus || options.providerLastErrorMessage
         ? {
             ...(options.providerLastErrorCode ? { code: options.providerLastErrorCode } : {}),
             ...(options.providerLastErrorStatus ? { status: options.providerLastErrorStatus } : {}),
+            ...(options.providerLastErrorMessage ? { message: options.providerLastErrorMessage } : {}),
+            ...(options.providerLastErrorDetails ? { details: options.providerLastErrorDetails } : {}),
           }
         : null,
     attempts_used: options.attemptsUsed,

@@ -67,7 +67,6 @@ async function testToolNodeAdvertisingOutputShape() {
       ui_json: {
         label: 'ToolNode(DocumentLoader)',
         tool: {
-          tool_id: 7,
           name: 'DocumentLoader',
           config_json: {
             executor: {
@@ -97,7 +96,7 @@ async function testToolNodeAdvertisingOutputShape() {
 
   assert.equal(result.output?.kind, 'tool_node');
   assert.equal(result.output?.tool_name, 'DocumentLoader');
-  assert.equal(result.output?.tool_id, 7);
+  assert.equal(result.output?.tool_id, undefined);
   assert.equal(typeof result.output?.tool_source, 'string');
   assert.equal(result.output?.config_json?.executor?.kind, 'http-json');
 }
@@ -117,6 +116,8 @@ function testAgentCallOutputShape() {
     providerSoftFailures: 0,
     providerLastErrorCode: '',
     providerLastErrorStatus: null,
+    providerLastErrorMessage: '',
+    providerLastErrorDetails: undefined,
     attemptsUsed: 1,
     llmTurns: 1,
     maxAttempts: 3,

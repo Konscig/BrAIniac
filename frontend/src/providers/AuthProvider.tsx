@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useMemo, useState } from
 
 export type AuthTokens = {
   accessToken: string;
-  refreshToken: string;
+  refreshToken?: string;
 };
 
 const normalizeTokens = (input: unknown): AuthTokens | null => {
@@ -14,8 +14,11 @@ const normalizeTokens = (input: unknown): AuthTokens | null => {
   const access = candidate.accessToken ?? candidate.access_token;
   const refresh = candidate.refreshToken ?? candidate.refresh_token;
 
-  if (typeof access === "string" && typeof refresh === "string") {
-    return { accessToken: access, refreshToken: refresh };
+  if (typeof access === "string") {
+    return {
+      accessToken: access,
+      refreshToken: typeof refresh === "string" ? refresh : undefined
+    };
   }
 
   return null;

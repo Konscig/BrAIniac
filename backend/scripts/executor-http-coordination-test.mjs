@@ -121,7 +121,7 @@ async function run() {
 
   const nodeTypes = mustOk(
     'list node types',
-    await req(base, '/node-types?fk_tool_id=3', {
+    await req(base, '/node-types', {
       method: 'GET',
       headers: authHeaders,
     }),

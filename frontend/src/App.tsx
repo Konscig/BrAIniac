@@ -5,433 +5,360 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 import "./App.css";
 
 import { CanvasBoard } from "./components/canvas-board";
-import {
-  EnvironmentModeSwitch,
-  type EnvironmentMode
-} from "./components/environment-mode-switch";
 import { ModeToggle } from "./components/mode-toggle";
 import { NodeLibrary } from "./components/node-library";
+import { RunPanel } from "./components/run-panel";
 import { SidebarProjects } from "./components/sidebar-projects";
-import { PipelineRunner } from "./components/pipeline-runner";
 import { Button } from "./components/ui/button";
 import {
   createPipeline,
   createProject,
-  executePipeline,
+  deletePipeline,
+  deleteProject,
+  listNodeTypes,
   listPipelines,
   listProjects,
-  publishPipelineVersion,
-  deleteProject,
-  type EnvironmentModeApi,
-  type ExecutePipelineResponse,
-  type PipelineSummary,
-  type ProjectSummary
+  updatePipeline,
+  updateProject,
+  type EdgeRecord,
+  type NodeRecord,
+  type NodeTypeRecord,
+  type PipelineRecord,
+  type ProjectRecord
 } from "./lib/api";
-import { updateProject } from "./lib/api";
 import { AuthPage } from "./pages/auth-page";
 import { useAuth } from "./providers/AuthProvider";
 
-const MODE_API_MAP: Record<EnvironmentMode, EnvironmentModeApi> = {
-  test: "ENVIRONMENT_MODE_TEST",
-  hybrid: "ENVIRONMENT_MODE_HYBRID",
-  real: "ENVIRONMENT_MODE_REAL"
-};
+function normalizeProjectRecord(project: ProjectRecord): ProjectRecord {
+  return {
+    ...project,
+    name: project.name.trim()
+  };
+}
+
+function normalizePipelineRecord(pipeline: PipelineRecord): PipelineRecord {
+  return {
+    ...pipeline,
+    name: pipeline.name.trim()
+  };
+}
 
 function MainPage(): React.ReactElement {
-  const [projects, setProjects] = React.useState<ProjectSummary[]>([]);
-  const [pipelines, setPipelines] = React.useState<PipelineSummary[]>([]);
-  const [activeProjectId, setActiveProjectId] = React.useState<string>("");
-  const [activePipelineId, setActivePipelineId] = React.useState<string>("");
-  const [environmentMode, setEnvironmentMode] = React.useState<EnvironmentMode>(
-    "test"
-  );
-  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
-  const [refreshToken, setRefreshToken] = React.useState(0);
-  const [boardStatus, setBoardStatus] = React.useState({
-    isOffline: false,
-    hasUnsavedChanges: false,
-    lastError: null as string | null
-  });
-  const [saveFeedback, setSaveFeedback] = React.useState<
-    { type: "success" | "error"; message: string } | null
-  >(null);
+  const [projects, setProjects] = React.useState<ProjectRecord[]>([]);
+  const [pipelinesByProject, setPipelinesByProject] = React.useState<Record<number, PipelineRecord[]>>({});
+  const [nodeTypes, setNodeTypes] = React.useState<NodeTypeRecord[]>([]);
+  const [activeProjectId, setActiveProjectId] = React.useState<number | null>(null);
+  const [activePipelineId, setActivePipelineId] = React.useState<number | null>(null);
   const [dataError, setDataError] = React.useState<string | null>(null);
-  const [isLoadingProjects, setIsLoadingProjects] = React.useState(false);
-  const [isLoadingPipelines, setIsLoadingPipelines] = React.useState(false);
-  const [triggerInput, setTriggerInput] = React.useState("");
-  const [runResult, setRunResult] = React.useState<ExecutePipelineResponse | null>(null);
-  const [runError, setRunError] = React.useState<string | null>(null);
-  const [isRunning, setIsRunning] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [isGraphRunning, setIsGraphRunning] = React.useState(false);
+  const [graphRefreshToken, setGraphRefreshToken] = React.useState(0);
+  const [graphState, setGraphState] = React.useState<{ nodes: NodeRecord[]; edges: EdgeRecord[] }>({
+    nodes: [],
+    edges: []
+  });
+  const activeProjectIdRef = React.useRef<number | null>(null);
+  const activePipelineIdRef = React.useRef<number | null>(null);
   const navigate = useNavigate();
   const { clearSession } = useAuth();
+
+  React.useEffect(() => {
+    activeProjectIdRef.current = activeProjectId;
+  }, [activeProjectId]);
+
+  React.useEffect(() => {
+    activePipelineIdRef.current = activePipelineId;
+  }, [activePipelineId]);
+
+  const activeProject = React.useMemo(
+    () => projects.find((project) => project.project_id === activeProjectId) ?? null,
+    [activeProjectId, projects]
+  );
+
+  const activePipeline = React.useMemo(() => {
+    for (const pipelineList of Object.values(pipelinesByProject)) {
+      const found = pipelineList.find((pipeline) => pipeline.pipeline_id === activePipelineId);
+      if (found) return found;
+    }
+    return null;
+  }, [activePipelineId, pipelinesByProject]);
+
+  const ensureActiveSelection = React.useCallback(
+    (
+      nextProjects: ProjectRecord[],
+      nextPipelinesByProject: Record<number, PipelineRecord[]>,
+      preferredProjectId?: number | null,
+      preferredPipelineId?: number | null
+    ) => {
+      const resolvedProjectId =
+        preferredProjectId && nextProjects.some((project) => project.project_id === preferredProjectId)
+          ? preferredProjectId
+          : nextProjects[0]?.project_id ?? null;
+
+      const projectPipelines = resolvedProjectId ? nextPipelinesByProject[resolvedProjectId] ?? [] : [];
+      const resolvedPipelineId =
+        preferredPipelineId && projectPipelines.some((pipeline) => pipeline.pipeline_id === preferredPipelineId)
+          ? preferredPipelineId
+          : projectPipelines[0]?.pipeline_id ?? null;
+
+      setActiveProjectId(resolvedProjectId);
+      setActivePipelineId(resolvedPipelineId);
+    },
+    []
+  );
+
+  const loadInitialData = React.useCallback(async () => {
+    setIsLoading(true);
+    setDataError(null);
+
+    try {
+      const [rawProjects, nextNodeTypes] = await Promise.all([listProjects(), listNodeTypes()]);
+      const nextProjects = rawProjects.map(normalizeProjectRecord);
+      const projectPipelinePairs = await Promise.all(
+        nextProjects.map(async (project) => [
+          project.project_id,
+          (await listPipelines(project.project_id)).map(normalizePipelineRecord)
+        ] as const)
+      );
+      const nextPipelinesByProject = Object.fromEntries(projectPipelinePairs);
+
+      setProjects(nextProjects);
+      setNodeTypes(nextNodeTypes);
+      setPipelinesByProject(nextPipelinesByProject);
+      ensureActiveSelection(
+        nextProjects,
+        nextPipelinesByProject,
+        activeProjectIdRef.current,
+        activePipelineIdRef.current
+      );
+    } catch (loadError) {
+      console.error("Failed to load initial data", loadError);
+      setDataError(loadError instanceof Error ? loadError.message : "Не удалось загрузить данные.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [ensureActiveSelection]);
+
+  React.useEffect(() => {
+    void loadInitialData();
+  }, [loadInitialData]);
+
+  React.useEffect(() => {
+    if (!activeProjectId) {
+      setActivePipelineId(null);
+      return;
+    }
+
+    const activeProjectPipelines = pipelinesByProject[activeProjectId] ?? [];
+    if (!activeProjectPipelines.some((pipeline) => pipeline.pipeline_id === activePipelineId)) {
+      setActivePipelineId(activeProjectPipelines[0]?.pipeline_id ?? null);
+    }
+  }, [activePipelineId, activeProjectId, pipelinesByProject]);
 
   const handleLogout = React.useCallback(() => {
     clearSession();
     navigate("/auth", { replace: true });
   }, [clearSession, navigate]);
 
-  const handleSelectProject = React.useCallback((projectId: string) => {
-    setActiveProjectId(projectId);
-    setActivePipelineId("");
-    setRunResult(null);
-    setRunError(null);
-  }, []);
-
-  const handleSelectPipeline = React.useCallback((pipelineId: string) => {
-    setActivePipelineId(pipelineId);
-    setRunResult(null);
-    setRunError(null);
-  }, []);
-
-  const loadProjects = React.useCallback(async () => {
-    setIsLoadingProjects(true);
-    setDataError(null);
+  const handleCreateProject = React.useCallback(async (name: string) => {
     try {
-      let projectList = await listProjects();
-      if (projectList.length === 0) {
-        const created = await createProject(
-          "Демо проект",
-          "Проект создан автоматически"
-        );
-        projectList = [created];
-      }
-      setProjects(projectList);
-      setActiveProjectId((prev) => {
-        if (prev && projectList.some((project) => project.id === prev)) {
-          return prev;
-        }
-        return projectList[0]?.id ?? "";
-      });
-    } catch (error) {
-      console.error("Failed to load projects", error);
-      setDataError("Не удалось загрузить проекты");
-    } finally {
-      setIsLoadingProjects(false);
+      const created = normalizeProjectRecord(await createProject({ name }));
+      setProjects((current) => [created, ...current]);
+      setPipelinesByProject((current) => ({ ...current, [created.project_id]: [] }));
+      setActiveProjectId(created.project_id);
+      setActivePipelineId(null);
+      setDataError(null);
+    } catch (createError) {
+      console.error("Failed to create project", createError);
+      setDataError(createError instanceof Error ? createError.message : "Не удалось создать проект.");
     }
   }, []);
 
-  const handleCreateProject = React.useCallback(async (name: string, description: string) => {
-    setIsLoadingProjects(true);
+  const handleCreatePipeline = React.useCallback(async (projectId: number, name: string) => {
     try {
-      const p = await createProject(name, description);
-      setProjects((prev) => [p, ...prev]);
-      setActiveProjectId(p.id);
-    } catch (err) {
-      console.error('Failed to create project', err);
-      setDataError('Не удалось создать проект');
-    } finally {
-      setIsLoadingProjects(false);
+      const created = normalizePipelineRecord(await createPipeline({
+        fk_project_id: projectId,
+        name
+      }));
+
+      setPipelinesByProject((current) => ({
+        ...current,
+        [projectId]: [created, ...(current[projectId] ?? [])]
+      }));
+      setActiveProjectId(projectId);
+      setActivePipelineId(created.pipeline_id);
+      setDataError(null);
+    } catch (createError) {
+      console.error("Failed to create pipeline", createError);
+      setDataError(createError instanceof Error ? createError.message : "Не удалось создать агента.");
     }
   }, []);
 
-  const handleDeleteProject = React.useCallback(async (projectId: string) => {
-    setIsLoadingProjects(true);
+  const handleRenameProject = React.useCallback(async (projectId: number, name: string) => {
+    try {
+      const updated = normalizeProjectRecord(await updateProject(projectId, { name }));
+      setProjects((current) =>
+        current.map((project) => (project.project_id === projectId ? updated : project))
+      );
+      setDataError(null);
+    } catch (updateError) {
+      console.error("Failed to rename project", updateError);
+      setDataError(updateError instanceof Error ? updateError.message : "Не удалось переименовать проект.");
+    }
+  }, []);
+
+  const handleDeleteProject = React.useCallback(async (projectId: number) => {
     try {
       await deleteProject(projectId);
-      setProjects((prev) => prev.filter((p) => p.id !== projectId));
-      if (activeProjectId === projectId) {
-        setActiveProjectId("");
-        setPipelines([]);
-        setActivePipelineId("");
-      }
-    } catch (err) {
-      console.error('Failed to delete project', err);
-      setDataError('Не удалось удалить проект');
-    } finally {
-      setIsLoadingProjects(false);
-    }
-  }, [activeProjectId]);
 
-  const handleEditProject = React.useCallback(async (projectId: string, name: string, description?: string) => {
-    setIsLoadingProjects(true);
+      const nextProjects = projects.filter((project) => project.project_id !== projectId);
+      const nextPipelinesByProject = { ...pipelinesByProject };
+      delete nextPipelinesByProject[projectId];
+
+      setProjects(nextProjects);
+      setPipelinesByProject(nextPipelinesByProject);
+      ensureActiveSelection(
+        nextProjects,
+        nextPipelinesByProject,
+        activeProjectId === projectId ? null : activeProjectId,
+        activeProjectId === projectId ? null : activePipelineId
+      );
+      setDataError(null);
+    } catch (deleteError) {
+      console.error("Failed to delete project", deleteError);
+      setDataError(deleteError instanceof Error ? deleteError.message : "Не удалось удалить проект.");
+    }
+  }, [activePipelineId, activeProjectId, ensureActiveSelection, pipelinesByProject, projects]);
+
+  const handleRenamePipeline = React.useCallback(async (pipelineId: number, name: string) => {
     try {
-      await updateProject(projectId, name, description);
-      setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, name } : p)));
-    } catch (err) {
-      console.error('Failed to update project', err);
-      setDataError('Не удалось обновить проект');
-    } finally {
-      setIsLoadingProjects(false);
-    }
-  }, []);
-
-  const loadPipelines = React.useCallback(async (projectId: string) => {
-    if (!projectId) {
-      setPipelines([]);
-      setActivePipelineId("");
-      return;
-    }
-
-    setIsLoadingPipelines(true);
-    setDataError(null);
-    try {
-      let pipelineList = await listPipelines(projectId);
-      if (pipelineList.length === 0) {
-        const created = await createPipeline(
-          projectId,
-          "Основной пайплайн",
-          "Пайплайн создан автоматически"
-        );
-        pipelineList = [created];
-      }
-      setPipelines(pipelineList);
-      setActivePipelineId((prev) => {
-        if (prev && pipelineList.some((pipeline) => pipeline.id === prev)) {
-          return prev;
+      const updated = normalizePipelineRecord(await updatePipeline(pipelineId, { name }));
+      setPipelinesByProject((current) => {
+        const next = { ...current };
+        for (const projectId of Object.keys(next)) {
+          const numericProjectId = Number(projectId);
+          next[numericProjectId] = (next[numericProjectId] ?? []).map((pipeline) =>
+            pipeline.pipeline_id === pipelineId ? updated : pipeline
+          );
         }
-        return pipelineList[0]?.id ?? "";
+        return next;
       });
-    } catch (error) {
-      console.error("Failed to load pipelines", error);
-      setDataError("Не удалось загрузить пайплайны");
-      setPipelines([]);
-      setActivePipelineId("");
-    } finally {
-      setIsLoadingPipelines(false);
+      setDataError(null);
+    } catch (updateError) {
+      console.error("Failed to rename pipeline", updateError);
+      setDataError(updateError instanceof Error ? updateError.message : "Не удалось переименовать агента.");
     }
   }, []);
 
-  React.useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
-
-  React.useEffect(() => {
-    if (activeProjectId) {
-      void loadPipelines(activeProjectId);
-    }
-  }, [activeProjectId, loadPipelines]);
-
-  React.useEffect(() => {
-    setTriggerInput("");
-  }, [activeProjectId, activePipelineId]);
-
-  const handleBoardStatusChange = React.useCallback(
-    (status: { isOffline: boolean; hasUnsavedChanges: boolean; lastError?: string | null }) => {
-      setBoardStatus({
-        isOffline: status.isOffline,
-        hasUnsavedChanges: status.hasUnsavedChanges,
-        lastError: status.lastError ?? null
-      });
-    },
-    []
-  );
-
-  const handleSaveDraft = React.useCallback(async () => {
-    setSaveFeedback(null);
-
-    if (!activeProjectId || !activePipelineId) {
-      setSaveFeedback({ type: "error", message: "Выберите проект и пайплайн" });
-      return;
-    }
-
-    if (isLoadingProjects || isLoadingPipelines) {
-      setSaveFeedback({ type: "error", message: "Подождите завершения загрузки данных" });
-      return;
-    }
-
-    if (boardStatus.isOffline) {
-      setSaveFeedback({
-        type: "error",
-        message: "Синхронизация недоступна — работаем в локальном режиме"
-      });
-      return;
-    }
-
+  const handleDeletePipeline = React.useCallback(async (pipelineId: number) => {
     try {
-      await publishPipelineVersion(
-        activeProjectId,
-        activePipelineId,
-        "Черновик сохранён из интерфейса"
-      );
-      setSaveFeedback({ type: "success", message: "Черновик сохранён" });
-      setRefreshToken((prev) => prev + 1);
-    } catch (error) {
-      console.error("Failed to save draft", error);
-      setSaveFeedback({ type: "error", message: "Не удалось сохранить черновик" });
-    }
-  }, [
-    activePipelineId,
-    activeProjectId,
-    boardStatus.isOffline,
-    isLoadingPipelines,
-    isLoadingProjects
-  ]);
+      await deletePipeline(pipelineId);
 
-  const handleRunPipeline = React.useCallback(async () => {
-    setRunError(null);
+      setPipelinesByProject((current) => {
+        const next = { ...current };
+        let deletedProjectId: number | null = null;
 
-    if (!activeProjectId || !activePipelineId) {
-      setRunError("Выберите проект и пайплайн");
-      return;
-    }
+        for (const projectId of Object.keys(next)) {
+          const numericProjectId = Number(projectId);
+          const filtered = (next[numericProjectId] ?? []).filter((pipeline) => pipeline.pipeline_id !== pipelineId);
+          if (filtered.length !== (next[numericProjectId] ?? []).length) {
+            deletedProjectId = numericProjectId;
+          }
+          next[numericProjectId] = filtered;
+        }
 
-    const prompt = triggerInput.trim();
-    if (!prompt) {
-      setRunError("Введите запрос для запуска пайплайна");
-      return;
-    }
+        if (pipelineId === activePipelineId) {
+          const fallbackList = deletedProjectId ? next[deletedProjectId] ?? [] : [];
+          setActivePipelineId(fallbackList[0]?.pipeline_id ?? null);
+          if (deletedProjectId) {
+            setActiveProjectId(deletedProjectId);
+          }
+        }
 
-    if (boardStatus.isOffline) {
-      setRunError("Пайплайн работает в офлайн-режиме. Синхронизируйте изменения");
-      return;
-    }
+        return next;
+      });
 
-    setIsRunning(true);
-    setRunResult(null);
-    try {
-      const response = await executePipeline(
-        activeProjectId,
-        activePipelineId,
-        MODE_API_MAP[environmentMode],
-        prompt
-      );
-      setRunResult(response);
-    } catch (error) {
-      console.error("Failed to execute pipeline", error);
-      const apiError = error as { status?: number; message?: string };
-      const fallbackMessage = apiError.status === 404
-        ? "Опубликуйте пайплайн или добавьте узлы"
-        : apiError.message ?? "Не удалось запустить пайплайн";
-      setRunError(fallbackMessage);
-    } finally {
-      setIsRunning(false);
+      setDataError(null);
+    } catch (deleteError) {
+      console.error("Failed to delete pipeline", deleteError);
+      setDataError(deleteError instanceof Error ? deleteError.message : "Не удалось удалить агента.");
     }
-  }, [
-    activePipelineId,
-    activeProjectId,
-    boardStatus.isOffline,
-    environmentMode,
-    triggerInput
-  ]);
+  }, [activePipelineId]);
 
   return (
-    <div className="App flex min-h-screen flex-col bg-background text-foreground">
-      <header className="flex items-center justify-between border-b border-border/60 px-6 py-4 backdrop-blur">
+    <div className="App flex h-screen flex-col overflow-hidden bg-background text-foreground">
+      <header className="flex items-center justify-between border-b border-border/60 px-4 py-2.5 backdrop-blur">
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
-            BrAIniac
-          </p>
-          <h1 className="text-2xl font-semibold">AI Agent Lab</h1>
-          <p className="text-sm text-muted-foreground">
-            Настройте пайплайн агента, перетаскивая ноды и соединяя их.
-          </p>
+          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">BrAIniac</p>
+          <h1 className="text-2xl font-semibold">Конструктор агентов</h1>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              className="rounded-full"
-              disabled={
-                !activePipelineId ||
-                boardStatus.isOffline ||
-                isLoadingProjects ||
-                isLoadingPipelines
-              }
-              onClick={handleSaveDraft}
-            >
-              Сохранить черновик
-            </Button>
-            <Button
-              className="rounded-full"
-              disabled={
-                !activePipelineId ||
-                !triggerInput.trim() ||
-                boardStatus.isOffline ||
-                isLoadingProjects ||
-                isLoadingPipelines ||
-                isRunning
-              }
-              onClick={handleRunPipeline}
-            >
-              {isRunning ? "Запускаем..." : "Запустить пайплайн"}
-            </Button>
-            <ModeToggle />
-            <Button
-              type="button"
-              variant="ghost"
-              className="rounded-full border border-border/60 bg-background/60 px-3"
-              onClick={handleLogout}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Выйти
-            </Button>
-          </div>
-          {saveFeedback && (
-            <span
-              className={`text-xs ${
-                saveFeedback.type === "success" ? "text-emerald-300" : "text-red-300"
-              }`}
-            >
-              {saveFeedback.message}
-            </span>
-          )}
-          {dataError && (
-            <span className="text-xs text-red-300">{dataError}</span>
-          )}
-          {boardStatus.lastError && (
-            <span className="text-xs text-red-300">{boardStatus.lastError}</span>
-          )}
+
+        <div className="flex items-center gap-3">
+          <ModeToggle />
+          <Button
+            type="button"
+            variant="ghost"
+            className="rounded-full border border-border/60 bg-background/60 px-3"
+            onClick={handleLogout}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Выйти
+          </Button>
         </div>
       </header>
 
-      <main className="flex flex-1 overflow-hidden">
+      <main className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)_286px] overflow-hidden">
         <SidebarProjects
           projects={projects}
-          pipelines={pipelines}
+          pipelinesByProject={pipelinesByProject}
           activeProjectId={activeProjectId}
           activePipelineId={activePipelineId}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
-          onSelectProject={handleSelectProject}
-          onSelectPipeline={handleSelectPipeline}
+          onSelectProject={setActiveProjectId}
+          onSelectPipeline={setActivePipelineId}
           onCreateProject={handleCreateProject}
+          onCreatePipeline={handleCreatePipeline}
+          onRenameProject={handleRenameProject}
           onDeleteProject={handleDeleteProject}
-          onEditProject={handleEditProject}
+          onRenamePipeline={handleRenamePipeline}
+          onDeletePipeline={handleDeletePipeline}
         />
 
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex flex-1 gap-4 overflow-hidden px-6 py-6">
-            <CanvasBoard
-              projectId={activeProjectId}
-              pipelineId={activePipelineId}
-              mode={environmentMode}
-              refreshToken={refreshToken}
-              onStatusChange={handleBoardStatusChange}
-            />
-            <div className="flex w-[340px] flex-col gap-4">
-              <NodeLibrary />
-              <PipelineRunner
-                triggerInput={triggerInput}
-                onTriggerInputChange={setTriggerInput}
-                onRun={handleRunPipeline}
-                isRunning={isRunning}
-                isDisabled={
-                  !activePipelineId ||
-                  boardStatus.isOffline ||
-                  isLoadingProjects ||
-                  isLoadingPipelines ||
-                  !triggerInput.trim()
-                }
-                result={runResult}
-                error={runError}
-              />
-            </div>
-          </div>
+        <section className="flex min-h-0 min-w-0 flex-col gap-2.5 overflow-hidden border-r border-border/60 border-l border-border/60 px-3 py-3">
+          <RunPanel
+            pipelineId={activePipelineId}
+            projectName={activeProject?.name ?? null}
+            pipelineName={activePipeline?.name ?? null}
+            nodes={graphState.nodes}
+            nodeTypes={nodeTypes}
+            onError={setDataError}
+            onRunningChange={setIsGraphRunning}
+            onExecutionComplete={() => setGraphRefreshToken((current) => current + 1)}
+          />
 
-          <footer className="flex items-center justify-between border-t border-border/60 px-6 py-4 backdrop-blur">
-            <EnvironmentModeSwitch
-              value={environmentMode}
-              onChange={setEnvironmentMode}
-            />
-            <div className="text-xs text-muted-foreground">
-              Статус: {environmentMode === "test"
-                ? "используем моки"
-                : environmentMode === "hybrid"
-                ? "частично реальные данные"
-                : "реальный режим"}
+          {isLoading && <div className="shrink-0 text-sm text-muted-foreground">Загружаем каталог узлов...</div>}
+
+          {dataError && (
+            <div className="shrink-0 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {dataError}
             </div>
-          </footer>
-        </div>
+          )}
+
+          <CanvasBoard
+            pipelineId={activePipelineId}
+            nodeTypes={nodeTypes}
+            refreshToken={graphRefreshToken}
+            isGraphRunning={isGraphRunning}
+            className="min-h-0"
+            onGraphChange={setGraphState}
+            onError={setDataError}
+          />
+        </section>
+
+        <aside className="flex min-h-0 min-w-0 flex-col gap-2.5 overflow-hidden px-2.5 py-3">
+          <div className="min-h-0 flex-1">
+            <NodeLibrary nodeTypes={nodeTypes} />
+          </div>
+        </aside>
       </main>
     </div>
   );

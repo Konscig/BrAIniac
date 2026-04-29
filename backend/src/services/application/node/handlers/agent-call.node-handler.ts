@@ -28,21 +28,21 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? (context.input_json as Record<string, unknown>) : {};
   const runModel = typeof inputRecord.model === 'string' && inputRecord.model.trim().length > 0 ? inputRecord.model.trim() : undefined;
 
-  const maxToolCalls = readBoundedInteger(agentConfig.maxToolCalls, 3, 1, 8);
+  const maxToolCalls = readBoundedInteger(agentConfig.maxToolCalls, 3, 1, 20);
   const maxAttempts = readBoundedInteger(agentConfig.maxAttempts, 1, 1, 5);
   const softRetryDelayMs = readBoundedInteger(agentConfig.softRetryDelayMs ?? llmConfig.softRetryDelayMs, 1200, 100, 15000);
   const agentModel = resolveAgentChatModel(runtime) ?? runModel;
   const temperatureRaw = Number(agentConfig.temperature ?? llmConfig.temperature);
   const maxTokensRaw = Number(agentConfig.maxTokens ?? llmConfig.maxTokens);
   const configuredSystemPrompt = agentConfig.systemPrompt;
-  const baseSystemPrompt =
+  const systemPromptText =
     typeof configuredSystemPrompt === 'string' && configuredSystemPrompt.trim().length > 0
       ? configuredSystemPrompt
       : 'You are AgentCall runtime in a pipeline graph. Return concise, actionable output. Use JSON when structure is useful.';
 
   const toolResolution = await resolveAgentToolBindings(runtime, inputs);
   const availableTools = toolResolution.advertised;
-  const systemPrompt = buildAgentSystemPrompt(baseSystemPrompt);
+  const systemPrompt = buildAgentSystemPrompt(systemPromptText);
   const messages: AgentMessage[] = buildAgentMessages(systemPrompt, availableTools, toolResolution.unresolvedTools, prompt);
 
   let attemptsUsed = 0;
@@ -55,9 +55,10 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   let providerCallsAttempted = 0;
   let providerLastErrorCode = '';
   let providerLastErrorStatus: number | null = null;
+  let providerLastErrorMessage = '';
+  let providerLastErrorDetails: Record<string, any> | undefined;
   let providerSoftFailures = 0;
   let providerSuccessfulResponses = 0;
-  let plannerFallbackUsed = false;
   let finalTextSource = '';
   let finalTextOrigin = '';
   let rawCompletionText = '';
@@ -85,6 +86,8 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
     providerSuccessfulResponses += providerTurn.providerSuccessfulResponses;
     providerLastErrorCode = providerTurn.providerLastErrorCode;
     providerLastErrorStatus = providerTurn.providerLastErrorStatus;
+    providerLastErrorMessage = providerTurn.providerLastErrorMessage;
+    providerLastErrorDetails = providerTurn.providerLastErrorDetails;
     finalModel = providerTurn.model;
     finalProviderResponseId = providerTurn.providerResponseId || finalProviderResponseId;
     finalUsage = providerTurn.usage;
@@ -101,20 +104,15 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
     const hasToolBudget = toolCallsExecuted < maxToolCalls;
     const directive: AgentDirective = completionText ? parseAgentDirective(completionText) : { kind: 'none', raw: null };
     lastDirectiveSummary = summarizeDirective(directive);
-    const fallbackTool = hasToolBudget ? toolResolution.orderedBindings.find((entry) => !attemptedToolKeys.has(entry.key)) : undefined;
     const artifactAnswer = extractAgentArtifactAnswer(workingInputs);
     const turnDecision = resolveAgentTurnDecision({
       directive,
       hasToolBudget,
-      ...(fallbackTool ? { fallbackTool: { key: fallbackTool.key, name: fallbackTool.binding.name } } : {}),
       artifactAnswer,
       completionText,
     });
 
     if (turnDecision.kind === 'tool_call') {
-      if (turnDecision.plannerFallbackUsed) {
-        plannerFallbackUsed = true;
-      }
       toolCallsExecuted += 1;
       const toolCallResult = await runAgentToolCall({
         index: toolCallsExecuted,
@@ -168,13 +166,15 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
       providerSoftFailures,
       providerLastErrorCode,
       providerLastErrorStatus,
+      providerLastErrorMessage,
+      providerLastErrorDetails,
       attemptsUsed,
       llmTurns,
       maxAttempts,
       maxToolCalls,
       toolCallsExecuted,
       toolCallTrace,
-      plannerFallbackUsed,
+      plannerFallbackUsed: false,
       availableTools,
       unresolvedTools: toolResolution.unresolvedTools,
       providerSuccessfulResponses,

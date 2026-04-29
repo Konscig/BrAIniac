@@ -61,7 +61,7 @@ const CONTRACT_TOOLS = [
     aliases: ['hybridretriever', 'hybrid-retriever', 'hybrid_retriever'],
     allowedExecutors: ['http-json'],
     defaultExecutorKind: 'http-json',
-    descriptionRu: 'Готовит кандидатов ретривала в режимах dense/sparse/hybrid и возвращает ранжированный список.',
+    descriptionRu: 'Ищет кандидатов в artifact-backed индексе и честно возвращает no-results, если источники не найдены.',
   },
   {
     name: 'ContextAssembler',
@@ -75,7 +75,7 @@ const CONTRACT_TOOLS = [
     aliases: ['llmanswer', 'llm-answer', 'llm_answer'],
     allowedExecutors: ['http-json'],
     defaultExecutorKind: 'http-json',
-    descriptionRu: 'Формирует grounded-ответ и служебные метрики на основе контекста и шаблона промпта.',
+    descriptionRu: 'Вызывает модель через OpenRouter и отвечает на вопрос, используя контекст при его наличии.',
   },
   {
     name: 'CitationFormatter',

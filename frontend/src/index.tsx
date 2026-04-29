@@ -9,6 +9,20 @@ import reportWebVitals from "./reportWebVitals";
 import { ThemeProvider } from "./providers/ThemeProvider";
 import { AuthProvider } from "./providers/AuthProvider";
 
+const benignResizeObserverMessages = [
+  "ResizeObserver loop completed with undelivered notifications.",
+  "ResizeObserver loop limit exceeded"
+];
+
+if (typeof window !== "undefined") {
+  window.addEventListener("error", (event) => {
+    if (benignResizeObserverMessages.includes(event.message)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  });
+}
+
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );

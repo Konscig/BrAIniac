@@ -774,8 +774,8 @@ async function run() {
   }
 
   const chatUnsupportedErrorCode = chatUnsupportedToolNodeState?.error?.code;
-  if (chatUnsupportedErrorCode !== 'EXECUTOR_TOOLNODE_EXECUTOR_REQUIRED') {
-    return fail('ToolNode chat unsupported target should fail with EXECUTOR_TOOLNODE_EXECUTOR_REQUIRED', {
+  if (chatUnsupportedErrorCode !== 'EXECUTOR_TOOLNODE_EXECUTOR_UNSUPPORTED') {
+    return fail('ToolNode chat unsupported target should fail with EXECUTOR_TOOLNODE_EXECUTOR_UNSUPPORTED', {
       status: 500,
       body: chatUnsupportedToolNodeState,
     });
@@ -1092,8 +1092,8 @@ async function run() {
           name: 'QueryBuilder',
           config_json: {
             executor: 'http-json',
-            method: 'GET',
-            url: `${base}/health`,
+            method: 'POST',
+            url: `${base}/tool-executor/contracts`,
             contract: {
               name: 'QueryBuilder',
             },
@@ -1252,8 +1252,8 @@ async function run() {
           name: 'DocumentLoader',
           config_json: {
             executor: 'http-json',
-            method: 'GET',
-            url: `${base}/health`,
+            method: 'POST',
+            url: `${base}/tool-executor/contracts`,
             contract: {
               name: 'DocumentLoader',
             },
@@ -1421,8 +1421,8 @@ async function run() {
           name: 'Chunker',
           config_json: {
             executor: 'http-json',
-            method: 'GET',
-            url: `${base}/health`,
+            method: 'POST',
+            url: `${base}/tool-executor/contracts`,
             contract: {
               name: 'Chunker',
             },
@@ -1585,8 +1585,8 @@ async function run() {
           name: 'Embedder',
           config_json: {
             executor: 'http-json',
-            method: 'GET',
-            url: `${base}/health`,
+            method: 'POST',
+            url: `${base}/tool-executor/contracts`,
             contract: {
               name: 'Embedder',
             },
@@ -1750,8 +1750,8 @@ async function run() {
           name: 'VectorUpsert',
           config_json: {
             executor: 'http-json',
-            method: 'GET',
-            url: `${base}/health`,
+            method: 'POST',
+            url: `${base}/tool-executor/contracts`,
             contract: {
               name: 'VectorUpsert',
             },
@@ -1919,8 +1919,8 @@ async function run() {
           name: 'HybridRetriever',
           config_json: {
             executor: 'http-json',
-            method: 'GET',
-            url: `${base}/health`,
+            method: 'POST',
+            url: `${base}/tool-executor/contracts`,
             contract: {
               name: 'HybridRetriever',
             },
@@ -2084,8 +2084,8 @@ async function run() {
           name: 'ContextAssembler',
           config_json: {
             executor: 'http-json',
-            method: 'GET',
-            url: `${base}/health`,
+            method: 'POST',
+            url: `${base}/tool-executor/contracts`,
             contract: {
               name: 'ContextAssembler',
             },
@@ -2253,8 +2253,8 @@ async function run() {
           name: 'LLMAnswer',
           config_json: {
             executor: 'http-json',
-            method: 'GET',
-            url: `${base}/health`,
+            method: 'POST',
+            url: `${base}/tool-executor/contracts`,
             contract: {
               name: 'LLMAnswer',
             },
@@ -2370,7 +2370,7 @@ async function run() {
     !String(llmAnswerContractOutput?.answer ?? '').toLowerCase().includes('rag') ||
     llmAnswerContractOutput?.grounded !== true
   ) {
-    return fail('LLMAnswer contract happy output should include grounded deterministic answer', {
+    return fail('LLMAnswer contract happy output should include grounded provider answer', {
       status: 500,
       body: llmAnswerHappyOutput,
     });
@@ -2431,8 +2431,8 @@ async function run() {
           name: 'CitationFormatter',
           config_json: {
             executor: 'http-json',
-            method: 'GET',
-            url: `${base}/health`,
+            method: 'POST',
+            url: `${base}/tool-executor/contracts`,
             contract: {
               name: 'CitationFormatter',
             },

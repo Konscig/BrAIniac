@@ -54,6 +54,16 @@
 
 Frontend не должен пытаться синтезировать `tool_ref`-артефакты сам.
 
+## Dataset Semantics For Frontend
+
+- Загрузка датасета в продукте идет через API route `POST /datasets/upload`, а не через ноду графа.
+- `DatasetInput` является runtime-узлом чтения датасета из execution context и не создает dataset сам.
+- Если при запуске pipeline передан `dataset_id` или у pipeline уже есть dataset, backend прокидывает его в `context.dataset`.
+- Tool execution может использовать `context.dataset` напрямую, без обязательного присутствия `DatasetInput` в графе.
+- Следствие для frontend v1:
+  - upload датасета должен жить в отдельном UI-контуре рядом с запуском;
+  - `DatasetInput` не считается каноническим первым способом работы с датасетом для RAG-конструктора.
+
 ## Замороженный Contract: `AgentCall.ui_json`
 
 Канонический public shape:
@@ -83,6 +93,9 @@ Frontend не должен пытаться синтезировать `tool_ref
 - `agent.softRetryDelayMs?: number`
 - `agent.temperature?: number`
 - `agent.maxTokens?: number`
+
+Runtime clamp:
+- `AgentCall` accepts `agent.maxToolCalls` in the range `1..20`.
 
 Правило:
 - frontend для обычного агентного сценария должен использовать именно `ui_json.agent`.

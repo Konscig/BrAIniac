@@ -1,689 +1,820 @@
 import React from "react";
 import ReactFlow, {
-	Background,
-	BackgroundVariant,
-	ConnectionLineType,
-	Controls,
-	MarkerType,
-	addEdge,
-	applyEdgeChanges,
-	applyNodeChanges,
-	type Connection,
-	type Edge,
-	type EdgeChange,
-	type Node,
-	type NodeChange,
-	type NodePositionChange,
-	type ReactFlowInstance
+  Background,
+  BackgroundVariant,
+  ConnectionLineType,
+  ConnectionMode,
+  Controls,
+  MarkerType,
+  applyEdgeChanges,
+  applyNodeChanges,
+  type Connection,
+  type Edge,
+  type EdgeChange,
+  type Node,
+  type NodeChange,
+  type NodePositionChange,
+  type ReactFlowInstance
 } from "reactflow";
+import { Info } from "lucide-react";
 
 import "reactflow/dist/style.css";
 
-import { Card } from "./ui/card";
-import { nodeTypes, type VkNodeData } from "./custom-nodes";
-import type { EnvironmentMode } from "./environment-mode-switch";
 import {
-	createPipelineEdge,
-	createPipelineNode,
-	deletePipelineEdge,
-	deletePipelineNode,
-	getPipelineGraph,
-	updatePipelineNode,
-	type ApiError,
-	type EnvironmentModeApi,
-	type PipelineEdgeDto,
-	type PipelineNodeCategory,
-	type PipelineNodeDto
+  createEdge,
+  createNode,
+  deleteEdge,
+  deleteNode,
+  listEdges,
+  listNodes,
+  listTools,
+  readNodeLabel,
+  readNodePosition,
+  type EdgeRecord,
+  type NodeRecord,
+  type NodeTypeRecord,
+  type ToolRecord,
+  updateNode
 } from "../lib/api";
+import {
+  getNodeTypeRole,
+  getNodeTypeTechnicalLabel,
+  getNodeTypeUiLabel,
+  getNodeTypeUiTagline,
+  getToolUiLabel,
+  getVisibleToolCatalog,
+  normalizeNodeTypeName
+} from "../lib/node-catalog";
+import { isConfigurableNodeType } from "../lib/node-config";
 import { cn } from "../lib/utils";
-
-const DEFAULT_NODE_STATUS = "idle";
-const FALLBACK_CONFIG = "{}";
+import { type CanvasNodeData, nodeTypes } from "./custom-nodes";
+import { NodeConfigDialog } from "./node-config-dialog";
+import { Card } from "./ui/card";
 
 const defaultEdgeStyle = {
-	stroke: "rgba(39, 135, 245, 0.75)",
-	strokeWidth: 2
+  stroke: "rgba(39, 135, 245, 0.75)",
+  strokeWidth: 2
 };
 
 const defaultMarker = {
-	type: MarkerType.ArrowClosed,
-	width: 18,
-	height: 18,
-	color: "rgba(39, 135, 245, 0.85)"
+  type: MarkerType.ArrowClosed,
+  width: 18,
+  height: 18,
+  color: "rgba(39, 135, 245, 0.85)"
 } as const;
 
-const MODE_MAP: Record<EnvironmentMode, EnvironmentModeApi> = {
-	test: "ENVIRONMENT_MODE_TEST",
-	hybrid: "ENVIRONMENT_MODE_HYBRID",
-	real: "ENVIRONMENT_MODE_REAL"
-};
-
-const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const capabilityMarker = {
+  type: MarkerType.ArrowClosed,
+  width: 16,
+  height: 16,
+  color: "rgba(245, 158, 11, 0.9)"
+} as const;
 
 type DraggedNodePayload = {
-	label: string;
-	category: PipelineNodeCategory;
-	type: string;
+  typeId: number;
+  typeName: string;
+  label: string;
 };
 
-type LocalGraphSnapshot = {
-	nodes: Array<Node<VkNodeData>>;
-	edges: Edge[];
-	dirty: boolean;
+type GraphState = {
+  nodes: NodeRecord[];
+  edges: EdgeRecord[];
 };
 
-const cloneNodes = (nodes: Array<Node<VkNodeData>>): Array<Node<VkNodeData>> =>
-	nodes.map((node) => ({
-		...node,
-		position: { ...node.position },
-		data: { ...node.data }
-	}));
+type NodeCallbacks = Pick<CanvasNodeData, "onManualQuestionCommit" | "onToolSelect" | "onConfigureNode">;
 
-const cloneEdges = (edges: Edge[]): Edge[] =>
-	edges.map((edge) => ({
-		...edge,
-		data: edge.data ? { ...edge.data } : undefined
-	}));
+function readManualQuestion(node: NodeRecord): string {
+  const manualInput = node.ui_json?.manualInput;
+  const record =
+    manualInput && typeof manualInput === "object" && !Array.isArray(manualInput)
+      ? (manualInput as Record<string, unknown>)
+      : null;
+  const question = record?.question;
+  return typeof question === "string" ? question : "";
+}
 
-const generateLocalId = (prefix: string): string => {
-	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-		return `${prefix}-${crypto.randomUUID()}`;
-	}
-	return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
-};
+function readSelectedToolId(node: NodeRecord): number | null {
+  const tool = node.ui_json?.tool;
+  const record = tool && typeof tool === "object" && !Array.isArray(tool) ? (tool as Record<string, unknown>) : null;
+  const toolId = Number(record?.tool_id);
+  return Number.isInteger(toolId) && toolId > 0 ? toolId : null;
+}
 
-const createLocalNode = (
-	payload: DraggedNodePayload,
-	position: { x: number; y: number }
-): Node<VkNodeData> => ({
-	id: generateLocalId("node"),
-	type: "vkNode",
-	position,
-	data: {
-		label: payload.label,
-		category: payload.category,
-		status: DEFAULT_NODE_STATUS,
-		nodeType: payload.type,
-		configJson: FALLBACK_CONFIG
-	}
-});
+function readSelectedToolName(node: NodeRecord): string {
+  const tool = node.ui_json?.tool;
+  const record = tool && typeof tool === "object" && !Array.isArray(tool) ? (tool as Record<string, unknown>) : null;
+  return typeof record?.name === "string" ? record.name : "";
+}
 
-const toFlowNode = (node: PipelineNodeDto): Node<VkNodeData> => ({
-	id: node.id,
-	type: "vkNode",
-	position: {
-		x: Number.isFinite(node.positionX) ? node.positionX : 0,
-		y: Number.isFinite(node.positionY) ? node.positionY : 0
-	},
-	data: {
-		label: node.label,
-		category: node.category,
-		status: node.status || DEFAULT_NODE_STATUS,
-		nodeType: node.type,
-		configJson: node.configJson || FALLBACK_CONFIG
-	}
-});
+function toPreviewText(value: unknown, maxLength = 420): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") {
+    return value.length > maxLength ? `${value.slice(0, maxLength - 15)}...(truncated)` : value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const candidates = [
+      record.text,
+      record.answer,
+      record.cited_answer,
+      record.output_preview,
+      record.preview,
+      (record.contract_output as Record<string, unknown> | undefined)?.text,
+      (record.contract_output as Record<string, unknown> | undefined)?.answer,
+      (record.contract_output as Record<string, unknown> | undefined)?.cited_answer
+    ];
+    for (const candidate of candidates) {
+      const text = toPreviewText(candidate, maxLength);
+      if (text) return text;
+    }
+  }
+  try {
+    const text = JSON.stringify(value);
+    return text.length > maxLength ? `${text.slice(0, maxLength - 15)}...(truncated)` : text;
+  } catch {
+    return "";
+  }
+}
 
-const toFlowEdge = (edge: PipelineEdgeDto): Edge => ({
-	id: edge.id,
-	source: edge.source,
-	target: edge.target,
-	animated: true,
-	style: { ...defaultEdgeStyle },
-	markerEnd: { ...defaultMarker },
-	data: { label: edge.label }
-});
+function readFinalOutputPreview(node: NodeRecord, nodeTypeName: string): string | undefined {
+  if (nodeTypeName !== "SaveResult") return undefined;
+  const wrapper = node.output_json && typeof node.output_json === "object" ? (node.output_json as Record<string, unknown>) : null;
+  const data = wrapper?.data;
+  const preview = toPreviewText(data);
+  return preview || undefined;
+}
+
+function readTracePreview(node: NodeRecord): string | undefined {
+  const wrapper = node.output_json && typeof node.output_json === "object" ? (node.output_json as Record<string, unknown>) : null;
+  const candidates = [wrapper?.error, wrapper?.node_error, wrapper?.trace, wrapper?.diagnostics];
+  for (const candidate of candidates) {
+    const preview = toPreviewText(candidate, 520);
+    if (preview) return preview;
+  }
+  return undefined;
+}
+
+function getExecutionStatus(node: NodeRecord): CanvasNodeData["status"] {
+  const wrapper = node.output_json && typeof node.output_json === "object" ? (node.output_json as Record<string, unknown>) : null;
+  const raw = wrapper?.status;
+  if (raw === "completed" || raw === "failed" || raw === "skipped" || raw === "running") {
+    return raw;
+  }
+  return "idle";
+}
+
+function isNodeIncomplete(node: NodeRecord, nodeType: NodeTypeRecord | undefined): boolean {
+  if (!nodeType) return false;
+  if (normalizeNodeTypeName(nodeType.name) === "ToolNode") {
+    const tool = node.ui_json?.tool;
+    const toolRecord = tool && typeof tool === "object" && !Array.isArray(tool) ? (tool as Record<string, unknown>) : null;
+    return !toolRecord || typeof toolRecord.name !== "string" || toolRecord.name.trim().length === 0;
+  }
+  return false;
+}
+
+function toFlowNode(
+  node: NodeRecord,
+  nodeType: NodeTypeRecord | undefined,
+  tools: ToolRecord[],
+  callbacks: NodeCallbacks
+): Node<CanvasNodeData> {
+  const position = readNodePosition(node);
+  const role = nodeType ? getNodeTypeRole(nodeType) : "transform";
+  const nodeTypeName = nodeType ? normalizeNodeTypeName(nodeType.name) : `NodeType ${node.fk_type_id}`;
+  const selectedToolName = nodeTypeName === "ToolNode" ? readSelectedToolName(node) : "";
+  const label =
+    nodeTypeName === "ToolNode" && selectedToolName
+      ? getToolUiLabel(selectedToolName)
+      : nodeType
+        ? getNodeTypeUiLabel(nodeType)
+        : readNodeLabel(node);
+
+  return {
+    id: String(node.node_id),
+    type: "runtimeNode",
+    position,
+    data: {
+      nodeId: node.node_id,
+      label,
+      nodeTypeName,
+      technicalLabel: getNodeTypeTechnicalLabel(nodeTypeName),
+      role,
+      status: getExecutionStatus(node),
+      isIncomplete: isNodeIncomplete(node, nodeType),
+      description: nodeType ? getNodeTypeUiTagline(nodeType) : undefined,
+      manualQuestion: nodeTypeName === "ManualInput" ? readManualQuestion(node) : undefined,
+      selectedToolId: nodeTypeName === "ToolNode" ? readSelectedToolId(node) : undefined,
+      selectedToolLabel: selectedToolName ? getToolUiLabel(selectedToolName) : undefined,
+      isConfigurable: isConfigurableNodeType(nodeTypeName),
+      finalOutputPreview: readFinalOutputPreview(node, nodeTypeName),
+      tracePreview: readTracePreview(node),
+      tools,
+      ...callbacks
+    }
+  };
+}
+
+function isCapabilityEdge(
+  edge: EdgeRecord,
+  backendNodes: NodeRecord[],
+  nodeTypeMap: Map<number, NodeTypeRecord>
+): boolean {
+  const fromNode = backendNodes.find((node) => node.node_id === edge.fk_from_node);
+  const toNode = backendNodes.find((node) => node.node_id === edge.fk_to_node);
+  if (!fromNode || !toNode) return false;
+  const fromType = nodeTypeMap.get(fromNode.fk_type_id);
+  const toType = nodeTypeMap.get(toNode.fk_type_id);
+  return normalizeNodeTypeName(fromType?.name ?? "") === "ToolNode" && normalizeNodeTypeName(toType?.name ?? "") === "AgentCall";
+}
+
+function getNodeTypeName(node: NodeRecord | undefined, nodeTypeMap: Map<number, NodeTypeRecord>): string {
+  if (!node) return "";
+  return normalizeNodeTypeName(nodeTypeMap.get(node.fk_type_id)?.name ?? "");
+}
+
+function isCapabilityConnectionHandle(handleId: string | null | undefined): boolean {
+  return Boolean(handleId?.startsWith("capability-"));
+}
+
+function isToolAgentConnection(sourceType: string, targetType: string): boolean {
+  return (
+    (sourceType === "ToolNode" && targetType === "AgentCall") ||
+    (sourceType === "AgentCall" && targetType === "ToolNode")
+  );
+}
+
+function resolveCapabilityHandles(
+  edge: EdgeRecord,
+  backendNodes: NodeRecord[]
+): { sourceHandle: string; targetHandle: string } {
+  const fromNode = backendNodes.find((node) => node.node_id === edge.fk_from_node);
+  const toNode = backendNodes.find((node) => node.node_id === edge.fk_to_node);
+  const fromPosition = fromNode ? readNodePosition(fromNode) : { x: 0, y: 0 };
+  const toPosition = toNode ? readNodePosition(toNode) : { x: 0, y: 0 };
+  const toolBelowAgent = fromPosition.y >= toPosition.y;
+
+  return {
+    sourceHandle: toolBelowAgent ? "capability-target-top" : "capability-target-bottom",
+    targetHandle: toolBelowAgent ? "capability-target-bottom" : "capability-target-top"
+  };
+}
+
+function toFlowEdge(edge: EdgeRecord, backendNodes: NodeRecord[], nodeTypeMap: Map<number, NodeTypeRecord>): Edge {
+  const capability = isCapabilityEdge(edge, backendNodes, nodeTypeMap);
+  const capabilityHandles = capability ? resolveCapabilityHandles(edge, backendNodes) : null;
+  return {
+    id: String(edge.edge_id),
+    source: String(edge.fk_from_node),
+    target: String(edge.fk_to_node),
+    sourceHandle: capability ? capabilityHandles?.sourceHandle : "flow-out",
+    targetHandle: capability ? capabilityHandles?.targetHandle : "flow-in",
+    type: "smoothstep",
+    animated: false,
+    style: {
+      ...defaultEdgeStyle,
+      ...(capability ? { stroke: "rgba(245, 158, 11, 0.82)", strokeDasharray: "5 5", strokeWidth: 2 } : {})
+    },
+    markerStart: capability ? { ...capabilityMarker } : undefined,
+    markerEnd: capability ? { ...capabilityMarker } : { ...defaultMarker }
+  };
+}
 
 export interface CanvasBoardProps {
-	projectId: string;
-	pipelineId: string;
-	mode: EnvironmentMode;
-	refreshToken: number;
-	className?: string;
-	onGraphLoaded?: (nodes: PipelineNodeDto[]) => void;
-	onGraphError?: (message: string) => void;
-	onStatusChange?: (status: {
-		isOffline: boolean;
-		hasUnsavedChanges: boolean;
-		lastError?: string | null;
-	}) => void;
+  pipelineId: number | null;
+  nodeTypes: NodeTypeRecord[];
+  refreshToken?: number;
+  isGraphRunning?: boolean;
+  className?: string;
+  onGraphChange?: (state: GraphState) => void;
+  onError?: (message: string | null) => void;
 }
 
 export function CanvasBoard({
-	projectId,
-	pipelineId,
-	mode,
-	refreshToken,
-	className,
-	onGraphLoaded,
-	onGraphError,
-	onStatusChange
+  pipelineId,
+  nodeTypes: nodeTypesCatalog,
+  refreshToken = 0,
+  isGraphRunning = false,
+  className,
+  onGraphChange,
+  onError
 }: CanvasBoardProps): React.ReactElement {
-	const [nodes, setNodes] = React.useState<Array<Node<VkNodeData>>>([]);
-	const [edges, setEdges] = React.useState<Edge[]>([]);
-	const [isLoading, setIsLoading] = React.useState(false);
-	const [fetchError, setFetchError] = React.useState<string | null>(null);
-	const [emptyStateMessage, setEmptyStateMessage] = React.useState<string | null>(null);
-	const [offlineNotice, setOfflineNotice] = React.useState<string | null>(null);
-	const [fallbackMode, setFallbackMode] = React.useState(false);
-	const [localUnsaved, setLocalUnsaved] = React.useState(false);
+  const [nodes, setNodes] = React.useState<Array<Node<CanvasNodeData>>>([]);
+  const [edges, setEdges] = React.useState<Edge[]>([]);
+  const [backendNodes, setBackendNodes] = React.useState<NodeRecord[]>([]);
+  const [backendEdges, setBackendEdges] = React.useState<EdgeRecord[]>([]);
+  const [tools, setTools] = React.useState<ToolRecord[]>([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [fetchError, setFetchError] = React.useState<string | null>(null);
+  const [emptyStateMessage, setEmptyStateMessage] = React.useState<string | null>(null);
+  const [configNodeId, setConfigNodeId] = React.useState<number | null>(null);
+  const reactFlowWrapper = React.useRef<HTMLDivElement | null>(null);
+  const reactFlowInstance = React.useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
+  const backendNodesRef = React.useRef<NodeRecord[]>([]);
+  const backendEdgesRef = React.useRef<EdgeRecord[]>([]);
 
-	const reactFlowWrapper = React.useRef<HTMLDivElement | null>(null);
-	const reactFlowInstance = React.useRef<ReactFlowInstance<VkNodeData> | null>(null);
-	const localGraphsRef = React.useRef<Record<string, LocalGraphSnapshot>>({});
+  const nodeTypeMap = React.useMemo(
+    () => new Map(nodeTypesCatalog.map((nodeType) => [nodeType.type_id, nodeType])),
+    [nodeTypesCatalog]
+  );
 
-	// refs to access latest nodes/edges inside async loadGraph without
-	// closing over stale values
-	const nodesRef = React.useRef<Array<Node<VkNodeData>>>(nodes);
-	const edgesRef = React.useRef<Edge[]>(edges);
-	React.useEffect(() => {
-		nodesRef.current = nodes;
-	}, [nodes]);
-	React.useEffect(() => {
-		edgesRef.current = edges;
-	}, [edges]);
+  const emitGraphChange = React.useCallback(
+    (nextNodes: NodeRecord[], nextEdges: EdgeRecord[]) => {
+      onGraphChange?.({ nodes: nextNodes, edges: nextEdges });
+    },
+    [onGraphChange]
+  );
+  const nodeCallbacksRef = React.useRef<NodeCallbacks>({});
 
-	const modeParam = MODE_MAP[mode];
-	const hasContext = Boolean(projectId && pipelineId);
-	const hasValidProjectId = !projectId || uuidRegex.test(projectId);
-	const hasValidPipelineId = uuidRegex.test(pipelineId);
-	const canAttemptApi = hasContext && hasValidProjectId && hasValidPipelineId;
-	const isOfflineMode = fallbackMode || !canAttemptApi;
-	const pipelineKey = React.useMemo(
-		() => `${projectId || "local"}:${pipelineId || "local"}`,
-		[projectId, pipelineId]
-	);
+  const showCanvasNotice = React.useCallback((message: string) => {
+    setFetchError(message);
+  }, []);
 
-	const updateEmptyState = React.useCallback((nodeCount: number, edgeCount: number) => {
-		if (nodeCount === 0 && edgeCount === 0) {
-			setEmptyStateMessage(
-				"Граф пустой — перетащите элемент из библиотеки, чтобы создать первую ноду"
-			);
-		} else {
-			setEmptyStateMessage(null);
-		}
-	}, []);
+  React.useEffect(() => {
+    backendNodesRef.current = backendNodes;
+  }, [backendNodes]);
 
-	const persistLocalGraph = React.useCallback(
-		(nodeList: Array<Node<VkNodeData>>, edgeList: Edge[], markDirty = true) => {
-			if (!isOfflineMode) {
-				return;
-			}
-			const existing = localGraphsRef.current[pipelineKey];
-			localGraphsRef.current[pipelineKey] = {
-				nodes: cloneNodes(nodeList),
-				edges: cloneEdges(edgeList),
-				dirty: markDirty || existing?.dirty || false
-			};
-		},
-		[isOfflineMode, pipelineKey]
-	);
+  React.useEffect(() => {
+    backendEdgesRef.current = backendEdges;
+  }, [backendEdges]);
 
-	const restoreLocalGraph = React.useCallback(() => {
-		const snapshot = localGraphsRef.current[pipelineKey];
-		if (snapshot) {
-			const nodesClone = cloneNodes(snapshot.nodes);
-			const edgesClone = cloneEdges(snapshot.edges);
-			setNodes(nodesClone);
-			setEdges(edgesClone);
-			setLocalUnsaved(snapshot.dirty);
-			updateEmptyState(nodesClone.length, edgesClone.length);
-			return nodesClone.length === 0 && edgesClone.length === 0;
-		}
-		setNodes([]);
-		setEdges([]);
-		setLocalUnsaved(false);
-		updateEmptyState(0, 0);
-		return true;
-	}, [pipelineKey, updateEmptyState]);
+  const updateBackendNode = React.useCallback(
+    (nodeId: number, updater: (node: NodeRecord) => NodeRecord) => {
+      setBackendNodes((currentNodes) => {
+        const existing = currentNodes.find((node) => node.node_id === nodeId);
+        if (!existing) return currentNodes;
+        const updated = updater(existing);
+        const nextNodes = currentNodes.map((node) => (node.node_id === nodeId ? updated : node));
+        setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id), tools, nodeCallbacksRef.current)));
+        setEdges(backendEdgesRef.current.map((edge) => toFlowEdge(edge, nextNodes, nodeTypeMap)));
+        emitGraphChange(nextNodes, backendEdgesRef.current);
 
-	React.useEffect(() => {
-		onStatusChange?.({
-			isOffline: isOfflineMode,
-			hasUnsavedChanges: localUnsaved,
-			lastError: fetchError
-		});
-	}, [fetchError, isOfflineMode, localUnsaved, onStatusChange]);
+        void updateNode(nodeId, {
+          top_k: updated.top_k,
+          ui_json: updated.ui_json
+        }).catch((error) => {
+          console.error("Failed to update node", error);
+          onError?.("Не удалось сохранить настройки узла.");
+        });
 
-	const loadGraph = React.useCallback(async () => {
-		if (!hasContext) {
-			setFallbackMode(true);
-			setOfflineNotice("Выберите проект и пайплайн в панели слева");
-			setEmptyStateMessage("Выберите проект и пайплайн, чтобы начать работу");
-			setNodes([]);
-			setEdges([]);
-			setLocalUnsaved(false);
-			return;
-		}
+        return nextNodes;
+      });
+    },
+    [emitGraphChange, nodeTypeMap, onError, tools]
+  );
 
-		if (!canAttemptApi) {
-			setFallbackMode(true);
-			setFetchError(null);
-			const isEmpty = restoreLocalGraph();
-			setOfflineNotice("Локальный режим: изменения не синхронизируются с сервером");
-			if (isEmpty) {
-				setEmptyStateMessage(
-					"Пайплайн пока не привязан к реальным данным — работаем локально, изменения не сохраняются"
-				);
-			}
-			return;
-		}
+  const handleManualQuestionCommit = React.useCallback(
+    (nodeId: number, question: string) => {
+      updateBackendNode(nodeId, (node) => ({
+        ...node,
+        ui_json: {
+          ...node.ui_json,
+          manualInput: {
+            ...((node.ui_json.manualInput && typeof node.ui_json.manualInput === "object" && !Array.isArray(node.ui_json.manualInput)
+              ? (node.ui_json.manualInput as Record<string, unknown>)
+              : {})),
+            question
+          }
+        }
+      }));
+    },
+    [updateBackendNode]
+  );
 
-		setIsLoading(true);
-		setFetchError(null);
-		try {
-			const graph = await getPipelineGraph(projectId, pipelineId, modeParam);
-			const apiNodes = graph.nodes.map(toFlowNode);
-			const apiEdges = graph.edges.map(toFlowEdge);
-			setNodes(apiNodes);
-			setEdges(apiEdges);
-			updateEmptyState(apiNodes.length, apiEdges.length);
-			setFallbackMode(false);
-			setOfflineNotice(null);
-			setLocalUnsaved(false);
-			onGraphLoaded?.(graph.nodes);
-		} catch (error) {
-			console.error("Failed to load pipeline graph", error);
-			const apiError = error as ApiError;
-			if (apiError?.status === 404 && mode === "real") {
-				try {
-					const draftGraph = await getPipelineGraph(projectId, pipelineId, MODE_MAP.test);
-					const draftNodes = draftGraph.nodes.map(toFlowNode);
-					const draftEdges = draftGraph.edges.map(toFlowEdge);
-					setNodes(draftNodes);
-					setEdges(draftEdges);
-					updateEmptyState(draftNodes.length, draftEdges.length);
-					setFallbackMode(false);
-					setOfflineNotice(
-						"Опубликованная версия не найдена. Показан черновик пайплайна"
-					);
-					setLocalUnsaved(false);
-					onGraphLoaded?.(draftGraph.nodes);
-					return;
-				} catch (fallbackError) {
-					console.error("Failed to load draft graph fallback", fallbackError);
-				}
-			}
-			if (apiError?.status === 404) {
-				// If we already have a loaded graph (from previous successful load),
-				// keep it visible instead of clearing it when the server returns 404
-				// for the requested mode. Only restore the browser-local snapshot when
-				// we have nothing loaded.
-				setFallbackMode(true);
-				setFetchError(null);
-				if (nodesRef.current.length === 0 && edgesRef.current.length === 0) {
-					const isEmpty = restoreLocalGraph();
-					setOfflineNotice(
-						"Сервер не нашёл этот пайплайн. Продолжаем в локальном режиме — данные сохраняются в браузере"
-					);
-					if (isEmpty) {
-						setEmptyStateMessage(
-							"Создайте узлы — мы сохраним их локально до синхронизации с сервером"
-							);
-					}
-				} else {
-					// keep current nodes/edges and show notice
-					setOfflineNotice(
-						"Сервер не нашёл этот пайплайн для выбранного режима — показываем предыдущую версию"
-					);
-				}
-			} else {
-				const message = "Не удалось загрузить граф пайплайна";
-				setFetchError(message);
-				setOfflineNotice(null);
-				onGraphError?.(message);
-			}
-		} finally {
-			setIsLoading(false);
-		}
-	}, [
-		canAttemptApi,
-		hasContext,
-		modeParam,
-		onGraphError,
-		onGraphLoaded,
-		pipelineId,
-		projectId,
-		restoreLocalGraph,
-		updateEmptyState
-	]);
+  const handleToolSelect = React.useCallback(
+    (nodeId: number, toolId: number | null) => {
+      const selectedTool = toolId ? tools.find((tool) => tool.tool_id === toolId) : null;
+      updateBackendNode(nodeId, (node) => {
+        const nextUiJson = { ...node.ui_json };
+        if (selectedTool) {
+          nextUiJson.tool = {
+            tool_id: selectedTool.tool_id,
+            name: selectedTool.name
+          };
+          nextUiJson.label = getToolUiLabel(selectedTool.name);
+        } else {
+          delete nextUiJson.tool;
+        }
+        return {
+          ...node,
+          ui_json: nextUiJson
+        };
+      });
+    },
+    [tools, updateBackendNode]
+  );
 
-	React.useEffect(() => {
-		void loadGraph();
-	}, [loadGraph, refreshToken]);
+  const handleConfigureNode = React.useCallback((nodeId: number) => {
+    setConfigNodeId(nodeId);
+  }, []);
 
-	const handleNodesChange = React.useCallback(
-		(changes: NodeChange[]) => {
-			setNodes((current) => {
-				const next = applyNodeChanges(changes, current);
+  const nodeCallbacks = React.useMemo<NodeCallbacks>(
+    () => ({
+      onManualQuestionCommit: handleManualQuestionCommit,
+      onToolSelect: handleToolSelect,
+      onConfigureNode: handleConfigureNode
+    }),
+    [handleConfigureNode, handleManualQuestionCommit, handleToolSelect]
+  );
 
-				if (isOfflineMode) {
-					const moved = changes.some(
-						(change) => change.type === "position" && !(change as NodePositionChange).dragging
-					);
-					if (moved) {
-						setLocalUnsaved(true);
-						persistLocalGraph(next, edges);
-					}
-					updateEmptyState(next.length, edges.length);
-					return next;
-				}
+  React.useEffect(() => {
+    nodeCallbacksRef.current = nodeCallbacks;
+  }, [nodeCallbacks]);
 
-				const finishedMoves = changes.filter(
-					(change): change is NodePositionChange => change.type === "position" && !change.dragging
-				);
+  React.useEffect(() => {
+    void listTools()
+      .then((nextTools) => {
+        setTools(getVisibleToolCatalog(nextTools));
+      })
+      .catch((error) => {
+        console.error("Failed to load tools", error);
+        onError?.("Не удалось загрузить каталог инструментов.");
+      });
+  }, [onError]);
 
-				finishedMoves.forEach((change) => {
-					const movedNode = next.find((node) => node.id === change.id);
-					if (!movedNode) {
-						return;
-					}
+  const loadGraph = React.useCallback(async () => {
+    if (!pipelineId) {
+      setNodes([]);
+      setEdges([]);
+      setBackendNodes([]);
+      setBackendEdges([]);
+      setFetchError(null);
+      setEmptyStateMessage("Выберите агента, чтобы начать собирать схему.");
+      emitGraphChange([], []);
+      return;
+    }
 
-					void updatePipelineNode(projectId, pipelineId, {
-						nodeId: movedNode.id,
-						label: movedNode.data.label,
-						category: movedNode.data.category,
-						type: movedNode.data.nodeType ?? movedNode.data.category.toLowerCase(),
-						status: movedNode.data.status ?? DEFAULT_NODE_STATUS,
-						positionX: movedNode.position.x,
-						positionY: movedNode.position.y,
-						configJson: movedNode.data.configJson ?? FALLBACK_CONFIG
-					}).catch((error) => {
-						console.error("Failed to update node position", error);
-						onGraphError?.("Не удалось сохранить позицию узла");
-					});
-				});
+    setIsLoading(true);
+    setFetchError(null);
+    onError?.(null);
 
-				updateEmptyState(next.length, edges.length);
-				return next;
-			});
-		},
-		[edges, isOfflineMode, onGraphError, persistLocalGraph, pipelineId, projectId, updateEmptyState]
-	);
+    try {
+      const [nextNodes, nextEdges] = await Promise.all([listNodes(pipelineId), listEdges(pipelineId)]);
+      setBackendNodes(nextNodes);
+      backendNodesRef.current = nextNodes;
+      setBackendEdges(nextEdges);
+      backendEdgesRef.current = nextEdges;
+      setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id), tools, nodeCallbacksRef.current)));
+      setEdges(nextEdges.map((edge) => toFlowEdge(edge, nextNodes, nodeTypeMap)));
+      setEmptyStateMessage(nextNodes.length === 0 ? "Перетащите узел из библиотеки, чтобы начать собирать схему." : null);
+      emitGraphChange(nextNodes, nextEdges);
+    } catch (error) {
+      console.error("Failed to load pipeline graph", error);
+      const message = "Не удалось загрузить схему агента.";
+      setFetchError(message);
+      setEmptyStateMessage(null);
+      onError?.(message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [emitGraphChange, nodeTypeMap, onError, pipelineId, tools]);
 
-	const handleEdgesChange = React.useCallback(
-		(changes: EdgeChange[]) => {
-			setEdges((current) => {
-				const next = applyEdgeChanges(changes, current);
-				if (isOfflineMode) {
-					persistLocalGraph(nodes, next);
-					setLocalUnsaved(true);
-				}
-				return next;
-			});
-		},
-		[isOfflineMode, nodes, persistLocalGraph]
-	);
+  React.useEffect(() => {
+    void loadGraph();
+  }, [loadGraph, refreshToken]);
 
-	const handleConnect = React.useCallback(
-		(connection: Connection) => {
-			if (!connection.source || !connection.target) {
-				return;
-			}
+  const updateNodeCache = React.useCallback(
+    (nextNodes: NodeRecord[]) => {
+      setBackendNodes(nextNodes);
+      backendNodesRef.current = nextNodes;
+      setNodes(nextNodes.map((node) => toFlowNode(node, nodeTypeMap.get(node.fk_type_id), tools, nodeCallbacksRef.current)));
+      emitGraphChange(nextNodes, backendEdges);
+    },
+    [backendEdges, emitGraphChange, nodeTypeMap, tools]
+  );
 
-			if (isOfflineMode || !projectId || !pipelineId) {
-				const localEdge: Edge = {
-					id: generateLocalId("edge"),
-					source: connection.source,
-					target: connection.target,
-					animated: true,
-					markerEnd: { ...defaultMarker },
-					style: { ...defaultEdgeStyle },
-					type: "smoothstep"
-				};
-				setEdges((current) => {
-					const next = addEdge(localEdge, current);
-					persistLocalGraph(nodes, next);
-					setLocalUnsaved(true);
-					updateEmptyState(nodes.length, next.length);
-					return next;
-				});
-				setFetchError(null);
-				return;
-			}
+  const updateEdgeCache = React.useCallback(
+    (nextEdges: EdgeRecord[]) => {
+      setBackendEdges(nextEdges);
+      backendEdgesRef.current = nextEdges;
+      setEdges(nextEdges.map((edge) => toFlowEdge(edge, backendNodes, nodeTypeMap)));
+      emitGraphChange(backendNodes, nextEdges);
+    },
+    [backendNodes, emitGraphChange, nodeTypeMap]
+  );
 
-			void createPipelineEdge(projectId, pipelineId, {
-				source: connection.source,
-				target: connection.target,
-				label: ""
-			})
-				.then((edge) => {
-					setEdges((current) => addEdge(toFlowEdge(edge), current));
-				})
-				.catch((error) => {
-					console.error("Failed to create edge", error);
-					setFetchError("Не удалось соединить узлы");
-					onGraphError?.("Не удалось соединить узлы");
-				});
-		},
-		[isOfflineMode, nodes, onGraphError, pipelineId, projectId, updateEmptyState, persistLocalGraph]
-	);
+  const handleNodesChange = React.useCallback(
+    (changes: NodeChange[]) => {
+      const finishedMoves = changes.filter(
+        (change): change is NodePositionChange => change.type === "position" && !change.dragging
+      );
 
-	const handleNodesDelete = React.useCallback(
-		(deleted: Node<VkNodeData>[]) => {
-			if (isOfflineMode) {
-				const removedIds = new Set(deleted.map((node) => node.id));
-				const nextNodes = nodes.filter((node) => !removedIds.has(node.id));
-				const nextEdges = edges.filter(
-					(edge) => !removedIds.has(edge.source) && !removedIds.has(edge.target)
-				);
-				setNodes(nextNodes);
-				setEdges(nextEdges);
-				setLocalUnsaved(true);
-				persistLocalGraph(nextNodes, nextEdges);
-				updateEmptyState(nextNodes.length, nextEdges.length);
-				return;
-			}
+      setNodes((current) => {
+        const nextFlowNodes = applyNodeChanges(changes, current);
+        if (finishedMoves.length === 0) return nextFlowNodes;
 
-			if (!hasContext) {
-				return;
-			}
+        const movedPositions = new Map<number, { x: number; y: number }>();
+        for (const change of finishedMoves) {
+          const nodeId = Number(change.id);
+          const movedNode = nextFlowNodes.find((node) => Number(node.id) === nodeId);
+          if (!movedNode) continue;
+          movedPositions.set(nodeId, movedNode.position);
+        }
 
-			deleted.forEach((node) => {
-				void deletePipelineNode(projectId, pipelineId, node.id).catch((error) => {
-					console.error("Failed to delete node", error);
-					onGraphError?.("Не удалось удалить узел");
-				});
-			});
-		},
-		[edges, hasContext, isOfflineMode, nodes, onGraphError, persistLocalGraph, pipelineId, projectId, updateEmptyState]
-	);
+        if (movedPositions.size === 0) return nextFlowNodes;
 
-	const handleEdgesDelete = React.useCallback(
-		(deletedEdges: Edge[]) => {
-			if (isOfflineMode) {
-				const removedIds = new Set(deletedEdges.map((edge) => edge.id));
-				const nextEdges = edges.filter((edge) => !removedIds.has(edge.id));
-				setEdges(nextEdges);
-				setLocalUnsaved(true);
-				persistLocalGraph(nodes, nextEdges);
-				updateEmptyState(nodes.length, nextEdges.length);
-				return;
-			}
+        setBackendNodes((currentNodes) => {
+          const nextBackendNodes = currentNodes.map((node) => {
+            const position = movedPositions.get(node.node_id);
+            if (!position) return node;
+            return {
+              ...node,
+              ui_json: {
+                ...node.ui_json,
+                x: position.x,
+                y: position.y
+              }
+            };
+          });
+          backendNodesRef.current = nextBackendNodes;
+          setEdges(backendEdgesRef.current.map((edge) => toFlowEdge(edge, nextBackendNodes, nodeTypeMap)));
+          emitGraphChange(nextBackendNodes, backendEdgesRef.current);
 
-			if (!hasContext) {
-				return;
-			}
+          for (const node of nextBackendNodes) {
+            if (!movedPositions.has(node.node_id)) continue;
+            void updateNode(node.node_id, {
+              top_k: node.top_k,
+              ui_json: node.ui_json
+            }).catch((error) => {
+              console.error("Failed to update node position", error);
+              onError?.("Не удалось сохранить позицию узла.");
+            });
+          }
 
-			deletedEdges.forEach((edge) => {
-				void deletePipelineEdge(projectId, pipelineId, edge.id).catch((error) => {
-					console.error("Failed to delete edge", error);
-					onGraphError?.("Не удалось удалить связь");
-				});
-			});
-		},
-		[edges, hasContext, isOfflineMode, nodes, onGraphError, persistLocalGraph, pipelineId, projectId, updateEmptyState]
-	);
+          return nextBackendNodes;
+        });
 
-	const handleDrop = React.useCallback(
-		(event: React.DragEvent) => {
-			event.preventDefault();
-			if (!reactFlowInstance.current || !reactFlowWrapper.current) {
-				onGraphError?.("Сначала выберите проект и пайплайн");
-				return;
-			}
+        return nextFlowNodes;
+      });
+    },
+    [emitGraphChange, nodeTypeMap, onError]
+  );
 
-			const bounds = reactFlowWrapper.current.getBoundingClientRect();
-			if (
-				event.clientX < bounds.left ||
-				event.clientX > bounds.right ||
-				event.clientY < bounds.top ||
-				event.clientY > bounds.bottom
-			) {
-				return;
-			}
+  const handleEdgesChange = React.useCallback((changes: EdgeChange[]) => {
+    setEdges((current) => applyEdgeChanges(changes, current));
+  }, []);
 
-			const raw = event.dataTransfer.getData("application/reactflow");
-			if (!raw) {
-				return;
-			}
+  const isValidCanvasConnection = React.useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target || connection.source === connection.target) return false;
 
-			let payload: DraggedNodePayload;
-			try {
-				payload = JSON.parse(raw) as DraggedNodePayload;
-			} catch {
-				return;
-			}
+      const sourceNode = backendNodesRef.current.find((node) => node.node_id === Number(connection.source));
+      const targetNode = backendNodesRef.current.find((node) => node.node_id === Number(connection.target));
+      const sourceType = getNodeTypeName(sourceNode, nodeTypeMap);
+      const targetType = getNodeTypeName(targetNode, nodeTypeMap);
+      const usesCapabilityHandle =
+        isCapabilityConnectionHandle(connection.sourceHandle) || isCapabilityConnectionHandle(connection.targetHandle);
 
-			const position = reactFlowInstance.current.screenToFlowPosition({
-				x: event.clientX,
-				y: event.clientY
-			});
+      if (usesCapabilityHandle) {
+        return isToolAgentConnection(sourceType, targetType);
+      }
 
-			if (isOfflineMode || !projectId || !pipelineId) {
-				const node = createLocalNode(payload, position);
-				setNodes((current) => {
-					const next = current.concat(node);
-					persistLocalGraph(next, edges);
-					setLocalUnsaved(true);
-					updateEmptyState(next.length, edges.length);
-					return next;
-				});
-				setEmptyStateMessage(null);
-				setFetchError(null);
-				return;
-			}
+      return connection.sourceHandle === "flow-out" && connection.targetHandle === "flow-in";
+    },
+    [nodeTypeMap]
+  );
 
-			void createPipelineNode(projectId, pipelineId, {
-				label: payload.label,
-				category: payload.category,
-				type: payload.type,
-				status: DEFAULT_NODE_STATUS,
-				positionX: position.x,
-				positionY: position.y,
-				configJson: FALLBACK_CONFIG
-			})
-				.then((node) => {
-					setNodes((current) => {
-						const next = current.concat(toFlowNode(node));
-						updateEmptyState(next.length, edges.length);
-						return next;
-					});
-					setEmptyStateMessage(null);
-					setFetchError(null);
-				})
-				.catch((error) => {
-					console.error("Failed to create node", error);
-					setFetchError("Не удалось создать узел");
-					onGraphError?.("Не удалось создать узел");
-				});
-		},
-		[edges, isOfflineMode, onGraphError, persistLocalGraph, pipelineId, projectId, updateEmptyState]
-	);
+  const handleConnect = React.useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      const sourceId = Number(connection.source);
+      const targetId = Number(connection.target);
+      const sourceNode = backendNodesRef.current.find((node) => node.node_id === sourceId);
+      const targetNode = backendNodesRef.current.find((node) => node.node_id === targetId);
+      const sourceType = getNodeTypeName(sourceNode, nodeTypeMap);
+      const targetType = getNodeTypeName(targetNode, nodeTypeMap);
+      const isAgentToTool = sourceType === "AgentCall" && targetType === "ToolNode";
+      const usesCapabilityHandle =
+        isCapabilityConnectionHandle(connection.sourceHandle) || isCapabilityConnectionHandle(connection.targetHandle);
 
-	const handleDragOver = React.useCallback((event: React.DragEvent) => {
-		event.preventDefault();
-		event.dataTransfer.dropEffect = "move";
-	}, []);
+      if (usesCapabilityHandle && !isToolAgentConnection(sourceType, targetType)) {
+        showCanvasNotice("Нельзя создать такую связь.");
+        return;
+      }
 
-	const connectionLineStyle = React.useMemo(
-		() => ({ stroke: "rgba(39, 135, 245, 0.65)", strokeWidth: 2 }),
-		[]
-	);
+      const edgePayload = isAgentToTool
+        ? { fk_from_node: targetId, fk_to_node: sourceId }
+        : { fk_from_node: sourceId, fk_to_node: targetId };
 
-	const defaultEdgeOptions = React.useMemo(
-		() => ({
-			type: "smoothstep" as const,
-			animated: true,
-			markerEnd: { ...defaultMarker },
-			style: { ...defaultEdgeStyle }
-		}),
-		[]
-	);
+      const alreadyExists = backendEdgesRef.current.some(
+        (edge) => edge.fk_from_node === edgePayload.fk_from_node && edge.fk_to_node === edgePayload.fk_to_node
+      );
+      if (alreadyExists) {
+        setFetchError(null);
+        onError?.(null);
+        return;
+      }
 
-	const setInstance = React.useCallback((instance: ReactFlowInstance<VkNodeData>) => {
-		reactFlowInstance.current = instance;
-	}, []);
+      void createEdge(edgePayload)
+        .then((edge) => {
+          const nextEdges = [...backendEdgesRef.current, edge];
+          updateEdgeCache(nextEdges);
+          setFetchError(null);
+          onError?.(null);
+        })
+        .catch((error) => {
+          console.error("Failed to create edge", error);
+          showCanvasNotice("Нельзя создать такую связь.");
+        });
+    },
+    [nodeTypeMap, onError, showCanvasNotice, updateEdgeCache]
+  );
 
-	return (
-		<Card className={cn("relative flex-1 overflow-hidden border-border/60", className)}>
-			<div ref={reactFlowWrapper} className="h-full w-full">
-				<ReactFlow
-					nodes={nodes}
-					edges={edges}
-					nodeTypes={nodeTypes}
-					onNodesChange={handleNodesChange}
-					onEdgesChange={handleEdgesChange}
-					onNodesDelete={handleNodesDelete}
-					onEdgesDelete={handleEdgesDelete}
-					onConnect={handleConnect}
-					onInit={setInstance}
-					onDrop={handleDrop}
-					onDragOver={handleDragOver}
-					fitView
-					fitViewOptions={{ padding: 0.2 }}
-					snapToGrid
-					snapGrid={[16, 16]}
-					panOnScroll
-					selectionOnDrag
-					defaultEdgeOptions={defaultEdgeOptions}
-					connectionLineType={ConnectionLineType.SmoothStep}
-					connectionLineStyle={connectionLineStyle}
-					className="bg-[radial-gradient(circle_at_center,_rgba(39,135,245,0.06),_transparent_40%)]"
-					proOptions={{ hideAttribution: true }}
-				>
-					<Background
-						variant={BackgroundVariant.Dots}
-						gap={22}
-						size={1.6}
-						color="rgba(148, 163, 184, 0.3)"
-					/>
-					<Controls
-						showInteractive={false}
-						className="!border-none !bg-transparent !shadow-none"
-						style={{ left: "50%", transform: "translateX(-50%)", bottom: 24 }}
-					/>
-				</ReactFlow>
-			</div>
+  const handleNodesDelete = React.useCallback(
+    (deletedNodes: Array<Node<CanvasNodeData>>) => {
+      const deletedIds = new Set(deletedNodes.map((node) => Number(node.id)));
+      const nextNodes = backendNodes.filter((node) => !deletedIds.has(node.node_id));
+      const nextEdges = backendEdges.filter(
+        (edge) => !deletedIds.has(edge.fk_from_node) && !deletedIds.has(edge.fk_to_node)
+      );
 
-			{offlineNotice && (
-				<div className="pointer-events-none absolute left-4 top-4 max-w-sm rounded-lg border border-border/70 bg-background/85 px-3 py-2 text-xs text-muted-foreground shadow-sm">
-					{offlineNotice}
-				</div>
-			)}
+      updateNodeCache(nextNodes);
+      updateEdgeCache(nextEdges);
 
-			{isLoading && (
-				<div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/60 text-sm text-muted-foreground">
-					Загружаем граф...
-				</div>
-			)}
+      for (const deletedNode of deletedNodes) {
+        void deleteNode(Number(deletedNode.id)).catch((error) => {
+          console.error("Failed to delete node", error);
+          onError?.("Не удалось удалить узел.");
+        });
+      }
+    },
+    [backendEdges, backendNodes, onError, updateEdgeCache, updateNodeCache]
+  );
 
-			{fetchError && !isLoading && (
-				<div className="pointer-events-none absolute inset-x-6 bottom-6 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-center text-sm text-red-200">
-					{fetchError}
-				</div>
-			)}
+  const handleEdgesDelete = React.useCallback(
+    (deletedEdges: Edge[]) => {
+      const deletedIds = new Set(deletedEdges.map((edge) => Number(edge.id)));
+      const nextEdges = backendEdges.filter((edge) => !deletedIds.has(edge.edge_id));
+      updateEdgeCache(nextEdges);
 
-			{emptyStateMessage && !isLoading && !fetchError && (
-				<div className="pointer-events-none absolute inset-0 flex items-center justify-center px-8 text-center text-sm text-muted-foreground">
-					{emptyStateMessage}
-				</div>
-			)}
+      for (const deletedEdge of deletedEdges) {
+        void deleteEdge(Number(deletedEdge.id)).catch((error) => {
+          console.error("Failed to delete edge", error);
+          onError?.("Не удалось удалить связь.");
+        });
+      }
+    },
+    [backendEdges, onError, updateEdgeCache]
+  );
 
-			<div className="pointer-events-none absolute left-4 bottom-4 max-w-sm rounded-lg bg-background/80 px-3 py-2 text-xs text-muted-foreground shadow-sm">
-				Подсказка: выделите узел или ребро и нажмите Delete, чтобы удалить. Перетащите нижний
-				или верхний круглый хэндл для соединения. Двойной клик по узлу откроет настройки (скоро).
-			</div>
-		</Card>
-	);
+  const handleDrop = React.useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      if (!reactFlowInstance.current || !reactFlowWrapper.current || !pipelineId) return;
+
+      const payloadRaw = event.dataTransfer.getData("application/brainiac-node-type");
+      if (!payloadRaw) return;
+
+      let payload: DraggedNodePayload;
+      try {
+        payload = JSON.parse(payloadRaw) as DraggedNodePayload;
+      } catch {
+        return;
+      }
+
+      const position = reactFlowInstance.current.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY
+      });
+      const nodeType = nodeTypeMap.get(payload.typeId);
+      const defaultLabel = nodeType ? getNodeTypeUiLabel(nodeType) : payload.label || payload.typeName;
+
+      void createNode({
+        fk_pipeline_id: pipelineId,
+        fk_type_id: payload.typeId,
+        top_k: 1,
+        ui_json: {
+          label: defaultLabel,
+          x: position.x,
+          y: position.y
+        }
+      })
+        .then((created) => {
+          const nextNodes = [...backendNodesRef.current, created];
+          updateNodeCache(nextNodes);
+          setEmptyStateMessage(null);
+          setFetchError(null);
+          onError?.(null);
+        })
+        .catch((error) => {
+          console.error("Failed to create node", error);
+          const message = "Не удалось создать узел.";
+          setFetchError(message);
+          onError?.(message);
+        });
+    },
+    [nodeTypeMap, onError, pipelineId, updateNodeCache]
+  );
+
+  const handleDragOver = React.useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const setInstance = React.useCallback((instance: ReactFlowInstance<CanvasNodeData>) => {
+    reactFlowInstance.current = instance;
+  }, []);
+
+  const configNode = configNodeId ? backendNodes.find((node) => node.node_id === configNodeId) ?? null : null;
+  const configNodeType = configNode ? nodeTypeMap.get(configNode.fk_type_id) ?? null : null;
+
+  const handleConfigSave = React.useCallback(
+    (nodeId: number, patch: { ui_json: NodeRecord["ui_json"] }) => {
+      updateBackendNode(nodeId, (node) => ({
+        ...node,
+        ui_json: patch.ui_json
+      }));
+    },
+    [updateBackendNode]
+  );
+
+  return (
+    <>
+      <Card className={cn("relative flex-1 min-h-0 overflow-hidden border-border/60", className)}>
+        <div ref={reactFlowWrapper} className="h-full w-full">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
+            onConnect={handleConnect}
+            onNodesDelete={handleNodesDelete}
+            onEdgesDelete={handleEdgesDelete}
+            isValidConnection={isValidCanvasConnection}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onInit={setInstance}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            snapToGrid
+            snapGrid={[16, 16]}
+            defaultEdgeOptions={{
+              type: "smoothstep",
+              animated: false,
+              style: { ...defaultEdgeStyle },
+              markerEnd: { ...defaultMarker }
+            }}
+            connectionMode={ConnectionMode.Loose}
+            connectionLineType={ConnectionLineType.SmoothStep}
+            className="bg-[radial-gradient(circle_at_center,_rgba(39,135,245,0.06),_transparent_40%)]"
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={22}
+              size={1.6}
+              color="rgba(148, 163, 184, 0.3)"
+            />
+            <Controls
+              showInteractive={false}
+              className="!border-none !bg-transparent !shadow-none"
+              style={{ left: "50%", transform: "translateX(-50%)", bottom: 24 }}
+            />
+          </ReactFlow>
+        </div>
+
+        {isLoading && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 text-sm text-muted-foreground">
+            Загружаем схему...
+          </div>
+        )}
+
+        {fetchError && !isLoading && (
+          <div className="group pointer-events-auto absolute right-4 top-4 z-10 flex max-w-[320px] items-center gap-1.5 overflow-hidden rounded-full border border-red-400/45 bg-red-500/10 px-2 py-1 text-red-100 shadow-sm backdrop-blur">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-100">
+              <Info className="h-3.5 w-3.5" />
+            </span>
+            <span className="max-w-0 whitespace-nowrap text-[11px] leading-4 opacity-0 transition-all duration-200 group-hover:max-w-[280px] group-hover:opacity-100">
+              {fetchError}
+            </span>
+          </div>
+        )}
+
+        {emptyStateMessage && !isLoading && !fetchError && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-10 text-center text-sm text-muted-foreground">
+            {emptyStateMessage}
+          </div>
+        )}
+
+        {isGraphRunning && !isLoading && (
+          <div className="pointer-events-none absolute left-4 top-4 z-10 rounded-full border border-primary/35 bg-primary/10 px-3 py-1.5 text-[11px] text-primary-foreground shadow-sm backdrop-blur">
+            <span className="mr-2 inline-flex h-2 w-2 animate-pulse rounded-full bg-primary" />
+            Граф выполняется
+          </div>
+        )}
+
+        <div className="pointer-events-none absolute left-4 bottom-4 max-w-sm rounded-lg bg-background/85 px-3 py-2 text-xs text-muted-foreground shadow-sm">
+          Перетаскивайте узлы из библиотеки и соединяйте их стрелками.
+        </div>
+      </Card>
+      <NodeConfigDialog
+        node={configNode}
+        nodeType={configNodeType}
+        onClose={() => setConfigNodeId(null)}
+        onSave={handleConfigSave}
+      />
+    </>
+  );
 }

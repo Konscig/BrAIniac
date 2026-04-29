@@ -1,10 +1,11 @@
 import { getOpenRouterAdapter } from '../../../core/openrouter/openrouter.adapter.js';
 import type { NodeHandler } from '../../pipeline/pipeline.executor.types.js';
 import { buildPrompt } from '../../pipeline/pipeline.executor.utils.js';
+import { resolveNodeSectionConfig } from './node-handler.common.js';
 
 export const llmCallNodeHandler: NodeHandler = async (runtime, inputs, context) => {
   const adapter = getOpenRouterAdapter();
-  const llmConfig = runtime.config?.llm ?? runtime.tool?.config_json?.llm ?? {};
+  const llmConfig = resolveNodeSectionConfig(runtime, 'llm');
 
   const model = typeof llmConfig?.modelId === 'string' ? llmConfig.modelId : undefined;
   const temperatureRaw = Number(llmConfig?.temperature);

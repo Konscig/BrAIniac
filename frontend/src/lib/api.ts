@@ -1,12 +1,16 @@
 export const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "http://localhost:8080";
+  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "http://localhost:3000";
 
 type ApiOptions = RequestInit & { skipAuthHeaders?: boolean };
 
 export type ApiError = Error & { status?: number; details?: unknown };
 
-// Auth token storage key used by AuthProvider
 const TOKENS_STORAGE_KEY = "brainiac.tokens";
+const DEFAULT_PIPELINE_LIMITS = {
+  max_time: 120,
+  max_cost: 100,
+  max_reject: 0.15
+} as const;
 
 type StoredTokens = { accessToken?: string; refreshToken?: string } | null;
 
@@ -14,46 +18,82 @@ const getStoredTokens = (): StoredTokens => {
   try {
     const raw = localStorage.getItem(TOKENS_STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as any;
-    const accessToken = parsed?.accessToken ?? parsed?.access_token;
-    const refreshToken = parsed?.refreshToken ?? parsed?.refresh_token;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const accessToken = parsed.accessToken ?? parsed.access_token;
+    const refreshToken = parsed.refreshToken ?? parsed.refresh_token;
     if (typeof accessToken === "string") {
-      return { accessToken, refreshToken };
+      return {
+        accessToken,
+        refreshToken: typeof refreshToken === "string" ? refreshToken : undefined
+      };
     }
   } catch {
-    /* ignore */
+    /* ignore malformed storage */
   }
+
   return null;
 };
 
 const buildHeaders = (init?: HeadersInit, includeAuth = true): HeadersInit => {
-  const base: Record<string, string> = {
-    "Content-Type": "application/json"
-  };
+  const headers: Record<string, string> = {};
 
   if (init instanceof Headers) {
     init.forEach((value, key) => {
-      base[key] = value;
+      headers[key] = value;
     });
-    return base;
-  }
-
-  if (Array.isArray(init)) {
+  } else if (Array.isArray(init)) {
     for (const [key, value] of init) {
-      base[key] = value;
+      headers[key] = value;
     }
-    return base;
+  } else if (init) {
+    Object.assign(headers, init);
   }
 
-  const merged = { ...base, ...(init ?? {}) } as Record<string, string>;
   if (includeAuth) {
-    const tokens = getStoredTokens();
-    const token = tokens?.accessToken;
-    if (token && !("Authorization" in merged)) {
-      merged["Authorization"] = `Bearer ${token}`;
+    const accessToken = getStoredTokens()?.accessToken;
+    if (accessToken && !headers.Authorization) {
+      headers.Authorization = `Bearer ${accessToken}`;
     }
   }
-  return merged;
+
+  return headers;
+};
+
+const withJsonContentType = (headers: HeadersInit): HeadersInit => {
+  if (headers instanceof Headers) {
+    if (!headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    return headers;
+  }
+
+  if (Array.isArray(headers)) {
+    const hasContentType = headers.some(([key]) => key.toLowerCase() === "content-type");
+    return hasContentType ? headers : [...headers, ["Content-Type", "application/json"]];
+  }
+
+  if ("Content-Type" in (headers as Record<string, string>) || "content-type" in (headers as Record<string, string>)) {
+    return headers;
+  }
+
+  return {
+    ...(headers as Record<string, string>),
+    "Content-Type": "application/json"
+  };
+};
+
+const extractApiErrorMessage = (details: unknown): string | null => {
+  if (!details || typeof details !== "object") return null;
+
+  const record = details as Record<string, unknown>;
+  const candidates = [record.message, record.error];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
 };
 
 export async function apiRequest<TResponse = unknown>(
@@ -61,14 +101,12 @@ export async function apiRequest<TResponse = unknown>(
   options: ApiOptions = {}
 ): Promise<TResponse> {
   const url = `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
-  const requestInit: RequestInit = {
+  const response = await fetch(url, {
     method: options.method ?? "GET",
     headers: buildHeaders(options.headers, !options.skipAuthHeaders),
     body: options.body,
     credentials: options.credentials ?? "same-origin"
-  };
-
-  const response = await fetch(url, requestInit);
+  });
 
   if (!response.ok) {
     const error: ApiError = new Error("Не удалось выполнить запрос");
@@ -79,6 +117,11 @@ export async function apiRequest<TResponse = unknown>(
       error.details = raw ? JSON.parse(raw) : undefined;
     } catch {
       error.details = raw;
+    }
+
+    const message = extractApiErrorMessage(error.details);
+    if (message) {
+      error.message = message;
     }
 
     throw error;
@@ -96,17 +139,12 @@ export async function postJson<TResponse = unknown, TPayload = unknown>(
   payload: TPayload,
   options: ApiOptions = {}
 ): Promise<TResponse> {
-  const body = JSON.stringify(payload);
-  return apiRequest<TResponse>(path, { ...options, method: "POST", body });
-}
-
-export async function patchJson<TResponse = unknown, TPayload = unknown>(
-  path: string,
-  payload: TPayload,
-  options: ApiOptions = {}
-): Promise<TResponse> {
-  const body = JSON.stringify(payload);
-  return apiRequest<TResponse>(path, { ...options, method: "PATCH", body });
+  return apiRequest<TResponse>(path, {
+    ...options,
+    method: "POST",
+    headers: withJsonContentType(buildHeaders(options.headers, !options.skipAuthHeaders)),
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function putJson<TResponse = unknown, TPayload = unknown>(
@@ -114,322 +152,349 @@ export async function putJson<TResponse = unknown, TPayload = unknown>(
   payload: TPayload,
   options: ApiOptions = {}
 ): Promise<TResponse> {
-  const body = JSON.stringify(payload);
-  return apiRequest<TResponse>(path, { ...options, method: "PUT", body });
+  return apiRequest<TResponse>(path, {
+    ...options,
+    method: "PUT",
+    headers: withJsonContentType(buildHeaders(options.headers, !options.skipAuthHeaders)),
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function deleteRequest(path: string, options: ApiOptions = {}): Promise<void> {
-  await apiRequest(path, { ...options, method: "DELETE" });
+  await apiRequest(path, {
+    ...options,
+    method: "DELETE"
+  });
 }
 
-export type EnvironmentModeApi =
-  | "ENVIRONMENT_MODE_TEST"
-  | "ENVIRONMENT_MODE_HYBRID"
-  | "ENVIRONMENT_MODE_REAL";
+export type JsonRecord = Record<string, unknown>;
 
-export interface ProjectSummary {
-  id: string;
+export interface ProjectRecord {
+  project_id: number;
+  fk_user_id: number;
   name: string;
-  description: string;
 }
 
-export interface PipelineSummary {
-  id: string;
+export interface PipelineRecord {
+  pipeline_id: number;
+  fk_project_id: number;
   name: string;
-  description: string;
-  version?: number;
+  max_time: number;
+  max_cost: number;
+  max_reject: number;
+  score?: number | null;
+  report_json?: unknown;
 }
 
-export type PipelineNodeCategory = "LLM" | "Data" | "Services" | "Utility";
-
-export interface PipelineNodeDto {
-  id: string;
-  key: string;
-  label: string;
-  category: PipelineNodeCategory;
-  status: string;
-  type: string;
-  positionX: number;
-  positionY: number;
-  configJson: string;
+export interface NodeRecord {
+  node_id: number;
+  fk_pipeline_id: number;
+  fk_type_id: number;
+  fk_sub_pipeline: number | null;
+  top_k: number;
+  ui_json: JsonRecord;
+  output_json?: unknown;
 }
 
-export interface PipelineEdgeDto {
-  id: string;
-  source: string;
-  target: string;
-  label: string;
+export interface EdgeRecord {
+  edge_id: number;
+  fk_from_node: number;
+  fk_to_node: number;
 }
 
-export interface PipelineGraphResponse {
-  nodes: PipelineNodeDto[];
-  edges: PipelineEdgeDto[];
+export interface ToolRecord {
+  tool_id: number;
+  name: string;
+  config_json: JsonRecord;
 }
 
-export interface NodeExecutionResultDto {
-  nodeId: string;
-  status: string;
-  output: string;
+export interface NodeTypeRecord {
+  type_id: number;
+  fk_tool_id: number;
+  name: string;
+  desc: string;
+  config_json?: JsonRecord | null;
 }
 
-export interface ExecutePipelineResponse {
-  results: NodeExecutionResultDto[];
-  finalOutput?: string;
+export interface DatasetRecord {
+  dataset_id: number;
+  fk_pipeline_id: number;
+  uri: string;
+  desc: string | null;
 }
 
-export async function listProjects(): Promise<ProjectSummary[]> {
-  const payload = await apiRequest<ProjectSummary[]>("/projects");
-  return payload ?? [];
+export interface GraphDiagnostic {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
 }
 
-export async function createProject(name: string, description: string): Promise<ProjectSummary> {
-  return postJson<ProjectSummary>("/projects", { name, description });
+export interface GraphValidationMetrics {
+  nodeCount: number;
+  edgeCount: number;
+  maxInDegree: number;
+  maxOutDegree: number;
+  cycleCount: number;
+  guardedCycleCount: number;
+  unguardedCycleCount: number;
+  estimatedMaxSteps: number;
+  startNodeCount: number;
+  endNodeCount: number;
 }
 
-export async function listPipelines(projectId: string): Promise<PipelineSummary[]> {
-  const payload = await apiRequest<PipelineSummary[]>(
-    `/pipelines?projectId=${encodeURIComponent(projectId)}`
-  );
-  return payload ?? [];
+export interface GraphValidationResult {
+  valid: boolean;
+  errors: GraphDiagnostic[];
+  warnings: GraphDiagnostic[];
+  metrics: GraphValidationMetrics;
 }
 
-export async function createPipeline(
-  projectId: string,
-  name: string,
-  description: string
-): Promise<PipelineSummary> {
-  return postJson<PipelineSummary>(`/pipelines`, { projectId, name, description });
+export type ExecutionStatus = "queued" | "running" | "succeeded" | "failed";
+
+export interface ExecutionSummary {
+  status: "succeeded" | "failed";
+  steps_used: number;
+  cost_units_used: number;
+  duration_ms: number;
+  node_total: number;
+  node_completed: number;
+  node_failed: number;
+  node_skipped: number;
 }
 
-export async function deleteProject(projectId: string): Promise<void> {
+export interface ExecutionFinalResult {
+  node_id: number;
+  node_type: string;
+  status: "completed" | "failed" | "skipped";
+  text?: string;
+  output_preview?: string;
+}
+
+export interface ExecutionSnapshot {
+  execution_id: string;
+  pipeline_id: number;
+  status: ExecutionStatus;
+  created_at: string;
+  updated_at: string;
+  started_at?: string;
+  finished_at?: string;
+  idempotency_key?: string;
+  request: {
+    preset?: "default" | "dev" | "production";
+    dataset_id?: number;
+    input_json?: unknown;
+  };
+  preflight?: GraphValidationResult;
+  summary?: ExecutionSummary;
+  final_result?: ExecutionFinalResult;
+  warnings?: string[];
+  error?: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+}
+
+export interface UploadDatasetPayload {
+  fk_pipeline_id: number;
+  filename: string;
+  content_base64: string;
+  mime_type?: string;
+  desc?: string;
+}
+
+export interface CreateProjectPayload {
+  name: string;
+}
+
+export interface CreatePipelinePayload {
+  fk_project_id: number;
+  name: string;
+  max_time?: number;
+  max_cost?: number;
+  max_reject?: number;
+}
+
+export interface CreateNodePayload {
+  fk_pipeline_id: number;
+  fk_type_id: number;
+  top_k?: number;
+  ui_json: JsonRecord;
+  fk_sub_pipeline?: number;
+}
+
+export interface UpdateNodePayload {
+  fk_type_id?: number;
+  top_k?: number;
+  ui_json?: JsonRecord;
+  fk_sub_pipeline?: number | null;
+}
+
+export interface CreateEdgePayload {
+  fk_from_node: number;
+  fk_to_node: number;
+}
+
+export interface StartExecutionPayload {
+  preset?: "default" | "dev" | "production";
+  dataset_id?: number;
+  input_json?: unknown;
+}
+
+export function listProjects(): Promise<ProjectRecord[]> {
+  return apiRequest<ProjectRecord[]>("/projects");
+}
+
+export function createProject(payload: CreateProjectPayload): Promise<ProjectRecord> {
+  return postJson<ProjectRecord>("/projects", payload);
+}
+
+export function updateProject(projectId: number, payload: CreateProjectPayload): Promise<ProjectRecord> {
+  return putJson<ProjectRecord>(`/projects/${projectId}`, payload);
+}
+
+export function deleteProject(projectId: number): Promise<void> {
   return deleteRequest(`/projects/${projectId}`);
 }
 
-export async function updateProject(projectId: string, name: string, description?: string) {
-  return putJson(`/projects/${projectId}`, { name, description });
+export function listPipelines(projectId: number): Promise<PipelineRecord[]> {
+  return apiRequest<PipelineRecord[]>(`/pipelines?fk_project_id=${encodeURIComponent(String(projectId))}`);
 }
 
-// Backend types
-type Pipeline = { id: string; projectId: string; name: string; description: string; lastPublishedVersionId?: string | null };
-type PipelineVersion = { id: string; pipelineId: string; number: number; authorId?: string | null; state: string };
-
-const versionCache = new Map<string, string>(); // key: `${pipelineId}|${mode}` -> versionId
-
-async function resolveVersionId(pipelineId: string, mode: EnvironmentModeApi): Promise<string | null> {
-  const cacheKey = `${pipelineId}|${mode}`;
-  const cached = versionCache.get(cacheKey);
-  if (cached) return cached;
-
-  const pipeline = await apiRequest<Pipeline>(`/pipelines/${pipelineId}`);
-  const versions = await apiRequest<PipelineVersion[]>(`/pipeline-versions?pipelineId=${encodeURIComponent(pipelineId)}`);
-
-  // helper to find latest by state
-  const byState = (state: string) => versions.filter(v => (v.state || '').toLowerCase() === state.toLowerCase()).sort((a,b)=>b.number - a.number);
-
-  if (mode === "ENVIRONMENT_MODE_REAL") {
-    // Prefer lastPublishedVersionId
-    if (pipeline.lastPublishedVersionId) {
-      versionCache.set(cacheKey, pipeline.lastPublishedVersionId);
-      return pipeline.lastPublishedVersionId;
-    }
-    const published = byState('published')[0];
-    if (published) {
-      versionCache.set(cacheKey, published.id);
-      return published.id;
-    }
-    // fallback to draft
-    const draft = byState('draft')[0];
-    if (draft) {
-      versionCache.set(cacheKey, draft.id);
-      return draft.id;
-    }
-    // No published, no draft -> create draft
-    const number = (versions.map(v => v.number).sort((a,b)=>b-a)[0] ?? 0) + 1;
-    const created = await postJson<PipelineVersion>(`/pipeline-versions`, { pipelineId, number, state: 'draft' });
-    versionCache.set(cacheKey, created.id);
-    return created.id;
-  }
-
-  // TEST or HYBRID -> use latest draft
-  const draft = byState('draft')[0];
-  if (draft) {
-    versionCache.set(cacheKey, draft.id);
-    return draft.id;
-  }
-  // Create first draft when none exists
-  const number = (versions.map(v => v.number).sort((a,b)=>b-a)[0] ?? 0) + 1;
-  const created = await postJson<PipelineVersion>(`/pipeline-versions`, { pipelineId, number, state: 'draft' });
-  versionCache.set(cacheKey, created.id);
-  return created.id;
+export function getPipeline(pipelineId: number): Promise<PipelineRecord> {
+  return apiRequest<PipelineRecord>(`/pipelines/${pipelineId}`);
 }
 
-export async function getPipelineGraph(
-  projectId: string,
-  pipelineId: string,
-  mode: EnvironmentModeApi
-): Promise<PipelineGraphResponse> {
-  // Resolve versionId based on mode
-  const versionId = await resolveVersionId(pipelineId, mode);
-  if (!versionId) {
-    return { nodes: [], edges: [] };
-  }
-  // Fetch nodes and edges by version
-  const [nodes, edges] = await Promise.all([
-    apiRequest<any[]>(`/nodes?versionId=${encodeURIComponent(versionId)}`),
-    apiRequest<any[]>(`/edges?versionId=${encodeURIComponent(versionId)}`)
-  ]);
-
-  // Map backend shapes to frontend DTOs
-  const mappedNodes: PipelineNodeDto[] = (nodes || []).map((n: any) => ({
-    id: n.id,
-    key: n.key,
-    label: n.label,
-    category: n.category,
-    status: n.status ?? "idle",
-    type: n.type,
-    positionX: Number.isFinite(n.positionX) ? n.positionX : 0,
-    positionY: Number.isFinite(n.positionY) ? n.positionY : 0,
-    configJson: typeof n.configJson === 'string' ? n.configJson : JSON.stringify(n.configJson ?? {})
-  }));
-
-  const mappedEdges: PipelineEdgeDto[] = (edges || []).map((e: any) => ({
-    id: e.id,
-    source: e.fromNode,
-    target: e.toNode,
-    label: e.label ?? ''
-  }));
-
-  return { nodes: mappedNodes, edges: mappedEdges };
+export function createPipeline(payload: CreatePipelinePayload): Promise<PipelineRecord> {
+  return postJson<PipelineRecord>("/pipelines", {
+    fk_project_id: payload.fk_project_id,
+    name: payload.name,
+    max_time: payload.max_time ?? DEFAULT_PIPELINE_LIMITS.max_time,
+    max_cost: payload.max_cost ?? DEFAULT_PIPELINE_LIMITS.max_cost,
+    max_reject: payload.max_reject ?? DEFAULT_PIPELINE_LIMITS.max_reject
+  });
 }
 
-export interface CreatePipelineNodePayload {
-  label: string;
-  type: string;
-  category: PipelineNodeCategory;
-  status?: string;
-  positionX: number;
-  positionY: number;
-  configJson?: string;
+export function updatePipeline(
+  pipelineId: number,
+  payload: Partial<CreatePipelinePayload>
+): Promise<PipelineRecord> {
+  return putJson<PipelineRecord>(`/pipelines/${pipelineId}`, payload);
 }
 
-export async function createPipelineNode(
-  projectId: string,
-  pipelineId: string,
-  payload: CreatePipelineNodePayload
-): Promise<PipelineNodeDto> {
-  // Ensure versionId
-  const versionId = await resolveVersionId(pipelineId, "ENVIRONMENT_MODE_TEST");
-  if (!versionId) throw new Error("Не найден черновик версии пайплайна");
-  const key = (payload.label || "node").toLowerCase().replace(/[^a-z0-9]+/gi, "-") + "-" + Math.random().toString(36).slice(2, 8);
-  const body = {
-    versionId,
-    key,
-    label: payload.label,
-    category: payload.category,
-    type: payload.type,
-    status: payload.status ?? 'idle',
-    positionX: payload.positionX,
-    positionY: payload.positionY,
-    configJson: payload.configJson ? JSON.parse(payload.configJson) : {}
-  };
-  const n = await postJson<any>(`/nodes`, body);
+export function deletePipeline(pipelineId: number): Promise<void> {
+  return deleteRequest(`/pipelines/${pipelineId}`);
+}
+
+export function listNodeTypes(): Promise<NodeTypeRecord[]> {
+  return apiRequest<NodeTypeRecord[]>("/node-types");
+}
+
+export function listTools(): Promise<ToolRecord[]> {
+  return apiRequest<ToolRecord[]>("/tools");
+}
+
+export function listNodes(pipelineId: number): Promise<NodeRecord[]> {
+  return apiRequest<NodeRecord[]>(`/nodes?fk_pipeline_id=${encodeURIComponent(String(pipelineId))}`);
+}
+
+export function createNode(payload: CreateNodePayload): Promise<NodeRecord> {
+  return postJson<NodeRecord>("/nodes", {
+    fk_pipeline_id: payload.fk_pipeline_id,
+    fk_type_id: payload.fk_type_id,
+    top_k: payload.top_k ?? 1,
+    ui_json: payload.ui_json,
+    ...(payload.fk_sub_pipeline !== undefined ? { fk_sub_pipeline: payload.fk_sub_pipeline } : {})
+  });
+}
+
+export function updateNode(nodeId: number, payload: UpdateNodePayload): Promise<NodeRecord> {
+  return putJson<NodeRecord>(`/nodes/${nodeId}`, payload);
+}
+
+export function deleteNode(nodeId: number): Promise<void> {
+  return deleteRequest(`/nodes/${nodeId}`);
+}
+
+export function listEdges(pipelineId: number): Promise<EdgeRecord[]> {
+  return apiRequest<EdgeRecord[]>(`/edges?fk_pipeline_id=${encodeURIComponent(String(pipelineId))}`);
+}
+
+export function createEdge(payload: CreateEdgePayload): Promise<EdgeRecord> {
+  return postJson<EdgeRecord>("/edges", payload);
+}
+
+export function deleteEdge(edgeId: number): Promise<void> {
+  return deleteRequest(`/edges/${edgeId}`);
+}
+
+export function listDatasets(pipelineId: number): Promise<DatasetRecord[]> {
+  return apiRequest<DatasetRecord[]>(`/datasets?fk_pipeline_id=${encodeURIComponent(String(pipelineId))}`);
+}
+
+export function uploadDataset(payload: UploadDatasetPayload): Promise<DatasetRecord> {
+  return postJson<DatasetRecord>("/datasets/upload", payload);
+}
+
+export function deleteDataset(datasetId: number): Promise<void> {
+  return deleteRequest(`/datasets/${datasetId}`);
+}
+
+export function validatePipelineGraph(
+  pipelineId: number,
+  preset: "default" | "dev" | "production" = "default"
+): Promise<GraphValidationResult> {
+  return postJson<GraphValidationResult>(`/pipelines/${pipelineId}/validate-graph`, {
+    preset
+  });
+}
+
+export function startPipelineExecution(
+  pipelineId: number,
+  payload: StartExecutionPayload,
+  idempotencyKey?: string
+): Promise<ExecutionSnapshot> {
+  const headers = idempotencyKey ? { "x-idempotency-key": idempotencyKey } : undefined;
+  return postJson<ExecutionSnapshot>(`/pipelines/${pipelineId}/execute`, payload, { headers });
+}
+
+export function getPipelineExecution(
+  pipelineId: number,
+  executionId: string
+): Promise<ExecutionSnapshot> {
+  return apiRequest<ExecutionSnapshot>(`/pipelines/${pipelineId}/executions/${executionId}`);
+}
+
+export function buildQuestionInput(question: string): { question: string; user_query: string } {
   return {
-    id: n.id,
-    key: n.key,
-    label: n.label,
-    category: n.category,
-    status: n.status ?? 'idle',
-    type: n.type,
-    positionX: Number.isFinite(n.positionX) ? n.positionX : 0,
-    positionY: Number.isFinite(n.positionY) ? n.positionY : 0,
-    configJson: typeof n.configJson === 'string' ? n.configJson : JSON.stringify(n.configJson ?? {})
+    question,
+    user_query: question
   };
 }
 
-export interface UpdatePipelineNodePayload extends CreatePipelineNodePayload {
-  nodeId: string;
+export function isExecutionTerminal(status: ExecutionStatus): boolean {
+  return status === "succeeded" || status === "failed";
 }
 
-export async function updatePipelineNode(
-  projectId: string,
-  pipelineId: string,
-  payload: UpdatePipelineNodePayload
-): Promise<PipelineNodeDto> {
-  const { nodeId, ...rest } = payload;
-  const body: any = {
-    label: rest.label,
-    category: rest.category,
-    type: rest.type,
-    status: rest.status,
-    positionX: rest.positionX,
-    positionY: rest.positionY,
-    configJson: rest.configJson ? JSON.parse(rest.configJson) : undefined
-  };
-  const n = await putJson<any>(`/nodes/${nodeId}`, body); // <-- был patchJson
+export function readNodeLabel(node: NodeRecord): string {
+  const raw = node.ui_json?.label;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : `Узел ${node.node_id}`;
+}
+
+export function readNodePosition(node: NodeRecord): { x: number; y: number } {
+  const x = Number(node.ui_json?.x);
+  const y = Number(node.ui_json?.y);
   return {
-    id: n.id,
-    key: n.key,
-    label: n.label,
-    category: n.category,
-    status: n.status ?? 'idle',
-    type: n.type,
-    positionX: Number.isFinite(n.positionX) ? n.positionX : 0,
-    positionY: Number.isFinite(n.positionY) ? n.positionY : 0,
-    configJson: typeof n.configJson === 'string' ? n.configJson : JSON.stringify(n.configJson ?? {})
+    x: Number.isFinite(x) ? x : 0,
+    y: Number.isFinite(y) ? y : 0
   };
 }
 
-export async function deletePipelineNode(
-  projectId: string,
-  pipelineId: string,
-  nodeId: string
-): Promise<void> {
-  await deleteRequest(`/nodes/${nodeId}`);
-}
-
-export interface CreatePipelineEdgePayload {
-  source: string;
-  target: string;
-  label?: string;
-}
-
-export async function createPipelineEdge(
-  projectId: string,
-  pipelineId: string,
-  payload: CreatePipelineEdgePayload
-): Promise<PipelineEdgeDto> {
-  const versionId = await resolveVersionId(pipelineId, "ENVIRONMENT_MODE_TEST");
-  if (!versionId) throw new Error("Не найдена версия пайплайна для создания связи");
-  const body = { versionId, fromNode: payload.source, toNode: payload.target, label: payload.label ?? '' };
-  const e = await postJson<any>(`/edges`, body);
-  return { id: e.id, source: e.fromNode, target: e.toNode, label: e.label ?? '' };
-}
-
-export async function deletePipelineEdge(
-  projectId: string,
-  pipelineId: string,
-  edgeId: string
-): Promise<void> {
-  await deleteRequest(`/edges/${edgeId}`);
-}
-
-export async function publishPipelineVersion(
-  projectId: string,
-  pipelineId: string,
-  notes?: string
-): Promise<{ versionId: string; versionNumber: number }> {
-  // Placeholder: not supported by current backend routes. Returning draft version if exists.
-  const versionId = await resolveVersionId(pipelineId, "ENVIRONMENT_MODE_TEST");
-  if (!versionId) throw new Error("Публикация не поддерживается: нет черновика");
-  return { versionId, versionNumber: 0 };
-}
-
-export async function executePipeline(
-  projectId: string,
-  pipelineId: string,
-  mode: EnvironmentModeApi,
-  triggerInput?: string
-): Promise<ExecutePipelineResponse> {
-  // Not implemented on backend; stubbed for now
-  return { results: [], finalOutput: undefined };
-}
+export type ProjectSummary = ProjectRecord;
+export type PipelineSummary = PipelineRecord;
+export type PipelineNodeDto = NodeRecord;
+export type PipelineEdgeDto = EdgeRecord;
+export type PipelineGraphResponse = { nodes: NodeRecord[]; edges: EdgeRecord[] };
+export type NodeExecutionResultDto = { nodeId: string; status: string; output: string };
+export type ExecutePipelineResponse = ExecutionSnapshot;
+export type PipelineNodeCategory = "Source" | "Transform" | "Control" | "Sink";

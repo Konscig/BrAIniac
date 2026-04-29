@@ -45,5 +45,5 @@ export function requiredNonEmptyString(raw: unknown, errorMessage: string): stri
   if (typeof raw !== 'string' || raw.trim().length === 0) {
     throw new HttpError(400, { error: errorMessage });
   }
-  return raw;
+  return raw.trim();
 }
