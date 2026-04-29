@@ -1,5 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { HttpError, isHttpError } from '../common/http-error.js';
+import { registerProjectResources } from './resources/project.resources.js';
+import { registerReadOnlyProjectTools } from './tools/readonly.tools.js';
 
 export const BRAINIAC_MCP_SERVER_NAME = 'brainiac-mcp';
 export const BRAINIAC_MCP_SERVER_VERSION = '0.1.0';
@@ -80,7 +82,7 @@ export function mapMcpError(error: unknown): McpVisibleError {
 }
 
 export function createBrainiacMcpServer(): McpServer {
-  return new McpServer(
+  const server = new McpServer(
     {
       name: BRAINIAC_MCP_SERVER_NAME,
       version: BRAINIAC_MCP_SERVER_VERSION,
@@ -94,4 +96,9 @@ export function createBrainiacMcpServer(): McpServer {
       },
     },
   );
+
+  registerProjectResources(server);
+  registerReadOnlyProjectTools(server);
+
+  return server;
 }
