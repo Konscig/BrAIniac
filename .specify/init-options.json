@@ -3,7 +3,7 @@
   "ai_skills": true,
   "branch_numbering": "sequential",
   "context_file": "AGENTS.md",
-  "here": false,
+  "here": true,
   "integration": "codex",
   "script": "ps",
   "speckit_version": "0.8.2"
