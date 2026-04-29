@@ -20,7 +20,7 @@ the MVP before operation tools, export, and VS Code integration.
 **Purpose**: Add MCP dependency and file structure without changing business behavior.
 
 - [X] T001 Add `@modelcontextprotocol/sdk` and `zod` dependencies plus `test:mcp:readonly`, `test:mcp:auth`, `test:mcp:perf`, and `test:mcp:export` scripts in `backend/package.json`
-- [ ] T002 [P] Create MCP adapter directories `backend/src/mcp/resources/`, `backend/src/mcp/tools/`, and `backend/src/mcp/serializers/`
+- [X] T002 [P] Create MCP adapter directories `backend/src/mcp/resources/`, `backend/src/mcp/tools/`, and `backend/src/mcp/serializers/`
 - [ ] T003 [P] Create empty backend MCP test script placeholders in `backend/scripts/mcp-readonly-contract-test.mjs`, `backend/scripts/mcp-auth-ownership-test.mjs`, `backend/scripts/mcp-performance-smoke-test.mjs`, and `backend/scripts/mcp-export-redaction-test.mjs`
 - [ ] T004 Add MCP environment defaults and comments for `MCP_ENABLED` and `MCP_PATH` in `.env.example` and `.env.docker`
 
