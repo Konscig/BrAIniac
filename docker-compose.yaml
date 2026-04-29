@@ -60,6 +60,7 @@ services:
   db-tests:
     image: node:20-alpine
     container_name: db-tests
+    profiles: ["tests"]
     restart: "no"
     working_dir: /app/backend
     volumes:
