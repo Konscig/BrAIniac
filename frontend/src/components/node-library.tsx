@@ -1,38 +1,85 @@
 import React from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-import type { NodeTypeRecord } from "../lib/api";
+import { listTools, type NodeTypeRecord, type ToolRecord } from "../lib/api";
 import { cn } from "../lib/utils";
 import {
   getVisibleNodeTypeCatalog,
   getNodeTypeGroupLabel,
   getNodeTypeUiLabel,
-  getNodeTypeUiTagline
+  getNodeTypeUiTagline,
+  getToolUiLabel,
+  getVisibleToolCatalog,
+  normalizeNodeTypeName
 } from "../lib/node-catalog";
+import { getToolUiTagline } from "../lib/tool-config";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
 
-type DragPayload = {
+export type DragPayload = {
   typeId: number;
   typeName: string;
   label: string;
+  toolId?: number;
+  toolName?: string;
+};
+
+type LibraryItem = {
+  key: string;
+  title: string;
+  tagline: string;
+  payload: DragPayload;
 };
 
 type LibraryGroup = {
   id: string;
   name: string;
-  items: NodeTypeRecord[];
+  items: LibraryItem[];
 };
 
-function buildGroups(nodeTypes: NodeTypeRecord[]): LibraryGroup[] {
-  const groups = new Map<string, NodeTypeRecord[]>();
+const TOOL_GROUP = "Инструменты";
+
+function buildGroups(nodeTypes: NodeTypeRecord[], tools: ToolRecord[]): LibraryGroup[] {
+  const groups = new Map<string, LibraryItem[]>();
+  const toolNodeType = nodeTypes.find((nt) => normalizeNodeTypeName(nt.name) === "ToolNode") ?? null;
 
   for (const nodeType of getVisibleNodeTypeCatalog(nodeTypes)) {
+    const typeName = normalizeNodeTypeName(nodeType.name);
+    if (typeName === "ToolNode") continue; // заменяем на отдельные плитки тулов
+
     const groupName = getNodeTypeGroupLabel(nodeType);
     const list = groups.get(groupName) ?? [];
-    list.push(nodeType);
+    list.push({
+      key: `nt-${nodeType.type_id}`,
+      title: getNodeTypeUiLabel(nodeType),
+      tagline: getNodeTypeUiTagline(nodeType),
+      payload: {
+        typeId: nodeType.type_id,
+        typeName,
+        label: getNodeTypeUiLabel(nodeType)
+      }
+    });
     groups.set(groupName, list);
+  }
+
+  // Каждый тул каталога → отдельная плитка в группе «Инструменты».
+  if (toolNodeType) {
+    const toolItems: LibraryItem[] = getVisibleToolCatalog(tools).map((tool) => ({
+      key: `tool-${tool.tool_id}`,
+      title: getToolUiLabel(tool.name),
+      tagline: getToolUiTagline(tool.name),
+      payload: {
+        typeId: toolNodeType.type_id,
+        typeName: "ToolNode",
+        label: getToolUiLabel(tool.name),
+        toolId: tool.tool_id,
+        toolName: tool.name
+      }
+    }));
+    if (toolItems.length > 0) {
+      groups.set(TOOL_GROUP, toolItems);
+    }
   }
 
   return Array.from(groups.entries()).map(([name, items]) => ({
@@ -47,7 +94,23 @@ export interface NodeLibraryProps {
 }
 
 export function NodeLibrary({ nodeTypes }: NodeLibraryProps): React.ReactElement {
-  const groups = React.useMemo(() => buildGroups(nodeTypes), [nodeTypes]);
+  const [tools, setTools] = React.useState<ToolRecord[]>([]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void listTools()
+      .then((list) => {
+        if (!cancelled) setTools(list);
+      })
+      .catch((error) => {
+        console.error("Failed to load tools for library", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const groups = React.useMemo(() => buildGroups(nodeTypes, tools), [nodeTypes, tools]);
   const [activeGroupId, setActiveGroupId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -121,23 +184,15 @@ export function NodeLibrary({ nodeTypes }: NodeLibraryProps): React.ReactElement
                       <div className="space-y-1.5">
                         {group.items.map((item) => (
                           <button
-                            key={item.type_id}
+                            key={item.key}
                             type="button"
                             draggable
-                            onDragStart={(event) =>
-                              handleDragStart(event, {
-                                typeId: item.type_id,
-                                typeName: item.name,
-                                label: getNodeTypeUiLabel(item)
-                              })
-                            }
+                            onDragStart={(event) => handleDragStart(event, item.payload)}
                             className="w-full rounded-lg border border-border/50 bg-muted/15 px-2.5 py-2 text-left transition hover:border-primary/40 hover:bg-primary/10"
                           >
-                            <div className="text-xs font-medium text-foreground">
-                              {getNodeTypeUiLabel(item)}
-                            </div>
+                            <div className="text-xs font-medium text-foreground">{item.title}</div>
                             <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
-                              {getNodeTypeUiTagline(item)}
+                              {item.tagline}
                             </div>
                           </button>
                         ))}

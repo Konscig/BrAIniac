@@ -74,6 +74,8 @@ type DraggedNodePayload = {
   typeId: number;
   typeName: string;
   label: string;
+  toolId?: number;
+  toolName?: string;
 };
 
 type GraphState = {
@@ -693,15 +695,20 @@ export function CanvasBoard({
       const nodeType = nodeTypeMap.get(payload.typeId);
       const defaultLabel = nodeType ? getNodeTypeUiLabel(nodeType) : payload.label || payload.typeName;
 
+      const baseUi: Record<string, unknown> = {
+        label: defaultLabel,
+        x: position.x,
+        y: position.y
+      };
+      if (payload.toolId && payload.toolName) {
+        baseUi.tool = { tool_id: payload.toolId, name: payload.toolName };
+      }
+
       void createNode({
         fk_pipeline_id: pipelineId,
         fk_type_id: payload.typeId,
         top_k: 1,
-        ui_json: {
-          label: defaultLabel,
-          x: position.x,
-          y: position.y
-        }
+        ui_json: baseUi
       })
         .then((created) => {
           const nextNodes = [...backendNodesRef.current, created];
