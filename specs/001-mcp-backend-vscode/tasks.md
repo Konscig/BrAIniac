@@ -32,7 +32,7 @@ the MVP before operation tools, export, and VS Code integration.
 
 **CRITICAL**: No user story work should begin until this phase is complete.
 
-- [ ] T005 Implement BrAIniac MCP URI helpers for `brainiac://` resource templates in `backend/src/mcp/serializers/mcp-resource-uri.ts`
+- [X] T005 Implement BrAIniac MCP URI helpers for `brainiac://` resource templates in `backend/src/mcp/serializers/mcp-resource-uri.ts`
 - [ ] T006 Implement safe JSON response helpers with bounded text payloads in `backend/src/mcp/serializers/mcp-safe-json.ts`
 - [ ] T007 Implement secret redaction helpers for provider keys, credentials, token-like fields, and raw dataset content markers in `backend/src/mcp/serializers/mcp-redaction.ts`
 - [ ] T008 Implement MCP auth context resolution by reusing access-token verification and user lookup in `backend/src/mcp/mcp.auth.ts`
