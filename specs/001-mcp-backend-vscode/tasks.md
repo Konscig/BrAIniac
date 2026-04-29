@@ -71,7 +71,7 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T025 [US1] Implement agent context extraction from existing node graph and `ToolNode -> AgentCall` semantics in `backend/src/mcp/resources/agent.resources.ts`
 - [X] T026 [US1] Register pipeline, graph, node, tool catalog, and agent resources in `backend/src/mcp/mcp.server.ts`
 - [X] T027 [US1] Add resource links and explicit diagnostics to read-only tool outputs in `backend/src/mcp/tools/readonly.tools.ts`
-- [ ] T028 [US1] Run `npm --prefix backend run test:mcp:readonly`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:perf`, and `npm --prefix backend run test:contracts:freeze`
+- [X] T028 [US1] Run `npm --prefix backend run test:mcp:readonly`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:perf`, and `npm --prefix backend run test:contracts:freeze`
 
 **Checkpoint**: User Story 1 is independently usable as read-only MCP MVP.
 
