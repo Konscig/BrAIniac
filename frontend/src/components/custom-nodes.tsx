@@ -243,12 +243,8 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
         </details>
       )}
 
-      {!isToolNode && (
-        <>
-          <Handle type="target" id="flow-in" position={Position.Left} className={handleClassName} />
-          <Handle type="source" id="flow-out" position={Position.Right} className={handleClassName} />
-        </>
-      )}
+      <Handle type="target" id="flow-in" position={Position.Left} className={handleClassName} />
+      <Handle type="source" id="flow-out" position={Position.Right} className={handleClassName} />
 
       {isToolNode && (
         <>
