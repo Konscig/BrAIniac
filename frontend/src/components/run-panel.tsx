@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronDown, ChevronUp, Loader2, Play, Trash2, Upload, X } from "lucide-react";
+import { ChevronDown, ChevronUp, ClipboardCheck, Loader2, Play, Trash2, Upload, X } from "lucide-react";
 
 import {
   buildQuestionInput,
@@ -7,9 +7,11 @@ import {
   getPipelineExecution,
   isExecutionTerminal,
   listDatasets,
+  runAssessment,
   startPipelineExecution,
   uploadDataset,
   validatePipelineGraph,
+  type AssessmentReport,
   type DatasetRecord,
   type ExecutionSnapshot,
   type GraphValidationResult,
@@ -118,6 +120,13 @@ export function RunPanel({
   const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
   const [startedAt, setStartedAt] = React.useState<number | null>(null);
   const [now, setNow] = React.useState(Date.now());
+  const [isAssessOpen, setIsAssessOpen] = React.useState(false);
+  const [assessProfile, setAssessProfile] = React.useState<string>("rag");
+  const [assessReference, setAssessReference] = React.useState<string>("");
+  const [isAssessing, setIsAssessing] = React.useState(false);
+  const [assessReport, setAssessReport] = React.useState<AssessmentReport | null>(null);
+  const [assessError, setAssessError] = React.useState<ReadableError | null>(null);
+  const [expandedNodeIds, setExpandedNodeIds] = React.useState<Record<number, boolean>>({});
 
   const question = React.useMemo(() => readManualQuestion(nodes, nodeTypes), [nodes, nodeTypes]);
   const agentDebug = React.useMemo(() => readAgentDebug(nodes, nodeTypes), [nodes, nodeTypes]);
@@ -262,6 +271,51 @@ export function RunPanel({
   const elapsedSeconds = isRunning && startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
   const runStatus = isRunning ? `Выполняется ${elapsedSeconds}с` : execution ? `Статус: ${execution.status}` : "Готов к запуску";
 
+  const handleAssess = React.useCallback(async () => {
+    if (!pipelineId) return;
+    const currentQuestion = question.trim();
+    if (!currentQuestion) {
+      setAssessError(toReadableError("ManualInput question is empty", "Введите вопрос в узле ManualInput."));
+      return;
+    }
+    if (!execution || !isExecutionTerminal(execution.status) || execution.status !== "succeeded") {
+      setAssessError(toReadableError("no successful execution", "Сначала запустите пайплайн (нужен успешный прогон для agent_output)."));
+      return;
+    }
+
+    setIsAssessing(true);
+    setAssessError(null);
+    setAssessReport(null);
+    try {
+      const agentOutputText = execution.final_result?.text || execution.final_result?.output_preview || "";
+      const reference = assessReference.trim();
+      const report = await runAssessment({
+        pipeline_id: pipelineId,
+        weight_profile: assessProfile,
+        items: [
+          {
+            item_key: `ui-${Date.now()}`,
+            input: buildQuestionInput(currentQuestion),
+            agent_output: { text: agentOutputText, tool_call_trace: [] },
+            ...(reference ? { reference: { answer: reference } } : {})
+          }
+        ]
+      });
+      setAssessReport(report);
+    } catch (error) {
+      console.error("Failed to run assessment", error);
+      setAssessError(toReadableError(error, "Не удалось запустить оценку."));
+    } finally {
+      setIsAssessing(false);
+    }
+  }, [assessProfile, assessReference, execution, pipelineId, question]);
+
+  const verdictBadgeClass: Record<AssessmentReport["verdict"], string> = {
+    pass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40",
+    improvement: "bg-amber-500/15 text-amber-300 border-amber-500/40",
+    fail: "bg-red-500/15 text-red-300 border-red-500/40"
+  };
+
   return (
     <Card className="shrink-0 rounded-xl border-border/60 bg-card/80 px-3 py-2">
       <div className="flex flex-wrap items-center gap-3">
@@ -276,7 +330,7 @@ export function RunPanel({
           </div>
         </div>
 
-        <div className="flex min-w-[410px] flex-wrap items-center justify-end gap-2">
+        <div className="flex min-w-[380px] flex-wrap items-center justify-end gap-2">
           <Button
             type="button"
             size="icon"
@@ -288,6 +342,22 @@ export function RunPanel({
             {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           </Button>
 
+          <Button
+            type="button"
+            size="icon"
+            variant="secondary"
+            className="h-9 w-9 shrink-0"
+            disabled={!pipelineId || isRunning || isAssessing}
+            onClick={() => {
+              setAssessError(null);
+              setIsAssessOpen(true);
+            }}
+            aria-label="Оценить агента"
+            title="Оценить агента"
+          >
+            {isAssessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
+          </Button>
+
           <div className="min-w-[96px] text-[11px] leading-4 text-muted-foreground">{runStatus}</div>
 
           <select
@@ -297,12 +367,17 @@ export function RunPanel({
               setSelectedDatasetId(Number.isInteger(value) && value > 0 ? value : "");
             }}
             disabled={!pipelineId || isDatasetBusy}
-            className="h-8 min-w-[190px] rounded-md border border-border/60 bg-background/85 px-2 text-[11px] text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+            title={
+              selectedDatasetId
+                ? datasets.find((d) => d.dataset_id === selectedDatasetId)?.uri ?? ""
+                : ""
+            }
+            className="h-8 max-w-[160px] truncate rounded-md border border-border/60 bg-background/85 px-2 text-[11px] text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
           >
             <option value="">Без dataset</option>
             {datasets.map((dataset) => (
               <option key={dataset.dataset_id} value={dataset.dataset_id}>
-                {dataset.desc || dataset.uri}
+                {dataset.desc || dataset.uri.replace(/^workspace:\/\/.*\//, "")}
               </option>
             ))}
           </select>
@@ -340,6 +415,195 @@ export function RunPanel({
           </Button>
         </div>
       </div>
+
+      {isAssessOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-3 overflow-hidden rounded-xl border border-border/60 bg-card p-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold text-foreground">Оценка агента</div>
+                <div className="text-[11px] text-muted-foreground">
+                  POST /judge/assessments — взвешенная свёртка S = Σ wⱼ·Sⱼ
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAssessOpen(false)}
+                className="rounded text-muted-foreground hover:text-foreground"
+                aria-label="Закрыть"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2">
+              <div>
+                <div className="font-medium text-foreground">Профиль весов</div>
+                <select
+                  value={assessProfile}
+                  onChange={(event) => setAssessProfile(event.target.value)}
+                  disabled={isAssessing}
+                  className="mt-1 h-8 w-full rounded-md border border-border/60 bg-background/85 px-2 text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+                >
+                  <option value="rag">rag</option>
+                  <option value="tool_use">tool_use</option>
+                  <option value="extractor">extractor</option>
+                  <option value="default">default</option>
+                </select>
+              </div>
+              <div>
+                <div className="font-medium text-foreground">Вопрос (из ManualInput)</div>
+                <div className="mt-1 line-clamp-2 rounded-md border border-border/40 bg-muted/10 px-2 py-1.5 text-muted-foreground">
+                  {question || "Не задан"}
+                </div>
+              </div>
+            </div>
+
+            <div className="text-[11px]">
+              <div className="font-medium text-foreground">Эталонный ответ (необязательно)</div>
+              <textarea
+                value={assessReference}
+                onChange={(event) => setAssessReference(event.target.value)}
+                disabled={isAssessing}
+                rows={3}
+                placeholder="Текст эталонного ответа для reference-based метрик (f_EM/f_F1/f_sim/...)"
+                className="mt-1 w-full resize-y rounded-md border border-border/60 bg-background/85 px-2 py-1.5 text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+              />
+              <div className="mt-1 text-muted-foreground">
+                Без эталона будут посчитаны только reference-free метрики (axis B/D/F/H).
+              </div>
+            </div>
+
+            <div className="text-[11px]">
+              <div className="font-medium text-foreground">Ответ агента (из последнего прогона)</div>
+              <div className="mt-1 line-clamp-3 rounded-md border border-border/40 bg-muted/10 px-2 py-1.5 text-muted-foreground">
+                {execution?.final_result?.text || execution?.final_result?.output_preview || "Запустите пайплайн перед оценкой."}
+              </div>
+            </div>
+
+            {assessError && (
+              <div className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-200">
+                <div className="font-medium text-red-100">{assessError.title}</div>
+                <div>{assessError.message}</div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 px-3 text-[11px]"
+                onClick={() => setIsAssessOpen(false)}
+                disabled={isAssessing}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="button"
+                className="h-8 gap-1.5 px-3 text-[11px]"
+                onClick={handleAssess}
+                disabled={isAssessing || !pipelineId}
+              >
+                {isAssessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardCheck className="h-3.5 w-3.5" />}
+                Запустить оценку
+              </Button>
+            </div>
+
+            {assessReport && (
+              <div className="overflow-y-auto rounded-lg border border-border/50 bg-muted/10 p-2 text-[11px]">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div>
+                    <div className="text-muted-foreground">Final score (S)</div>
+                    <div className="text-2xl font-semibold text-foreground">{assessReport.final_score.toFixed(3)}</div>
+                  </div>
+                  <div
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${verdictBadgeClass[assessReport.verdict]}`}
+                  >
+                    {assessReport.verdict.toUpperCase()}
+                  </div>
+                  <div className="text-muted-foreground">
+                    profile = <span className="text-foreground">{assessReport.weight_profile}</span>
+                    {"  "}|  items = <span className="text-foreground">{assessReport.item_count}</span>
+                  </div>
+                </div>
+
+                <details className="mt-2" open>
+                  <summary className="cursor-pointer font-medium text-foreground">
+                    Метрики ({assessReport.metric_scores.length})
+                  </summary>
+                  <table className="mt-1 w-full border-collapse">
+                    <thead>
+                      <tr className="text-left text-muted-foreground">
+                        <th className="pr-2">Axis</th>
+                        <th className="pr-2">Metric</th>
+                        <th className="pr-2">Sⱼ</th>
+                        <th className="pr-2">w</th>
+                        <th>n</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {assessReport.metric_scores.map((m) => (
+                        <tr key={m.metric_code} className="border-t border-border/30">
+                          <td className="pr-2 py-0.5 text-muted-foreground">{m.axis}</td>
+                          <td className="pr-2 py-0.5 text-foreground">{m.metric_code}</td>
+                          <td className="pr-2 py-0.5">{m.value.toFixed(3)}</td>
+                          <td className="pr-2 py-0.5 text-muted-foreground">
+                            {(assessReport.weights_used?.[m.metric_code] ?? 0).toFixed(3)}
+                          </td>
+                          <td className="py-0.5 text-muted-foreground">{m.sample_size}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+
+                <div className="mt-2 font-medium text-foreground">Per-node ({assessReport.per_node.length})</div>
+                <div className="mt-1 space-y-1">
+                  {assessReport.per_node.map((node) => {
+                    const isOpen = Boolean(expandedNodeIds[node.node_id]);
+                    return (
+                      <div key={node.node_id} className="rounded-md border border-border/40">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedNodeIds((current) => ({ ...current, [node.node_id]: !isOpen }))
+                          }
+                          className="flex w-full items-center justify-between px-2 py-1 text-left"
+                        >
+                          <span>
+                            <span className="text-foreground">node {node.node_id}</span>
+                            <span className="ml-2 text-muted-foreground">{node.node_type.trim()}</span>
+                            <span className="ml-2 text-muted-foreground">· {node.metrics.length} метрик</span>
+                          </span>
+                          {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        </button>
+                        {isOpen && (
+                          <div className="border-t border-border/30 px-2 py-1">
+                            {node.metrics.map((m) => (
+                              <div key={m.metric_code} className="flex justify-between">
+                                <span>
+                                  <span className="text-muted-foreground">[{m.axis}]</span> {m.metric_code}
+                                </span>
+                                <span className="text-foreground">{m.value.toFixed(3)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {assessReport.skipped_metrics.length > 0 && (
+                  <div className="mt-2 text-muted-foreground">
+                    Skipped: {assessReport.skipped_metrics.join(", ")}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {isDrawerOpen && (
         <div className="mt-2 border-t border-border/50 pt-2">

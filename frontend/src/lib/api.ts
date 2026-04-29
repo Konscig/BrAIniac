@@ -527,6 +527,7 @@ export interface AssessmentReport {
   final_score: number;
   verdict: "pass" | "improvement" | "fail";
   weight_profile: string;
+  weights_used: Record<string, number>;
   metric_scores: Array<{
     metric_code: string;
     axis: string;
@@ -541,4 +542,21 @@ export interface AssessmentReport {
   }>;
   skipped_metrics: string[];
   item_count: number;
+}
+
+export interface AssessmentItem {
+  item_key: string;
+  input: Record<string, unknown>;
+  agent_output: { text: string; structured_output?: unknown; tool_call_trace?: unknown[] };
+  reference?: { answer?: string; rubric?: string; claims?: string[]; relevant_docs?: string[] };
+}
+
+export interface AssessmentRequest {
+  pipeline_id: number;
+  items: AssessmentItem[];
+  weight_profile?: string;
+}
+
+export function runAssessment(req: AssessmentRequest): Promise<AssessmentReport> {
+  return postJson<AssessmentReport>("/judge/assessments", req);
 }

@@ -215,6 +215,16 @@ export function AgentChatDock({
                           pre: ({ children }) => <pre className="my-1.5 overflow-x-auto rounded bg-muted/40 p-0">{children}</pre>,
                           a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer" className="underline text-primary">{children}</a>,
                           hr: () => <hr className="my-2 border-border/40" />,
+                          table: ({ children }) => (
+                            <div className="my-1.5 overflow-x-auto">
+                              <table className="w-full border-collapse text-[11px]">{children}</table>
+                            </div>
+                          ),
+                          thead: ({ children }) => <thead className="border-b border-border/50">{children}</thead>,
+                          tbody: ({ children }) => <tbody>{children}</tbody>,
+                          tr: ({ children }) => <tr className="border-b border-border/30 last:border-0">{children}</tr>,
+                          th: ({ children }) => <th className="px-1.5 py-1 text-left font-semibold text-foreground">{children}</th>,
+                          td: ({ children }) => <td className="px-1.5 py-1 align-top">{children}</td>,
                         }}
                       >
                         {msg.content}

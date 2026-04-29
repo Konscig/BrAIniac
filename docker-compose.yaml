@@ -10,7 +10,7 @@ services:
     env_file:
       - .env.docker
     ports: 
-      - "${PG_PORT:-5432}:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -25,8 +25,7 @@ services:
 
   backend:
     build: ./backend
-    container_name: api
-    profiles: ["app"]
+    container_name: backend
     restart: unless-stopped
     env_file:
       - .env.docker
@@ -83,7 +82,6 @@ services:
   frontend:
     build: ./frontend
     container_name: frontend
-    profiles: ["app"]
     restart: unless-stopped
     ports:
       - 3000:80
@@ -93,7 +91,6 @@ services:
   judge-eval-worker:
     build: ./judge-eval-worker
     container_name: judge-eval-worker
-    profiles: ["app"]
     restart: unless-stopped
     env_file:
       - .env.docker
