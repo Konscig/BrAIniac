@@ -36,7 +36,7 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T006 Implement safe JSON response helpers with bounded text payloads in `backend/src/mcp/serializers/mcp-safe-json.ts`
 - [X] T007 Implement secret redaction helpers for provider keys, credentials, token-like fields, and raw dataset content markers in `backend/src/mcp/serializers/mcp-redaction.ts`
 - [X] T008 Implement MCP auth context resolution by reusing access-token verification and user lookup in `backend/src/mcp/mcp.auth.ts`
-- [ ] T009 Implement shared MCP error mapping for unauthorized, forbidden, validation, not-found, and runtime errors in `backend/src/mcp/mcp.server.ts`
+- [X] T009 Implement shared MCP error mapping for unauthorized, forbidden, validation, not-found, and runtime errors in `backend/src/mcp/mcp.server.ts`
 - [ ] T010 Register a BrAIniac `McpServer` instance with instructions and capability metadata in `backend/src/mcp/mcp.server.ts`
 - [ ] T011 Mount the Streamable HTTP MCP transport behind `MCP_ENABLED` at `MCP_PATH` in `backend/src/mcp/mcp.transport.ts`
 - [ ] T012 Wire the MCP transport into the existing Express app without changing existing routes in `backend/src/index.ts`
