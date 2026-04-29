@@ -32,7 +32,7 @@
     "test:executor:coordination": "node --loader ts-node/esm ./scripts/executor-coordination-test.mjs",
     "test:executor:http": "node ./scripts/executor-http-coordination-test.mjs",
     "test:contracts:freeze": "node --loader ts-node/esm ./scripts/backend-contract-freeze-test.mjs",
-    "test:mcp:readonly": "node ./scripts/mcp-readonly-contract-test.mjs",
+    "test:mcp:readonly": "node --loader ts-node/esm ./scripts/mcp-readonly-contract-test.mjs",
     "test:mcp:auth": "node --loader ts-node/esm ./scripts/mcp-auth-ownership-test.mjs",
     "test:mcp:perf": "node ./scripts/mcp-performance-smoke-test.mjs",
     "test:mcp:export": "node ./scripts/mcp-export-redaction-test.mjs",
