@@ -159,7 +159,7 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T056 [P] Update SDD notes for MCP adapter scope and deferred agent authoring in `docs/sdd/14-mcp-adapter-plan.md`
 - [X] T057 [P] Add explicit deferred agent authoring guard notes to `specs/001-mcp-backend-vscode/contracts/mcp-tools.md`
 - [X] T058 Run `npm --prefix backend run build`, `npm --prefix backend run test`, `npm --prefix backend run test:contracts:freeze`, `npm --prefix backend run test:mcp:readonly`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:perf`, and `npm --prefix backend run test:mcp:export`
-- [ ] T059 Validate `specs/001-mcp-backend-vscode/quickstart.md` end-to-end and record any manual VS Code gaps in `specs/001-mcp-backend-vscode/quickstart.md`
+- [X] T059 Validate `specs/001-mcp-backend-vscode/quickstart.md` end-to-end and record any manual VS Code gaps in `specs/001-mcp-backend-vscode/quickstart.md`
 
 ---
 

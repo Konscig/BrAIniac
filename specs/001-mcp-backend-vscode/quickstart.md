@@ -92,6 +92,20 @@
 - [ ] Invalid token, missing token, backend unavailable, forbidden resource, and
   tool runtime errors are visible to the user.
 
+### Validation Notes
+
+- Backend build and automated MCP checks passed with `npm --prefix backend run
+  build`, `test:mcp:readonly`, `test:mcp:auth`, `test:mcp:perf`,
+  `test:mcp:export`, and `test:contracts:freeze`.
+- Full backend API regression passed after starting the backend on
+  `http://localhost:8080` and running `npm --prefix backend run test`.
+- VS Code extension scaffold smoke passed with `npm --prefix vscode-extension
+  run test`.
+- Manual VS Code UI verification is still required outside this headless
+  environment: connect to `http://localhost:8080/mcp`, browse resources, invoke
+  `list_projects`, `validate_pipeline`, one export tool, and confirm auth and
+  backend error feedback.
+
 ## Out Of MVP
 
 - Creating or editing agent nodes.
