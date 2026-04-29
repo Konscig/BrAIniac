@@ -39,7 +39,7 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T009 Implement shared MCP error mapping for unauthorized, forbidden, validation, not-found, and runtime errors in `backend/src/mcp/mcp.server.ts`
 - [X] T010 Register a BrAIniac `McpServer` instance with instructions and capability metadata in `backend/src/mcp/mcp.server.ts`
 - [X] T011 Mount the Streamable HTTP MCP transport behind `MCP_ENABLED` at `MCP_PATH` in `backend/src/mcp/mcp.transport.ts`
-- [ ] T012 Wire the MCP transport into the existing Express app without changing existing routes in `backend/src/index.ts`
+- [X] T012 Wire the MCP transport into the existing Express app without changing existing routes in `backend/src/index.ts`
 - [ ] T013 Update `backend/scripts/mcp-auth-ownership-test.mjs` to assert missing, invalid, and cross-user tokens produce explicit MCP-visible errors
 - [ ] T014 Run `npm --prefix backend run build`, `npm --prefix backend run test:auth`, and `npm --prefix backend run test:ownership`
 
