@@ -37,11 +37,27 @@ await assertMappedError(
 );
 
 await assertMappedError(
-  'cross-user ownership denial',
+  'cross-user project ownership denial',
   () => {
     throw new HttpError(403, { error: 'forbidden' });
   },
   'FORBIDDEN',
+);
+
+await assertMappedError(
+  'cross-user pipeline ownership denial',
+  () => {
+    throw new HttpError(403, { error: 'forbidden', resource: 'pipeline' });
+  },
+  'FORBIDDEN',
+);
+
+await assertMappedError(
+  'missing owner-scoped project',
+  () => {
+    throw new HttpError(404, { error: 'not found', resource: 'project' });
+  },
+  'NOT_FOUND',
 );
 
 console.log('MCP auth and ownership visible error checks OK');

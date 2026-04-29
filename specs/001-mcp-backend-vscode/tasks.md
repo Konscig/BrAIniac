@@ -56,7 +56,7 @@ the MVP before operation tools, export, and VS Code integration.
 ### Tests for User Story 1
 
 - [X] T015 [P] [US1] Write read-only MCP resource contract assertions for projects, pipelines, graph, nodes, agents, and tools in `backend/scripts/mcp-readonly-contract-test.mjs`
-- [ ] T016 [P] [US1] Extend ownership coverage for MCP project and pipeline resource isolation in `backend/scripts/mcp-auth-ownership-test.mjs`
+- [X] T016 [P] [US1] Extend ownership coverage for MCP project and pipeline resource isolation in `backend/scripts/mcp-auth-ownership-test.mjs`
 - [ ] T017 [P] [US1] Write MCP read-only timing checks for project listing under 2 seconds and pipeline/node resource reads under 1 second in `backend/scripts/mcp-performance-smoke-test.mjs`
 
 ### Implementation for User Story 1
