@@ -64,7 +64,7 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T018 [P] [US1] Implement project resource registration for `brainiac://projects` and `brainiac://projects/{projectId}` in `backend/src/mcp/resources/project.resources.ts`
 - [X] T019 [P] [US1] Implement read-only tool handlers `list_projects` and `list_pipelines` in `backend/src/mcp/tools/readonly.tools.ts`
 - [X] T020 [US1] Register project resources and read-only project/pipeline tools in `backend/src/mcp/mcp.server.ts`
-- [ ] T021 [P] [US1] Implement pipeline resource registration for `brainiac://pipelines/{pipelineId}` and `brainiac://pipelines/{pipelineId}/graph` in `backend/src/mcp/resources/pipeline.resources.ts`
+- [X] T021 [P] [US1] Implement pipeline resource registration for `brainiac://pipelines/{pipelineId}` and `brainiac://pipelines/{pipelineId}/graph` in `backend/src/mcp/resources/pipeline.resources.ts`
 - [ ] T022 [P] [US1] Implement node resource registration for `brainiac://pipelines/{pipelineId}/nodes/{nodeId}` in `backend/src/mcp/resources/node.resources.ts`
 - [ ] T023 [P] [US1] Implement tool catalog resources for `brainiac://tools` and `brainiac://tools/{toolId}` in `backend/src/mcp/resources/tool.resources.ts`
 - [ ] T024 [US1] Implement `get_pipeline_context`, `list_pipeline_nodes`, `get_node_context`, and `list_tool_catalog` in `backend/src/mcp/tools/readonly.tools.ts`
