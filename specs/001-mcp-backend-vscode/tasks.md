@@ -61,7 +61,7 @@ the MVP before operation tools, export, and VS Code integration.
 
 ### Implementation for User Story 1
 
-- [ ] T018 [P] [US1] Implement project resource registration for `brainiac://projects` and `brainiac://projects/{projectId}` in `backend/src/mcp/resources/project.resources.ts`
+- [X] T018 [P] [US1] Implement project resource registration for `brainiac://projects` and `brainiac://projects/{projectId}` in `backend/src/mcp/resources/project.resources.ts`
 - [ ] T019 [P] [US1] Implement read-only tool handlers `list_projects` and `list_pipelines` in `backend/src/mcp/tools/readonly.tools.ts`
 - [ ] T020 [US1] Register project resources and read-only project/pipeline tools in `backend/src/mcp/mcp.server.ts`
 - [ ] T021 [P] [US1] Implement pipeline resource registration for `brainiac://pipelines/{pipelineId}` and `brainiac://pipelines/{pipelineId}/graph` in `backend/src/mcp/resources/pipeline.resources.ts`

@@ -2,6 +2,8 @@ import type { Request } from 'express';
 import { HttpError } from '../common/http-error.js';
 import { verifyAccessToken } from '../services/core/jwt.service.js';
 import { findUserById } from '../services/data/user.service.js';
+import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
+import type { ServerNotification, ServerRequest } from '@modelcontextprotocol/sdk/types.js';
 
 export type McpUser = {
   user_id: number;
@@ -60,4 +62,12 @@ export async function resolveMcpAuthContextFromToken(accessToken: string): Promi
 export async function resolveMcpAuthContext(req: Request): Promise<McpAuthContext> {
   const token = extractBearerToken(req.headers.authorization);
   return resolveMcpAuthContextFromToken(token);
+}
+
+export function requireMcpUserId(extra: RequestHandlerExtra<ServerRequest, ServerNotification>): number {
+  const userId = Number(extra.authInfo?.extra?.userId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new HttpError(401, { error: 'unauthorized', code: 'MCP_UNAUTHORIZED' });
+  }
+  return userId;
 }
