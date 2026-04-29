@@ -9,6 +9,7 @@ Resource templates:
 - `brainiac://projects`
 - `brainiac://projects/{projectId}`
 - `brainiac://projects/{projectId}/pipelines`
+- `brainiac://projects/{projectId}/export`
 - `brainiac://pipelines/{pipelineId}`
 - `brainiac://pipelines/{pipelineId}/graph`
 - `brainiac://pipelines/{pipelineId}/validation`
@@ -16,6 +17,7 @@ Resource templates:
 - `brainiac://pipelines/{pipelineId}/agents`
 - `brainiac://pipelines/{pipelineId}/nodes/{nodeId}`
 - `brainiac://pipelines/{pipelineId}/export`
+- `brainiac://pipelines/{pipelineId}/nodes/{nodeId}/export`
 - `brainiac://tools`
 - `brainiac://tools/{toolId}`
 
@@ -128,9 +130,13 @@ tool capability relationships:
 Tool relationships must be derived from the existing graph and `ToolNode ->
 AgentCall` semantics.
 
-## Export Resource
+## Export Resources
 
 `brainiac://pipelines/{pipelineId}/export` returns a redacted export snapshot.
+`brainiac://projects/{projectId}/export` returns a redacted export snapshot for
+all accessible project pipelines and metadata. `brainiac://pipelines/{pipelineId}/nodes/{nodeId}/export`
+returns a redacted export snapshot for one node plus the minimal surrounding
+pipeline, node type, agent/tool, and edge context needed to understand it.
 
 Must include:
 
@@ -150,4 +156,3 @@ Must exclude:
 - raw secrets
 - unauthorized project data
 - raw dataset content by default
-

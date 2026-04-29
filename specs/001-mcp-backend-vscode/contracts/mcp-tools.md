@@ -214,6 +214,52 @@ Output:
 }
 ```
 
+### `export_project_snapshot`
+
+Purpose: Generate a redacted export snapshot for one project.
+
+Input:
+
+```json
+{
+  "projectId": 1,
+  "includePipelines": true,
+  "includeExecutions": true
+}
+```
+
+Output:
+
+```json
+{
+  "export_resource_uri": "brainiac://projects/1/export",
+  "redactions": []
+}
+```
+
+### `export_node_snapshot`
+
+Purpose: Generate a redacted export snapshot for one node plus minimal related
+pipeline, type, agent/tool, and edge context.
+
+Input:
+
+```json
+{
+  "pipelineId": 10,
+  "nodeId": 100
+}
+```
+
+Output:
+
+```json
+{
+  "export_resource_uri": "brainiac://pipelines/10/nodes/100/export",
+  "redactions": []
+}
+```
+
 ### `start_pipeline_execution`
 
 Purpose: Start execution through the existing executor service.
@@ -290,4 +336,3 @@ details:
 
 Permission errors, validation failures, provider failures, empty agent output,
 and unavailable backend states must remain distinguishable.
-

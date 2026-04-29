@@ -8,7 +8,8 @@
 Implement BrAIniac MCP as a thin backend adapter layer over the existing
 authenticated application/API contracts. The first implementation slice is
 read-only: discover projects, pipelines, nodes, tool catalog entries, agent/tool
-relationships, validation summaries, execution snapshots, and export snapshots.
+relationships, validation summaries, execution snapshots, and project,
+pipeline, and node export snapshots.
 Later slices can add execution tools and then agent-creation/editing tools, but
 only by reusing the same backend services and route contracts already used by
 the web API.
@@ -21,7 +22,7 @@ the web API.
 **Testing**: Backend MCP contract/smoke scripts, existing `test:auth`, `test:ownership`, `test:contracts:freeze`, `test:executor:*`, targeted RAG/execution tests when non-read-only tools are enabled, and VS Code extension smoke/manual checks for the extension slice.
 **Target Platform**: Local Docker Compose web app; backend exposes MCP endpoint alongside existing Express API. VS Code connects to the backend MCP endpoint.
 **Project Type**: Web application with backend adapter and later VS Code extension/client.
-**Performance Goals**: Read-only resource listing for seeded projects should complete in under 2 seconds locally; individual pipeline/node resources should resolve in under 1 second; large exports should return resource links or bounded summaries rather than embedding unbounded payloads.
+**Performance Goals**: Read-only resource listing for seeded projects should complete in under 2 seconds locally; individual pipeline/node resources should resolve in under 1 second; large exports should return resource links or bounded summaries rather than embedding unbounded payloads. These targets must be covered by a lightweight MCP smoke/performance check.
 **Constraints**: MCP MUST NOT duplicate graph validation, executor, auth, ownership, agent runtime, or export business logic. MCP tools/resources call existing application services or route-equivalent service facades. First slice is read-only; write/create-agent tools are deferred until read-only contracts are stable.
 **Scale/Scope**: One authenticated user's BrAIniac workspace at a time. MVP covers local/dev trusted usage and owner-scoped resources, not multi-tenant public hosting hardening.
 
@@ -88,11 +89,13 @@ backend/
 |   |   |   |-- project.resources.ts
 |   |   |   |-- pipeline.resources.ts
 |   |   |   |-- node.resources.ts
+|   |   |   |-- tool.resources.ts
 |   |   |   |-- agent.resources.ts
 |   |   |   `-- export.resources.ts
 |   |   |-- tools/
 |   |   |   |-- readonly.tools.ts
 |   |   |   |-- pipeline.tools.ts
+|   |   |   |-- export.tools.ts
 |   |   |   `-- agent-authoring.tools.ts
 |   |   `-- serializers/
 |   |       |-- mcp-resource-uri.ts
@@ -103,6 +106,7 @@ backend/
 `-- scripts/
     |-- mcp-readonly-contract-test.mjs
     |-- mcp-auth-ownership-test.mjs
+    |-- mcp-performance-smoke-test.mjs
     `-- mcp-export-redaction-test.mjs
 
 vscode-extension/             # Deferred until backend MCP read-only slice passes

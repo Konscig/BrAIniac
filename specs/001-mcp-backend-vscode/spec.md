@@ -5,6 +5,16 @@
 **Status**: Draft
 **Input**: User description: "Implement MCP for BrAIniac: MCP server capability, tools/resources for nodes, pipelines, agents, project export, plus VS Code client/extension."
 
+## Clarifications
+
+### Session 2026-04-29
+
+- Q: Which export scopes must MCP support? -> A: project, pipeline, node.
+- Q: Should analysis findings add explicit verification tasks? -> A: yes, add checks.
+- Q: Should `MCP_ALLOWED_HOSTS` remain in scope? -> A: remove the variable.
+- Q: Should tool catalog resources live in their own file? -> A: yes, separate file.
+- Q: Should VS Code extension have a build/test task? -> A: yes, add task.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Inspect BrAIniac From An AI Client (Priority: P1)
@@ -63,18 +73,18 @@ diagnostics.
 
 ### User Story 3 - Export Project Context For Reuse (Priority: P3)
 
-A developer exports a BrAIniac project or pipeline through MCP so that AI tools,
-reviews, and external workflows can reuse a complete, privacy-aware snapshot of
-the graph and its relevant configuration.
+A developer exports a BrAIniac project, pipeline, or single node through MCP so
+that AI tools, reviews, and external workflows can reuse a complete,
+privacy-aware snapshot of the selected scope and its relevant configuration.
 
 **Why this priority**: Export is valuable for collaboration and debugging, but
 it has higher privacy and scope risk than read-only inspection or controlled
 pipeline operations.
 
-**Independent Test**: Request an export for a project and for a single pipeline,
-then verify that the export includes the expected graph, node, agent, tool,
-dataset references, validation summary, and metadata while excluding secrets and
-unauthorized resources.
+**Independent Test**: Request exports for a project, a single pipeline, and a
+single node, then verify that each export includes the expected graph, node,
+agent, tool, dataset reference, validation summary, and metadata for its scope
+while excluding secrets and unauthorized resources.
 
 **Acceptance Scenarios**:
 
@@ -82,7 +92,10 @@ unauthorized resources.
    **Then** it includes the pipeline graph, node configuration, agent settings,
    tool references, validation summary, and execution metadata needed to
    understand the pipeline.
-2. **Given** an export would include secrets, credentials, provider keys, or
+2. **Given** a user requests a project or node export, **When** the export is
+   produced, **Then** it includes only the project-owned or node-relevant context
+   needed to understand that selected scope.
+3. **Given** an export would include secrets, credentials, provider keys, or
    unauthorized project data, **When** the export is generated, **Then** those
    values are omitted or redacted and the export reports what was redacted.
 
@@ -150,9 +163,9 @@ states.
 - **FR-007**: The MCP surface MUST expose agent and tool relationships using
   the canonical BrAIniac graph semantics, including explicit tool capability
   relationships for agents.
-- **FR-008**: Users MUST be able to export a project or pipeline snapshot that
-  includes enough graph, node, agent, tool, validation, and metadata context to
-  support external review or AI-assisted work.
+- **FR-008**: Users MUST be able to export project, pipeline, and node snapshots
+  that include enough graph, node, agent, tool, validation, and metadata context
+  for the selected scope to support external review or AI-assisted work.
 - **FR-009**: Exports MUST omit or redact secrets, credentials, provider keys,
   unauthorized resources, and private content not explicitly included by the
   user's access and export choice.
@@ -190,8 +203,8 @@ states.
   with configuration and runtime support state.
 - **Agent**: A pipeline behavior unit whose model configuration, tool
   availability, output, and diagnostics can be inspected.
-- **Export Snapshot**: A generated package of project or pipeline context with
-  redaction and metadata describing its scope.
+- **Export Snapshot**: A generated package of project, pipeline, or node context
+  with redaction and metadata describing its scope.
 - **VS Code Integration State**: The editor-side connection, resource browsing,
   command, result, and error state shown to the user.
 

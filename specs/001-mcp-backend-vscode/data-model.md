@@ -151,13 +151,14 @@ Validation:
 
 ## Export Snapshot
 
-Redacted project or pipeline context generated for external review.
+Redacted project, pipeline, or node context generated for external review.
 
 Fields:
 
-- `scope`: `project` or `pipeline`
+- `scope`: `project`, `pipeline`, or `node`
 - `project_id`
 - `pipeline_id`
+- `node_id`
 - `generated_at`
 - `graph`
 - `nodes`
@@ -192,4 +193,3 @@ Validation:
 - Connection errors and auth errors must be visible to the user.
 - The extension should rely on VS Code MCP resource/tool surfaces before adding
   custom UI.
-

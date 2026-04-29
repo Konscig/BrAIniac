@@ -38,6 +38,7 @@
    ```bash
    npm --prefix backend run test:mcp:readonly
    npm --prefix backend run test:mcp:auth
+   npm --prefix backend run test:mcp:perf
    ```
 
 5. Verify export redaction after export tool/resource implementation:
@@ -70,8 +71,11 @@
 2. Open VS Code MCP resource browsing.
 3. Confirm BrAIniac resources are listed with readable names.
 4. Invoke a read-only tool.
-5. Confirm read-only tools do not request unnecessary confirmation.
-6. Confirm permission/backend errors are visible in VS Code output/status.
+5. Invoke `validate_pipeline` for a seeded pipeline.
+6. Invoke project, pipeline, and node export tools and confirm each export
+   resource opens with a redaction report.
+7. Confirm read-only tools do not request unnecessary confirmation.
+8. Confirm permission/backend errors are visible in VS Code output/status.
 
 ## Out Of MVP
 
