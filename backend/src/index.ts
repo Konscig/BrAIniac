@@ -157,7 +157,7 @@ if (SHOULD_FORK && cluster.isPrimary) {
   });
 } else {
   const app = createApp();
-  app.listen(PORT, () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`[worker ${process.pid}] server started on port ${PORT}`);
   });
 }
