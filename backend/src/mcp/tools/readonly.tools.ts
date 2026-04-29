@@ -53,6 +53,11 @@ export function registerReadOnlyProjectTools(server: McpServer): void {
           name: normalizeName(project.name),
           resource_uri: projectUri(project.project_id),
         })),
+        resource_links: projects.map((project) => ({
+          uri: projectUri(project.project_id),
+          name: `Project ${project.project_id}: ${normalizeName(project.name)}`,
+        })),
+        diagnostics: [],
       });
     },
   );
@@ -85,6 +90,11 @@ export function registerReadOnlyProjectTools(server: McpServer): void {
           name: normalizeName(pipeline.name),
           resource_uri: pipelineUri(pipeline.pipeline_id),
         })),
+        resource_links: pipelines.map((pipeline) => ({
+          uri: pipelineUri(pipeline.pipeline_id),
+          name: `Pipeline ${pipeline.pipeline_id}: ${normalizeName(pipeline.name)}`,
+        })),
+        diagnostics: [],
       });
     },
   );
@@ -126,6 +136,12 @@ export function registerReadOnlyContextTools(server: McpServer): void {
         graph_resource_uri: pipelineGraphUri(pipelineId),
         validation_resource_uri: pipelineValidationUri(pipelineId),
         agent_resource_uri: pipelineAgentsUri(pipelineId),
+        resource_links: [
+          { uri: pipelineUri(pipelineId), name: `Pipeline ${pipelineId}` },
+          { uri: pipelineGraphUri(pipelineId), name: `Pipeline ${pipelineId} graph` },
+          { uri: pipelineValidationUri(pipelineId), name: `Pipeline ${pipelineId} validation` },
+          { uri: pipelineAgentsUri(pipelineId), name: `Pipeline ${pipelineId} agents` },
+        ],
         ...(validation ? { validation } : {}),
         diagnostics: validation && !validation.valid ? validation.errors : [],
       });
@@ -164,6 +180,11 @@ export function registerReadOnlyContextTools(server: McpServer): void {
             };
           }),
         ),
+        resource_links: nodes.map((node) => ({
+          uri: pipelineNodeUri(pipelineId, node.node_id),
+          name: `Node ${node.node_id}`,
+        })),
+        diagnostics: [],
       });
     },
   );
@@ -205,6 +226,11 @@ export function registerReadOnlyContextTools(server: McpServer): void {
             }
           : null,
         agent_config: null,
+        resource_links: [
+          { uri: pipelineNodeUri(pipelineId, nodeId), name: `Node ${nodeId}` },
+          { uri: pipelineGraphUri(pipelineId), name: `Pipeline ${pipelineId} graph` },
+          ...(tool ? [{ uri: toolUri(tool.tool_id), name: `Tool ${tool.tool_id}: ${normalizeName(tool.name)}` }] : []),
+        ],
         diagnostics: nodeType ? [] : [{ code: 'NODE_TYPE_MISSING', message: 'node type is missing' }],
       });
     },
@@ -230,6 +256,11 @@ export function registerReadOnlyContextTools(server: McpServer): void {
           name: normalizeName(tool.name),
           resource_uri: toolUri(tool.tool_id),
         })),
+        resource_links: tools.map((tool) => ({
+          uri: toolUri(tool.tool_id),
+          name: `Tool ${tool.tool_id}: ${normalizeName(tool.name)}`,
+        })),
+        diagnostics: [],
       });
     },
   );
