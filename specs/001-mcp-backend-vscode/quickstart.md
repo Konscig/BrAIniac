@@ -77,6 +77,21 @@
 7. Confirm read-only tools do not request unnecessary confirmation.
 8. Confirm permission/backend errors are visible in VS Code output/status.
 
+### Manual Smoke Checklist
+
+- [ ] `.vscode/mcp.json` can connect to `http://localhost:8080/mcp` with
+  `Authorization: Bearer <token>`.
+- [ ] The BrAIniac VS Code extension provider `brainiacMcp` offers the same
+  backend URL and token flow through prompts/settings.
+- [ ] Resource browsing shows projects, pipelines, graph, validation, nodes,
+  tools, agents, and export resources for the authenticated user only.
+- [ ] `list_projects` runs as a read-only tool without unnecessary confirmation.
+- [ ] `validate_pipeline` returns the existing graph validation result shape.
+- [ ] Export tools return resource links and the opened export resources include
+  a redaction report.
+- [ ] Invalid token, missing token, backend unavailable, forbidden resource, and
+  tool runtime errors are visible to the user.
+
 ## Out Of MVP
 
 - Creating or editing agent nodes.

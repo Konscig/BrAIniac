@@ -1,0 +1,48 @@
+{
+  "name": "brainiac-vscode-mcp",
+  "displayName": "BrAIniac MCP",
+  "description": "Registers the local BrAIniac backend as a VS Code MCP server.",
+  "version": "0.1.0",
+  "publisher": "brainiac",
+  "engines": {
+    "vscode": "^1.102.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "brainiacMcp",
+        "label": "BrAIniac MCP"
+      }
+    ],
+    "configuration": {
+      "title": "BrAIniac MCP",
+      "properties": {
+        "brainiacMcp.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8080/mcp",
+          "description": "BrAIniac backend MCP endpoint URL."
+        },
+        "brainiacMcp.accessToken": {
+          "type": "string",
+          "default": "",
+          "description": "Existing BrAIniac access token used as a bearer token for MCP requests."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node ./scripts/smoke-test.mjs",
+    "test": "node ./scripts/smoke-test.mjs"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.102.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -305,6 +305,10 @@ Output: existing execution snapshot shape.
 ## Deferred Agent Authoring Tools
 
 Do not implement until a separate plan/task slice approves mutation semantics.
+This is an explicit guardrail for the current MCP adapter: validation,
+execution, export, and read-only inspection may ship, but agent creation/editing
+must remain absent from `backend/src/mcp/tools/` and server registration until a
+future feature defines write contracts.
 
 Candidate tools:
 
@@ -319,6 +323,8 @@ Rules:
 - Must validate graph after mutation.
 - Must not create hidden tool bindings.
 - Must return resource links to changed nodes/pipelines.
+- Must be marked non-read-only and confirmation-appropriate in MCP annotations.
+- Must include ownership checks and graph validation after every mutation.
 
 ## Error Shape
 

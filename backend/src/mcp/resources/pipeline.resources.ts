@@ -1,13 +1,22 @@
 import { ResourceTemplate, type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { requireMcpUserId } from '../mcp.auth.js';
 import { createMcpJsonEnvelope, toMcpJsonContent, type McpResourceLink } from '../serializers/mcp-safe-json.js';
-import { pipelineAgentsUri, pipelineGraphUri, pipelineNodeUri, pipelineUri, pipelineValidationUri } from '../serializers/mcp-resource-uri.js';
+import {
+  pipelineAgentsUri,
+  pipelineExecutionUri,
+  pipelineGraphUri,
+  pipelineNodeUri,
+  pipelineUri,
+  pipelineValidationUri,
+} from '../serializers/mcp-resource-uri.js';
 import { ensurePipelineOwnedByUser } from '../../services/core/ownership.service.js';
+import { validatePipelineGraph } from '../../services/core/graph_validation.service.js';
 import { listEdgesByPipeline } from '../../services/data/edge.service.js';
 import { listNodesByPipeline } from '../../services/data/node.service.js';
 import { getNodeTypeById } from '../../services/data/node_type.service.js';
 import { listPipelinesByOwner } from '../../services/data/pipeline.service.js';
 import { getToolById } from '../../services/data/tool.service.js';
+import { getPipelineExecutionForUser } from '../../services/application/pipeline/pipeline.executor.application.service.js';
 
 function normalizeName(value: string): string {
   return value.trim();
@@ -137,6 +146,48 @@ export function registerPipelineResources(server: McpServer): void {
       return jsonResource('pipeline-graph', pipelineGraphUri(pipelineId), graph, [
         { uri: pipelineUri(pipelineId), name: `Pipeline ${pipelineId}` },
         { uri: pipelineAgentsUri(pipelineId), name: `Pipeline ${pipelineId} agents` },
+      ]);
+    },
+  );
+
+  server.registerResource(
+    'brainiac-pipeline-validation',
+    new ResourceTemplate('brainiac://pipelines/{pipelineId}/validation', { list: undefined }),
+    {
+      title: 'BrAIniac Pipeline Validation',
+      description: 'Owner-scoped pipeline graph validation from the existing validation service.',
+      mimeType: 'application/json',
+    },
+    async (_uri, variables, extra) => {
+      const userId = requireMcpUserId(extra);
+      const pipelineId = Number(variables.pipelineId);
+      await ensurePipelineOwnedByUser(pipelineId, userId);
+      const validation = await validatePipelineGraph(pipelineId, 'default');
+
+      return jsonResource('pipeline-validation', pipelineValidationUri(pipelineId), validation, [
+        { uri: pipelineUri(pipelineId), name: `Pipeline ${pipelineId}` },
+        { uri: pipelineGraphUri(pipelineId), name: `Pipeline ${pipelineId} graph` },
+      ]);
+    },
+  );
+
+  server.registerResource(
+    'brainiac-pipeline-execution',
+    new ResourceTemplate('brainiac://pipelines/{pipelineId}/executions/{executionId}', { list: undefined }),
+    {
+      title: 'BrAIniac Pipeline Execution',
+      description: 'Owner-scoped bounded pipeline execution snapshot.',
+      mimeType: 'application/json',
+    },
+    async (_uri, variables, extra) => {
+      const userId = requireMcpUserId(extra);
+      const pipelineId = Number(variables.pipelineId);
+      const executionId = String(variables.executionId ?? '').trim();
+      const snapshot = await getPipelineExecutionForUser(pipelineId, executionId, userId);
+
+      return jsonResource('pipeline-execution', pipelineExecutionUri(pipelineId, executionId), snapshot, [
+        { uri: pipelineUri(pipelineId), name: `Pipeline ${pipelineId}` },
+        { uri: pipelineValidationUri(pipelineId), name: `Pipeline ${pipelineId} validation` },
       ]);
     },
   );

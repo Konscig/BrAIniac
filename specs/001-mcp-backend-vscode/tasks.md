@@ -85,19 +85,19 @@ the MVP before operation tools, export, and VS Code integration.
 
 ### Tests for User Story 2
 
-- [ ] T029 [P] [US2] Add MCP validation tool assertions comparing output to existing graph validation in `backend/scripts/mcp-readonly-contract-test.mjs`
-- [ ] T030 [P] [US2] Add MCP execution/idempotency assertions for start and poll flows in `backend/scripts/mcp-readonly-contract-test.mjs`
+- [X] T029 [P] [US2] Add MCP validation tool assertions comparing output to existing graph validation in `backend/scripts/mcp-readonly-contract-test.mjs`
+- [X] T030 [P] [US2] Add MCP execution/idempotency assertions for start and poll flows in `backend/scripts/mcp-readonly-contract-test.mjs`
 
 ### Implementation for User Story 2
 
-- [ ] T031 [US2] Implement `validate_pipeline` by calling the existing graph validation service in `backend/src/mcp/tools/pipeline.tools.ts`
-- [ ] T032 [US2] Register `validate_pipeline` with read-only annotations in `backend/src/mcp/mcp.server.ts`
-- [ ] T033 [US2] Implement `start_pipeline_execution` by calling the existing executor application service in `backend/src/mcp/tools/pipeline.tools.ts`
-- [ ] T034 [US2] Implement `get_pipeline_execution` by calling the existing execution snapshot service in `backend/src/mcp/tools/pipeline.tools.ts`
-- [ ] T035 [US2] Register execution tools with non-read-only/idempotency annotations in `backend/src/mcp/mcp.server.ts`
-- [ ] T036 [US2] Add validation resource support for `brainiac://pipelines/{pipelineId}/validation` in `backend/src/mcp/resources/pipeline.resources.ts`
-- [ ] T037 [US2] Add execution resource support for `brainiac://pipelines/{pipelineId}/executions/{executionId}` in `backend/src/mcp/resources/pipeline.resources.ts`
-- [ ] T038 [US2] Run `npm --prefix backend run test:mcp:readonly`, `npm --prefix backend run test:executor:http`, and `npm --prefix backend run test:executor:coordination`
+- [X] T031 [US2] Implement `validate_pipeline` by calling the existing graph validation service in `backend/src/mcp/tools/pipeline.tools.ts`
+- [X] T032 [US2] Register `validate_pipeline` with read-only annotations in `backend/src/mcp/mcp.server.ts`
+- [X] T033 [US2] Implement `start_pipeline_execution` by calling the existing executor application service in `backend/src/mcp/tools/pipeline.tools.ts`
+- [X] T034 [US2] Implement `get_pipeline_execution` by calling the existing execution snapshot service in `backend/src/mcp/tools/pipeline.tools.ts`
+- [X] T035 [US2] Register execution tools with non-read-only/idempotency annotations in `backend/src/mcp/mcp.server.ts`
+- [X] T036 [US2] Add validation resource support for `brainiac://pipelines/{pipelineId}/validation` in `backend/src/mcp/resources/pipeline.resources.ts`
+- [X] T037 [US2] Add execution resource support for `brainiac://pipelines/{pipelineId}/executions/{executionId}` in `backend/src/mcp/resources/pipeline.resources.ts`
+- [X] T038 [US2] Run `npm --prefix backend run test:mcp:readonly`, `npm --prefix backend run test:executor:http`, and `npm --prefix backend run test:executor:coordination`
 
 **Checkpoint**: Pipeline operation through MCP works without duplicating validation or executor logic.
 
@@ -111,17 +111,17 @@ the MVP before operation tools, export, and VS Code integration.
 
 ### Tests for User Story 3
 
-- [ ] T039 [P] [US3] Implement project, pipeline, and node export snapshot shape assertions in `backend/scripts/mcp-export-redaction-test.mjs`
-- [ ] T040 [P] [US3] Implement redaction assertions for token-like fields, provider credentials, unauthorized resources, and raw dataset content in `backend/scripts/mcp-export-redaction-test.mjs`
+- [X] T039 [P] [US3] Implement project, pipeline, and node export snapshot shape assertions in `backend/scripts/mcp-export-redaction-test.mjs`
+- [X] T040 [P] [US3] Implement redaction assertions for token-like fields, provider credentials, unauthorized resources, and raw dataset content in `backend/scripts/mcp-export-redaction-test.mjs`
 
 ### Implementation for User Story 3
 
-- [ ] T041 [US3] Implement project, pipeline, and node export snapshot assembly using existing project, pipeline, node, edge, tool, validation, and execution services in `backend/src/mcp/resources/export.resources.ts`
-- [ ] T042 [US3] Apply redaction helpers to export snapshots and include a redaction report in `backend/src/mcp/resources/export.resources.ts`
-- [ ] T043 [US3] Register `brainiac://projects/{projectId}/export`, `brainiac://pipelines/{pipelineId}/export`, and `brainiac://pipelines/{pipelineId}/nodes/{nodeId}/export` resources in `backend/src/mcp/mcp.server.ts`
-- [ ] T044 [US3] Implement `export_project_snapshot`, `export_pipeline_snapshot`, and `export_node_snapshot` tools returning resource links in `backend/src/mcp/tools/export.tools.ts`
-- [ ] T045 [US3] Register project, pipeline, and node export tools with read-only/export annotations in `backend/src/mcp/mcp.server.ts`
-- [ ] T046 [US3] Run `npm --prefix backend run test:mcp:export` and `npm --prefix backend run test:mcp:auth`
+- [X] T041 [US3] Implement project, pipeline, and node export snapshot assembly using existing project, pipeline, node, edge, tool, validation, and execution services in `backend/src/mcp/resources/export.resources.ts`
+- [X] T042 [US3] Apply redaction helpers to export snapshots and include a redaction report in `backend/src/mcp/resources/export.resources.ts`
+- [X] T043 [US3] Register `brainiac://projects/{projectId}/export`, `brainiac://pipelines/{pipelineId}/export`, and `brainiac://pipelines/{pipelineId}/nodes/{nodeId}/export` resources in `backend/src/mcp/mcp.server.ts`
+- [X] T044 [US3] Implement `export_project_snapshot`, `export_pipeline_snapshot`, and `export_node_snapshot` tools returning resource links in `backend/src/mcp/tools/export.tools.ts`
+- [X] T045 [US3] Register project, pipeline, and node export tools with read-only/export annotations in `backend/src/mcp/mcp.server.ts`
+- [X] T046 [US3] Run `npm --prefix backend run test:mcp:export` and `npm --prefix backend run test:mcp:auth`
 
 **Checkpoint**: Export snapshot is reusable and redacted by default.
 
@@ -135,16 +135,16 @@ the MVP before operation tools, export, and VS Code integration.
 
 ### Tests for User Story 4
 
-- [ ] T047 [P] [US4] Add VS Code manual smoke checklist for `.vscode/mcp.json` setup, resource browsing, `validate_pipeline`, export invocation, and error feedback in `specs/001-mcp-backend-vscode/quickstart.md`
-- [ ] T048 [P] [US4] Create VS Code extension smoke test notes for server definition provider behavior in `vscode-extension/README.md`
+- [X] T047 [P] [US4] Add VS Code manual smoke checklist for `.vscode/mcp.json` setup, resource browsing, `validate_pipeline`, export invocation, and error feedback in `specs/001-mcp-backend-vscode/quickstart.md`
+- [X] T048 [P] [US4] Create VS Code extension smoke test notes for server definition provider behavior in `vscode-extension/README.md`
 
 ### Implementation for User Story 4
 
-- [ ] T049 [US4] Create VS Code extension scaffold with `contributes.mcpServerDefinitionProviders` in `vscode-extension/package.json`
-- [ ] T050 [US4] Implement `brainiacMcp` server definition provider returning an HTTP MCP server definition in `vscode-extension/src/extension.ts`
-- [ ] T051 [US4] Implement token and backend URL resolution prompts in `vscode-extension/src/extension.ts`
-- [ ] T052 [US4] Add extension README setup instructions and troubleshooting states in `vscode-extension/README.md`
-- [ ] T053 [US4] Add and run VS Code extension build/test command in `vscode-extension/package.json`
+- [X] T049 [US4] Create VS Code extension scaffold with `contributes.mcpServerDefinitionProviders` in `vscode-extension/package.json`
+- [X] T050 [US4] Implement `brainiacMcp` server definition provider returning an HTTP MCP server definition in `vscode-extension/src/extension.ts`
+- [X] T051 [US4] Implement token and backend URL resolution prompts in `vscode-extension/src/extension.ts`
+- [X] T052 [US4] Add extension README setup instructions and troubleshooting states in `vscode-extension/README.md`
+- [X] T053 [US4] Add and run VS Code extension build/test command in `vscode-extension/package.json`
 - [ ] T054 [US4] Manually verify VS Code connects to `http://localhost:8080/mcp`, lists resources, invokes `list_projects`, invokes `validate_pipeline`, invokes an export tool, and reports auth/backend errors using `specs/001-mcp-backend-vscode/quickstart.md`
 
 **Checkpoint**: VS Code integration uses built-in MCP surfaces without custom UI.
@@ -155,9 +155,9 @@ the MVP before operation tools, export, and VS Code integration.
 
 **Purpose**: Stabilize docs, tests, and guardrails after desired stories are complete.
 
-- [ ] T055 [P] Document implemented MCP endpoint, auth requirements, and tool/resource list in `README.md`
-- [ ] T056 [P] Update SDD notes for MCP adapter scope and deferred agent authoring in `docs/sdd/14-mcp-adapter-plan.md`
-- [ ] T057 [P] Add explicit deferred agent authoring guard notes to `specs/001-mcp-backend-vscode/contracts/mcp-tools.md`
+- [X] T055 [P] Document implemented MCP endpoint, auth requirements, and tool/resource list in `README.md`
+- [X] T056 [P] Update SDD notes for MCP adapter scope and deferred agent authoring in `docs/sdd/14-mcp-adapter-plan.md`
+- [X] T057 [P] Add explicit deferred agent authoring guard notes to `specs/001-mcp-backend-vscode/contracts/mcp-tools.md`
 - [ ] T058 Run `npm --prefix backend run build`, `npm --prefix backend run test`, `npm --prefix backend run test:contracts:freeze`, `npm --prefix backend run test:mcp:readonly`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:perf`, and `npm --prefix backend run test:mcp:export`
 - [ ] T059 Validate `specs/001-mcp-backend-vscode/quickstart.md` end-to-end and record any manual VS Code gaps in `specs/001-mcp-backend-vscode/quickstart.md`
 

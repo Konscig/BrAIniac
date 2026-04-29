@@ -101,6 +101,35 @@ cd BrAIniac
 ### Then open in your browser:
 `http://localhost:3000`
 
+## MCP Backend Adapter
+
+The backend can expose a BrAIniac MCP endpoint for authenticated AI clients and
+VS Code MCP surfaces. Enable it with `MCP_ENABLED=true`; the default path is
+controlled by `MCP_PATH` and is expected by the current VS Code quickstart as
+`/mcp`.
+
+Authentication uses the existing BrAIniac access token:
+
+```json
+{
+  "Authorization": "Bearer <access-token>"
+}
+```
+
+Implemented MCP resources include projects, pipelines, pipeline graphs,
+pipeline validation, execution snapshots, nodes, agents, tools, and redacted
+project/pipeline/node exports.
+
+Implemented MCP tools include `list_projects`, `list_pipelines`,
+`get_pipeline_context`, `list_pipeline_nodes`, `get_node_context`,
+`list_tool_catalog`, `validate_pipeline`, `start_pipeline_execution`,
+`get_pipeline_execution`, `export_project_snapshot`,
+`export_pipeline_snapshot`, and `export_node_snapshot`.
+
+Agent authoring tools such as `create_agent_node`, `update_agent_config`, and
+`bind_tool_to_agent` are intentionally deferred to a later mutation-focused
+plan.
+
 ## Contributing
 
 We welcome contributions and ideas!

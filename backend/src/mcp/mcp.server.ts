@@ -1,10 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { HttpError, isHttpError } from '../common/http-error.js';
 import { registerAgentResources } from './resources/agent.resources.js';
+import { registerExportResources } from './resources/export.resources.js';
 import { registerNodeResources } from './resources/node.resources.js';
 import { registerPipelineResources } from './resources/pipeline.resources.js';
 import { registerProjectResources } from './resources/project.resources.js';
 import { registerToolResources } from './resources/tool.resources.js';
+import { registerExportTools } from './tools/export.tools.js';
+import { registerPipelineOperationTools } from './tools/pipeline.tools.js';
 import { registerReadOnlyContextTools, registerReadOnlyProjectTools } from './tools/readonly.tools.js';
 
 export const BRAINIAC_MCP_SERVER_NAME = 'brainiac-mcp';
@@ -106,8 +109,11 @@ export function createBrainiacMcpServer(): McpServer {
   registerNodeResources(server);
   registerToolResources(server);
   registerAgentResources(server);
+  registerExportResources(server);
   registerReadOnlyProjectTools(server);
   registerReadOnlyContextTools(server);
+  registerPipelineOperationTools(server);
+  registerExportTools(server);
 
   return server;
 }

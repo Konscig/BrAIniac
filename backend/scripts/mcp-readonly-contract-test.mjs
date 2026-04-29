@@ -6,15 +6,18 @@ import {
 import {
   parseBrainiacResourceUri,
   pipelineAgentsUri,
+  pipelineExecutionUri,
   pipelineGraphUri,
   pipelineNodeUri,
   pipelineUri,
   projectListUri,
   projectPipelinesUri,
   projectUri,
+  pipelineValidationUri,
   toolListUri,
   toolUri,
 } from '../src/mcp/serializers/mcp-resource-uri.ts';
+import { readFile } from 'node:fs/promises';
 
 const expectedResources = [
   { kind: 'projects', uri: projectListUri() },
@@ -22,6 +25,8 @@ const expectedResources = [
   { kind: 'project-pipelines', uri: projectPipelinesUri(1) },
   { kind: 'pipeline', uri: pipelineUri(10) },
   { kind: 'pipeline-graph', uri: pipelineGraphUri(10) },
+  { kind: 'pipeline-validation', uri: pipelineValidationUri(10) },
+  { kind: 'pipeline-execution', uri: pipelineExecutionUri(10, 'execution-1') },
   { kind: 'pipeline-node', uri: pipelineNodeUri(10, 100) },
   { kind: 'pipeline-agents', uri: pipelineAgentsUri(10) },
   { kind: 'tools', uri: toolListUri() },
@@ -57,5 +62,20 @@ assert.equal(parsedContent.resource_uri, pipelineGraphUri(10));
 assert.ok(Array.isArray(parsedContent.links), 'resource payload must include links');
 assert.ok(Array.isArray(parsedContent.diagnostics), 'resource payload must include diagnostics');
 assert.ok(Array.isArray(parsedContent.redactions), 'resource payload must include redactions');
+
+const pipelineToolsSource = await readFile(new URL('../src/mcp/tools/pipeline.tools.ts', import.meta.url), 'utf8');
+assert.match(pipelineToolsSource, /validatePipelineGraph/, 'validate_pipeline must reuse graph validation service');
+assert.match(pipelineToolsSource, /startPipelineExecutionForUser/, 'start_pipeline_execution must reuse executor service');
+assert.match(pipelineToolsSource, /getPipelineExecutionForUser/, 'get_pipeline_execution must reuse execution snapshot service');
+assert.match(
+  pipelineToolsSource,
+  /validate_pipeline[\s\S]*readOnlyHint:\s*true/,
+  'validation tool contract must preserve read-only semantics',
+);
+assert.match(
+  pipelineToolsSource,
+  /start_pipeline_execution[\s\S]*readOnlyHint:\s*false/,
+  'execution start tool contract must be non-read-only',
+);
 
 console.log('MCP read-only resource contract checks OK');

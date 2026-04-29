@@ -35,7 +35,7 @@
     "test:mcp:readonly": "node --loader ts-node/esm ./scripts/mcp-readonly-contract-test.mjs",
     "test:mcp:auth": "node --loader ts-node/esm ./scripts/mcp-auth-ownership-test.mjs",
     "test:mcp:perf": "node --loader ts-node/esm ./scripts/mcp-performance-smoke-test.mjs",
-    "test:mcp:export": "node ./scripts/mcp-export-redaction-test.mjs",
+    "test:mcp:export": "node --loader ts-node/esm ./scripts/mcp-export-redaction-test.mjs",
     "seed:basic-types": "node ./prisma/seeds/seed-basic-node-types.mjs",
     "seed:tool-contracts": "node ./prisma/seeds/seed-tool-contracts.mjs"
   },
