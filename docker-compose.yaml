@@ -10,7 +10,7 @@ services:
     env_file:
       - .env.docker
     ports: 
-      - "5433:5432"
+      - "${PG_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -25,12 +25,14 @@ services:
 
   backend:
     build: ./backend
-    container_name: backend
+    container_name: api
+    profiles: ["app"]
     restart: unless-stopped
     env_file:
       - .env.docker
     environment:
       - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
       - PRISMA_MIGRATE=${PRISMA_MIGRATE:-deploy}
       - PRISMA_DB_PUSH_ACCEPT_DATA_LOSS=1
     depends_on:
@@ -60,7 +62,6 @@ services:
   db-tests:
     image: node:20-alpine
     container_name: db-tests
-    profiles: ["tests"]
     restart: "no"
     working_dir: /app/backend
     volumes:
@@ -82,6 +83,7 @@ services:
   frontend:
     build: ./frontend
     container_name: frontend
+    profiles: ["app"]
     restart: unless-stopped
     ports:
       - 3000:80
@@ -91,6 +93,7 @@ services:
   judge-eval-worker:
     build: ./judge-eval-worker
     container_name: judge-eval-worker
+    profiles: ["app"]
     restart: unless-stopped
     env_file:
       - .env.docker
