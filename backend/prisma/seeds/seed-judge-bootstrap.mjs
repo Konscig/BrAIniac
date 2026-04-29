@@ -18,7 +18,6 @@ async function findOrCreateUser() {
     user = await prisma.user.create({
       data: {
         email: 'judge-bootstrap@brainiac.local',
-        username: 'judge-bootstrap',
         password_hash: '$2b$10$placeholder_not_for_login',
       },
     });
@@ -56,7 +55,7 @@ async function createPipeline(projectId, name, nodeTypeId, description) {
   }
 
   const pipeline = await prisma.pipeline.create({
-    data: { name, fk_project_id: projectId, description },
+    data: { name, fk_project_id: projectId, max_time: 60, max_cost: 100, max_reject: 0.5 },
   });
 
   await prisma.node.create({

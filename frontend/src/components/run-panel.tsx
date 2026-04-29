@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, ClipboardCheck, Loader2, Play, Trash2, Upload, X } from "lucide-react";
 
 import {
@@ -416,8 +417,8 @@ export function RunPanel({
         </div>
       </div>
 
-      {isAssessOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
+      {isAssessOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
           <div className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-3 overflow-hidden rounded-xl border border-border/60 bg-card p-4 shadow-xl">
             <div className="flex items-center justify-between">
               <div>
@@ -602,7 +603,8 @@ export function RunPanel({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {isDrawerOpen && (
