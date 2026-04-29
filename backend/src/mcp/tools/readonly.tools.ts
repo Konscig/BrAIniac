@@ -2,10 +2,17 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { requireMcpUserId } from '../mcp.auth.js';
 import { toMcpToolJsonText } from '../serializers/mcp-safe-json.js';
-import { pipelineUri, projectUri } from '../serializers/mcp-resource-uri.js';
+import { pipelineAgentsUri, pipelineGraphUri, pipelineNodeUri, pipelineUri, pipelineValidationUri, projectUri, toolUri } from '../serializers/mcp-resource-uri.js';
 import { listProjectsForUser } from '../../services/application/project/project.application.service.js';
 import { ensureProjectOwnedByUser } from '../../services/core/ownership.service.js';
+import { parseGraphValidationPreset, validatePipelineGraph } from '../../services/core/graph_validation.service.js';
+import { getNodeById, listNodesByPipeline } from '../../services/data/node.service.js';
+import { getNodeTypeById } from '../../services/data/node_type.service.js';
 import { listPipelines, listPipelinesByOwner } from '../../services/data/pipeline.service.js';
+import { getToolById } from '../../services/data/tool.service.js';
+import { listToolEntries } from '../../services/application/tool/tool.application.service.js';
+import { HttpError } from '../../common/http-error.js';
+import { ensurePipelineOwnedByUser } from '../../services/core/ownership.service.js';
 
 function normalizeName(value: string): string {
   return value.trim();
@@ -77,6 +84,151 @@ export function registerReadOnlyProjectTools(server: McpServer): void {
           fk_project_id: pipeline.fk_project_id,
           name: normalizeName(pipeline.name),
           resource_uri: pipelineUri(pipeline.pipeline_id),
+        })),
+      });
+    },
+  );
+}
+
+export function registerReadOnlyContextTools(server: McpServer): void {
+  server.registerTool(
+    'get_pipeline_context',
+    {
+      title: 'Get BrAIniac Pipeline Context',
+      description: 'Return bounded owner-scoped pipeline context with graph and validation links.',
+      inputSchema: {
+        pipelineId: z.number().int().positive(),
+        includeValidation: z.boolean().optional(),
+        preset: z.enum(['default', 'production', 'dev']).optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+    },
+    async ({ pipelineId, includeValidation, preset }, extra) => {
+      const userId = requireMcpUserId(extra);
+      const pipeline = await ensurePipelineOwnedByUser(pipelineId, userId);
+      const validationPreset = parseGraphValidationPreset(preset) ?? 'default';
+      const validation = includeValidation ? await validatePipelineGraph(pipelineId, validationPreset) : undefined;
+
+      return jsonToolResult({
+        pipeline: {
+          pipeline_id: pipeline.pipeline_id,
+          fk_project_id: pipeline.fk_project_id,
+          name: normalizeName(pipeline.name),
+          max_time: pipeline.max_time,
+          max_cost: pipeline.max_cost,
+          max_reject: pipeline.max_reject,
+          score: pipeline.score,
+        },
+        graph_resource_uri: pipelineGraphUri(pipelineId),
+        validation_resource_uri: pipelineValidationUri(pipelineId),
+        agent_resource_uri: pipelineAgentsUri(pipelineId),
+        ...(validation ? { validation } : {}),
+        diagnostics: validation && !validation.valid ? validation.errors : [],
+      });
+    },
+  );
+
+  server.registerTool(
+    'list_pipeline_nodes',
+    {
+      title: 'List BrAIniac Pipeline Nodes',
+      description: 'Return node summaries for one owner-scoped pipeline.',
+      inputSchema: {
+        pipelineId: z.number().int().positive(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+    },
+    async ({ pipelineId }, extra) => {
+      const userId = requireMcpUserId(extra);
+      await ensurePipelineOwnedByUser(pipelineId, userId);
+      const nodes = await listNodesByPipeline(pipelineId);
+
+      return jsonToolResult({
+        nodes: await Promise.all(
+          nodes.map(async (node) => {
+            const nodeType = await getNodeTypeById(node.fk_type_id);
+            return {
+              node_id: node.node_id,
+              fk_type_id: node.fk_type_id,
+              label: nodeType ? normalizeName(nodeType.name) : `Node ${node.node_id}`,
+              resource_uri: pipelineNodeUri(pipelineId, node.node_id),
+              runtime_support_state: nodeType ? 'supported' : 'unsupported',
+            };
+          }),
+        ),
+      });
+    },
+  );
+
+  server.registerTool(
+    'get_node_context',
+    {
+      title: 'Get BrAIniac Node Context',
+      description: 'Return one node with type, tool binding, and agent context where available.',
+      inputSchema: {
+        pipelineId: z.number().int().positive(),
+        nodeId: z.number().int().positive(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+    },
+    async ({ pipelineId, nodeId }, extra) => {
+      const userId = requireMcpUserId(extra);
+      await ensurePipelineOwnedByUser(pipelineId, userId);
+      const node = await getNodeById(nodeId);
+      if (!node || node.fk_pipeline_id !== pipelineId) {
+        throw new HttpError(404, { error: 'node not found' });
+      }
+
+      const nodeType = await getNodeTypeById(node.fk_type_id);
+      const tool = nodeType ? await getToolById(nodeType.fk_tool_id) : null;
+
+      return jsonToolResult({
+        node,
+        node_type: nodeType,
+        tool_binding: tool
+          ? {
+              tool_id: tool.tool_id,
+              name: normalizeName(tool.name),
+              resource_uri: toolUri(tool.tool_id),
+            }
+          : null,
+        agent_config: null,
+        diagnostics: nodeType ? [] : [{ code: 'NODE_TYPE_MISSING', message: 'node type is missing' }],
+      });
+    },
+  );
+
+  server.registerTool(
+    'list_tool_catalog',
+    {
+      title: 'List BrAIniac Tool Catalog',
+      description: 'Return BrAIniac tool catalog entries and resource links.',
+      inputSchema: {},
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+    },
+    async () => {
+      const tools = await listToolEntries();
+      return jsonToolResult({
+        tools: tools.map((tool) => ({
+          tool_id: tool.tool_id,
+          name: normalizeName(tool.name),
+          resource_uri: toolUri(tool.tool_id),
         })),
       });
     },
