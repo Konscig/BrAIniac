@@ -32,6 +32,10 @@
     "test:executor:coordination": "node --loader ts-node/esm ./scripts/executor-coordination-test.mjs",
     "test:executor:http": "node ./scripts/executor-http-coordination-test.mjs",
     "test:contracts:freeze": "node --loader ts-node/esm ./scripts/backend-contract-freeze-test.mjs",
+    "test:mcp:readonly": "node ./scripts/mcp-readonly-contract-test.mjs",
+    "test:mcp:auth": "node ./scripts/mcp-auth-ownership-test.mjs",
+    "test:mcp:perf": "node ./scripts/mcp-performance-smoke-test.mjs",
+    "test:mcp:export": "node ./scripts/mcp-export-redaction-test.mjs",
     "seed:basic-types": "node ./prisma/seeds/seed-basic-node-types.mjs",
     "seed:tool-contracts": "node ./prisma/seeds/seed-tool-contracts.mjs"
   },
@@ -40,12 +44,14 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@prisma/client": "^6.18.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.0"
+    "jsonwebtoken": "^9.0.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.2",
