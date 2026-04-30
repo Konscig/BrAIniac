@@ -55,7 +55,8 @@
     }
   },
   "scripts": {
-    "compile": "node ./scripts/smoke-test.mjs",
+    "build": "tsc -p .",
+    "compile": "npm run build && node ./scripts/smoke-test.mjs",
     "test": "node ./scripts/smoke-test.mjs"
   },
   "devDependencies": {
