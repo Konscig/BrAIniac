@@ -185,7 +185,7 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T068 [US4] Mount VS Code browser auth bridge routes under existing auth routing in `backend/src/routes/resources/auth/auth.routes.ts`
 - [X] T069 [US4] Add contract/static assertions that the VS Code auth bridge reuses existing auth application services and does not directly import JWT signing helpers in `backend/scripts/vscode-mcp-auth-flow-test.mjs`
 - [X] T070 [US4] Add `test:vscode:mcp-auth` script to `backend/package.json` for `backend/scripts/vscode-mcp-auth-flow-test.mjs`
-- [ ] T071 [US4] Run `npm --prefix backend run build`, `npm --prefix backend run test:vscode:mcp-auth`, `npm --prefix backend run test:auth`, and `npm --prefix backend run test:mcp:auth`
+- [X] T071 [US4] Run `npm --prefix backend run build`, `npm --prefix backend run test:vscode:mcp-auth`, `npm --prefix backend run test:auth`, and `npm --prefix backend run test:mcp:auth`
 
 ### VS Code Extension Auth Implementation
 
