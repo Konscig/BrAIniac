@@ -203,7 +203,7 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T080 [US4] Update `specs/001-mcp-backend-vscode/contracts/vscode-client.md` with final route names, command names, SecretStorage behavior, polling exchange semantics, and fallback limitations
 - [X] T081 [US4] Update `docs/sdd/14-mcp-adapter-plan.md` with the VS Code polling browser auth architecture and the rule that manual token paste is dev-only
 - [ ] T082 [US4] Manually verify VS Code browser sign-in connects to `http://localhost:8080/mcp`, lists resources, invokes `list_projects`, invokes `validate_pipeline`, invokes an export tool, signs out, checks dev-token fallback, confirms local sign-in/re-auth timing targets, checks narrow editor layout feedback, and reports auth/backend errors using `specs/001-mcp-backend-vscode/quickstart.md`
-- [ ] T083 [US4] Run final validation: `npm --prefix backend run build`, `npm --prefix backend run test:vscode:mcp-auth`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:readonly`, `CI=true npm --prefix frontend test -- --watchAll=false`, `npm --prefix frontend run build`, and `npm --prefix vscode-extension run test`
+- [X] T083 [US4] Run final validation: `npm --prefix backend run build`, `npm --prefix backend run test:vscode:mcp-auth`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:readonly`, `CI=true npm --prefix frontend test -- --watchAll=false`, `npm --prefix frontend run build`, and `npm --prefix vscode-extension run test`
 
 **Checkpoint**: VS Code integration no longer depends on pasted tokens for the normal user path; credentials are browser-acquired, stored in SecretStorage, and removable by sign-out.
 
