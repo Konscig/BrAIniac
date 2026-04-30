@@ -122,3 +122,5 @@ networks:
 volumes:
   postgres_data:
   hf_cache:
+    external: true
+    name: brainiac-hf-cache
