@@ -78,14 +78,6 @@ function buildSidecarPayload(code: string, item: any): Record<string, any> {
         reference: { relevant_docs: reference.relevant_docs ?? [] },
       };
 
-    case 'f_judge_ref':
-      // LLM-as-judge: рубрика передаётся через config
-      return {
-        agent_output: { text: agentOut.text ?? '' },
-        reference: { answer: reference.answer ?? '' },
-        config: { rubric: reference.rubric ?? '', scale: 5 },
-      };
-
     case 'f_toxicity':
       return { agent_output: { text: agentOut.text ?? '' } };
 
