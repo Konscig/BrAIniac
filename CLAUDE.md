@@ -9,7 +9,9 @@ Source of truth (читать перед работой над фичей):
 - Contracts: [specs/002-rag-dataset-tool/contracts/](specs/002-rag-dataset-tool/contracts/)
 - Quickstart: [specs/002-rag-dataset-tool/quickstart.md](specs/002-rag-dataset-tool/quickstart.md)
 
-Previous feature: `001-ai-judge` — ИИ-Судья Оценки Агентного Графа ([specs/001-ai-judge/](specs/001-ai-judge/)).
+Previous features:
+- `001-ai-judge` — ИИ-Судья Оценки Агентного Графа ([specs/001-ai-judge/](specs/001-ai-judge/)).
+- `003-judge-v2` (ветка `judge-v2`) — рефакторинг judge: дедуп метрик, авто-выбор профиля, agentic_rag, реальный LLM-judge через judge_provider, operational gate ([specs/003-judge-v2/CHANGES.md](specs/003-judge-v2/CHANGES.md)).
 
 Constitution: [.specify/memory/constitution.md](.specify/memory/constitution.md) (v1.0.0).
 Metrics catalog: [docs/sdd/12-evaluation-metrics-catalog.md](docs/sdd/12-evaluation-metrics-catalog.md).
