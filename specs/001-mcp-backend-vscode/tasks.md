@@ -163,6 +163,49 @@ the MVP before operation tools, export, and VS Code integration.
 
 ---
 
+## Phase 7: User Story 4 Continuation - Product VS Code Browser Auth (Priority: P4)
+
+**Goal**: Replace the developer-only manual access-token prompt with a VS Code extension sign-in flow that opens BrAIniac in the external browser, stores credentials in VS Code SecretStorage, and returns MCP HTTP server definitions using the stored session.
+
+**Independent Test**: From VS Code, run `BrAIniac: Sign in`, complete browser login, confirm the extension stores a session without writing tokens to workspace files/settings, connect to the BrAIniac MCP server, browse resources, run `list_projects`, then sign out and verify MCP access requires re-authentication.
+
+### Tests for Product VS Code Auth
+
+- [ ] T060 [P] [US4] Add backend browser-auth bridge contract tests for start, callback state validation, token exchange, expiry, and invalid state in `backend/scripts/vscode-mcp-auth-flow-test.mjs`
+- [ ] T061 [P] [US4] Extend VS Code extension smoke tests for sign-in command, sign-out command, SecretStorage usage, no token-in-settings behavior, and provider split in `vscode-extension/scripts/smoke-test.mjs`
+- [ ] T062 [P] [US4] Add documentation checks for browser sign-in, dev-token fallback, and manual VS Code verification in `specs/001-mcp-backend-vscode/quickstart.md`
+
+### Backend Auth Bridge Implementation
+
+- [ ] T063 [US4] Add short-lived VS Code auth request state helpers with signed random `state`, expiry, and single-use validation in `backend/src/services/application/auth/vscode-auth.application.service.ts`
+- [ ] T064 [US4] Add browser auth bridge routes for start, callback/token exchange, and failure states in `backend/src/routes/resources/auth/vscode-auth.routes.ts`
+- [ ] T065 [US4] Mount VS Code browser auth bridge routes under existing auth routing in `backend/src/routes/resources/auth/auth.routes.ts`
+- [ ] T066 [US4] Ensure browser auth bridge reuses existing login/token issuance services and never bypasses `loginAndIssueTokens` or `signupAndIssueTokens` in `backend/src/services/application/auth/auth.application.service.ts`
+- [ ] T067 [US4] Add `test:vscode:mcp-auth` script to `backend/package.json` for `backend/scripts/vscode-mcp-auth-flow-test.mjs`
+- [ ] T068 [US4] Run `npm --prefix backend run build`, `npm --prefix backend run test:vscode:mcp-auth`, `npm --prefix backend run test:auth`, and `npm --prefix backend run test:mcp:auth`
+
+### VS Code Extension Auth Implementation
+
+- [ ] T069 [P] [US4] Split MCP server definition provider into `vscode-extension/src/mcpProvider.ts` with stored-session resolution and explicit unauthenticated state
+- [ ] T070 [P] [US4] Implement VS Code auth session manager with SecretStorage keys, session read/write/delete, expiry detection, and no settings token storage in `vscode-extension/src/auth.ts`
+- [ ] T071 [US4] Implement `BrAIniac: Sign in` command that starts backend auth, opens the external browser, handles callback success/failure, and stores the session in `vscode-extension/src/auth.ts`
+- [ ] T072 [US4] Implement `BrAIniac: Sign out` and `BrAIniac: Reconnect MCP` commands that clear SecretStorage and refresh MCP definitions in `vscode-extension/src/extension.ts`
+- [ ] T073 [US4] Keep manual access-token prompt only behind an explicit developer fallback command `BrAIniac: Use Dev Token` in `vscode-extension/src/auth.ts`
+- [ ] T074 [US4] Update `vscode-extension/package.json` contributes for commands, configuration without token settings, activation events, and provider metadata
+- [ ] T075 [US4] Update `vscode-extension/README.md` with browser sign-in, sign-out, SecretStorage, backend URL, dev fallback, and troubleshooting instructions
+- [ ] T076 [US4] Run `npm --prefix vscode-extension run test`
+
+### Product VS Code Auth Verification
+
+- [ ] T077 [US4] Update `specs/001-mcp-backend-vscode/contracts/vscode-client.md` with final route names, command names, SecretStorage behavior, and fallback limitations
+- [ ] T078 [US4] Update `docs/sdd/14-mcp-adapter-plan.md` with the VS Code browser auth architecture and the rule that manual token paste is dev-only
+- [ ] T079 [US4] Manually verify VS Code browser sign-in connects to `http://localhost:8080/mcp`, lists resources, invokes `list_projects`, invokes `validate_pipeline`, invokes an export tool, signs out, and reports auth/backend errors using `specs/001-mcp-backend-vscode/quickstart.md`
+- [ ] T080 [US4] Run final validation: `npm --prefix backend run build`, `npm --prefix backend run test:vscode:mcp-auth`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:readonly`, and `npm --prefix vscode-extension run test`
+
+**Checkpoint**: VS Code integration no longer depends on pasted tokens for the normal user path; credentials are browser-acquired, stored in SecretStorage, and removable by sign-out.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -173,6 +216,7 @@ the MVP before operation tools, export, and VS Code integration.
 - **US2 Pipeline operation (Phase 4)**: Depends on US1 because operation tools reuse resource links, auth mapping, and MCP server registration.
 - **US3 Export (Phase 5)**: Depends on US1 and can proceed before or after US2 if export excludes execution start behavior.
 - **US4 VS Code integration (Phase 6)**: Depends on a stable backend MCP endpoint from US1; validation/export checks depend on US2/US3.
+- **US4 Product Browser Auth (Phase 7)**: Depends on Phase 6 scaffold plus stable backend MCP/auth behavior. It replaces manual token prompt as the primary user path.
 - **Final Polish**: Depends on all selected stories.
 
 ### User Story Dependencies
@@ -181,6 +225,7 @@ the MVP before operation tools, export, and VS Code integration.
 - **US2 (P2)**: Requires US1 MCP adapter foundation and server registration.
 - **US3 (P3)**: Requires US1 resource serializers/redaction foundation; execution metadata benefits from US2.
 - **US4 (P4)**: Requires US1 backend endpoint; full validation/export demo requires US2 and US3.
+- **US4 continuation (P4)**: Requires the existing VS Code extension scaffold and backend auth routes.
 
 ### Within Each User Story
 
@@ -189,6 +234,7 @@ the MVP before operation tools, export, and VS Code integration.
 - Resource registrations before tools that return resource links.
 - Existing services are reused before introducing any new facade.
 - Agent authoring stays deferred until a later separate plan/task set.
+- Browser auth tasks must preserve existing token issuance and must not store tokens in repository/workspace files.
 
 ### Parallel Opportunities
 
@@ -198,6 +244,9 @@ the MVP before operation tools, export, and VS Code integration.
 - US1 tests T015 and T016 can run in parallel before implementation.
 - US3 tests T039 and T040 can run in parallel.
 - US4 documentation/test notes T047 and T048 can run in parallel.
+- Product auth tests T060, T061, and T062 can run in parallel.
+- Backend auth bridge tasks T063-T067 must be sequential after T060.
+- Extension split tasks T069 and T070 can run in parallel after T061.
 
 ---
 
@@ -211,6 +260,16 @@ Task: "T018 [P] [US1] Implement project resources in backend/src/mcp/resources/p
 Task: "T021 [P] [US1] Implement pipeline resources in backend/src/mcp/resources/pipeline.resources.ts"
 Task: "T022 [P] [US1] Implement node resources in backend/src/mcp/resources/node.resources.ts"
 Task: "T023 [P] [US1] Implement tool catalog resources in backend/src/mcp/resources/tool.resources.ts"
+```
+
+## Parallel Example: Product VS Code Browser Auth
+
+```bash
+Task: "T060 [P] [US4] Add backend browser-auth bridge contract tests in backend/scripts/vscode-mcp-auth-flow-test.mjs"
+Task: "T061 [P] [US4] Extend VS Code extension smoke tests in vscode-extension/scripts/smoke-test.mjs"
+Task: "T062 [P] [US4] Add documentation checks in specs/001-mcp-backend-vscode/quickstart.md"
+Task: "T069 [P] [US4] Split MCP server definition provider in vscode-extension/src/mcpProvider.ts"
+Task: "T070 [P] [US4] Implement VS Code auth session manager in vscode-extension/src/auth.ts"
 ```
 
 ---
@@ -230,7 +289,8 @@ Task: "T023 [P] [US1] Implement tool catalog resources in backend/src/mcp/resour
 2. US2 validation/execution tools.
 3. US3 redacted export snapshots.
 4. US4 VS Code extension/provider.
-5. A future separate feature for agent authoring tools.
+5. US4 product browser auth and SecretStorage.
+6. A future separate feature for agent authoring tools.
 
 ### Scope Guard
 
