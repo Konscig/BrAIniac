@@ -20,6 +20,12 @@ store.
   and run them through MCP redaction helpers before returning content.
 - VS Code integration starts as a server definition provider and relies on
   VS Code built-in MCP browsing, tool confirmation, logging, and auth prompts.
+- Product VS Code auth uses a local polling browser bridge: the extension calls
+  `POST /auth/vscode/start`, opens the frontend `/auth?vscode_state=...` URL,
+  the frontend completes normal BrAIniac login and calls
+  `POST /auth/vscode/complete`, then the extension polls
+  `POST /auth/vscode/exchange` and stores the returned session in VS Code
+  SecretStorage.
 
 ## Guardrails
 
@@ -31,6 +37,12 @@ store.
   and raw dataset content markers by default.
 - `start_pipeline_execution` is non-read-only and must remain confirmation
   appropriate for MCP clients.
+- Manual access-token paste is not the product path. It may exist only as an
+  explicit `BrAIniac: Use Dev Token` local-development fallback and must store
+  the token in VS Code SecretStorage, never in workspace files or VS Code
+  settings.
+- The VS Code extension must not implement a second MCP server. It only
+  registers the backend HTTP MCP server and manages setup/auth state.
 
 ## Deferred Agent Authoring
 
