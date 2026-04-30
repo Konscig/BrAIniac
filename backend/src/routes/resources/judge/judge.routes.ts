@@ -38,16 +38,31 @@ router.post('/assessments', async (req: any, res) => {
     if (!Number.isInteger(pipelineId) || pipelineId <= 0) {
       return res.status(400).json({ error: 'pipeline_id required' });
     }
-    const items: AssessItem[] = Array.isArray(body.items) ? body.items : [];
-    if (!items.length) {
-      return res.status(400).json({ error: 'items array required and must not be empty' });
+    const items: AssessItem[] | undefined = Array.isArray(body.items) ? body.items : undefined;
+    const datasetId = Number.isInteger(Number(body.dataset_id)) && Number(body.dataset_id) > 0
+      ? Number(body.dataset_id)
+      : undefined;
+
+    if (!items?.length && datasetId === undefined) {
+      return res.status(400).json({ error: 'either items[] or dataset_id is required' });
     }
+
+    const sample = body.sample && typeof body.sample === 'object' && !Array.isArray(body.sample)
+      ? {
+          ...(typeof body.sample.fraction === 'number' ? { fraction: body.sample.fraction } : {}),
+          ...(Number.isInteger(body.sample.size) ? { size: body.sample.size } : {}),
+          ...(typeof body.sample.seed === 'number' ? { seed: body.sample.seed } : {}),
+        }
+      : undefined;
 
     await ensurePipelineOwnedByUser(pipelineId, req.user.user_id);
 
     const report = await runAssessment({
       pipeline_id: pipelineId,
-      items,
+      user_id: req.user.user_id,
+      ...(items?.length ? { items } : {}),
+      ...(datasetId !== undefined ? { dataset_id: datasetId } : {}),
+      ...(sample ? { sample } : {}),
       ...(body.weight_profile ? { weight_profile: String(body.weight_profile) } : {}),
     });
 
