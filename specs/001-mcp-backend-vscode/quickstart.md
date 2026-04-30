@@ -87,11 +87,15 @@ The intended flow is:
 3. The extension calls `POST /auth/vscode/start`, opens the returned BrAIniac
    `loginUrl` in the external browser, and polls `POST /auth/vscode/exchange`
    with the returned `state`.
-4. After successful browser login, exchange returns an access token and the
-   extension stores the credential in VS Code SecretStorage.
-5. VS Code connects to `http://localhost:8080/mcp` with
+4. The BrAIniac frontend preserves `vscode_state` on `/auth`, performs normal
+   `/auth/login` or reuses an already authenticated browser session, then calls
+   `POST /auth/vscode/complete` with
+   `Authorization: Bearer <accessToken>` and `{ "state": "<vscode_state>" }`.
+5. After completion, exchange returns an access token and the extension stores
+   the credential in VS Code SecretStorage.
+6. VS Code connects to `http://localhost:8080/mcp` with
    `Authorization: Bearer <stored token>`.
-6. Use VS Code's built-in MCP tools/resources UI to browse BrAIniac context and
+7. Use VS Code's built-in MCP tools/resources UI to browse BrAIniac context and
    invoke tools.
 
 Manual `.vscode/mcp.json` token configuration remains useful for local
@@ -111,6 +115,12 @@ debugging, but it is not the target user experience.
   a redaction report.
 - [ ] Invalid token, missing token, backend unavailable, forbidden resource, and
   tool runtime errors are visible to the user.
+- [ ] Browser sign-in completes within 30 seconds after credentials are
+  submitted in local dev.
+- [ ] Expired or rejected credentials produce an actionable re-auth prompt
+  within 5 seconds.
+- [ ] The VS Code command/status flow remains usable in a narrow editor layout
+  without hidden primary actions.
 
 ### Validation Notes
 

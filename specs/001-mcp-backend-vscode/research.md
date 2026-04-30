@@ -148,10 +148,11 @@ production shape is the official VS Code MCP authorization path: the MCP server
 advertises authorization metadata, VS Code drives OAuth 2.1/2.0 browser login,
 and the resulting token is attached to HTTP MCP requests. For the local/dev
 slice, BrAIniac uses a transitional browser polling bridge: the extension opens
-BrAIniac login in the external browser, polls/exchanges a short-lived `state`
-with the backend after browser login succeeds, stores credentials in VS Code
-SecretStorage, and returns an HTTP MCP server definition with an Authorization
-header.
+BrAIniac login in the external browser with `vscode_state`, the frontend
+preserves that state during normal login and calls `POST /auth/vscode/complete`
+with the issued access token, then the extension polls/exchanges the authorized
+short-lived `state`, stores credentials in VS Code SecretStorage, and returns an
+HTTP MCP server definition with an Authorization header.
 
 **Rationale**: Manual token handling is acceptable for smoke tests, but it is
 not a product-grade VS Code MCP client. Users expect the installed extension to

@@ -18,9 +18,11 @@ where VS Code can drive the auth flow directly. Full OAuth metadata, Dynamic
 Client Registration, refresh/revoke, and hosted SaaS hardening are explicitly
 deferred from this slice. The next implementation slice uses a polling
 browser-auth bridge: the extension starts an auth request, opens a BrAIniac
-login URL, then exchanges a validated short-lived `state` for the existing
-BrAIniac access token after browser login succeeds. Manual token entry remains
-only an explicit developer fallback.
+frontend login URL containing `vscode_state`, the frontend completes normal
+login and calls `POST /auth/vscode/complete` with the issued BrAIniac access
+token, then the extension exchanges a validated short-lived `state` for the
+existing BrAIniac access token. Manual token entry remains only an explicit
+developer fallback.
 
 ## Technical Context
 
@@ -29,10 +31,10 @@ tooling (`typescript` 5.9.x, Node types 24.x); VS Code extension uses
 TypeScript and VS Code extension APIs matching the contributed engine version.
 **Primary Dependencies**: Existing Express/Prisma backend, official
 `@modelcontextprotocol/sdk`, VS Code `vscode.lm.registerMcpServerDefinitionProvider`
-API, VS Code `SecretStorage`, `vscode.env.openExternal`, and browser auth
-polling/exchange plumbing. Full production auth should align with VS Code MCP
-OAuth support in a later slice. Manual access-token input remains a dev fallback
-only.
+API, VS Code `SecretStorage`, `vscode.env.openExternal`, BrAIniac frontend
+login state propagation, and browser auth polling/exchange plumbing. Full
+production auth should align with VS Code MCP OAuth support in a later slice.
+Manual access-token input remains a dev fallback only.
 **Storage**: Backend continues using PostgreSQL/Prisma and existing artifact
 filesystem state. Extension stores access/refresh credential material only in
 VS Code SecretStorage. No token should be stored in workspace files or normal
@@ -130,6 +132,14 @@ backend/
 `-- scripts/
     |-- mcp-auth-ownership-test.mjs
     `-- vscode-mcp-auth-flow-test.mjs          # planned polling auth bridge contract test
+
+frontend/
+|-- src/
+|   |-- App.tsx                                # preserves vscode_state on auth redirects
+|   |-- pages/
+|   |   `-- auth-page.tsx                      # completes VS Code auth after login
+|   `-- lib/
+|       `-- api.ts                             # typed helper for /auth/vscode/complete
 
 vscode-extension/
 |-- package.json

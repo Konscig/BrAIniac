@@ -48,7 +48,8 @@ metadata/DCR support:
 
 - extension command `BrAIniac: Sign in` starts a short-lived auth request;
 - extension opens the BrAIniac web login in the external browser;
-- backend records successful browser login against the validated `state`;
+- BrAIniac frontend preserves `vscode_state` during normal login and completes
+  the auth request through the backend;
 - extension polls/exchanges by `state` until it receives a credential result or
   timeout;
 - extension stores credentials in SecretStorage;
@@ -81,7 +82,7 @@ Output:
 ```json
 {
   "state": "random-single-use-state",
-  "loginUrl": "http://localhost:3000/login?vscode_state=random-single-use-state",
+  "loginUrl": "http://localhost:3000/auth?vscode_state=random-single-use-state",
   "expiresAt": "2026-04-30T12:00:00.000Z",
   "pollIntervalMs": 1000
 }
@@ -95,11 +96,60 @@ Rules:
 
 ### Browser Login Completion
 
-After normal BrAIniac login succeeds with a valid `vscode_state`, the backend
-marks that state as authorized for the authenticated user. This completion path
-may be implemented through the existing frontend login redirect or a backend
-route, but it MUST reuse existing BrAIniac auth services and MUST NOT issue a
-token by directly signing JWTs in the bridge.
+The frontend-aware completion path is the product path for this slice.
+
+Flow:
+
+```text
+Browser opens http://localhost:3000/auth?vscode_state=<state>
+  -> user submits normal BrAIniac login
+  -> frontend receives normal /auth/login tokens
+  -> frontend calls POST /auth/vscode/complete with Authorization: Bearer <accessToken>
+  -> backend validates token through existing auth middleware
+  -> backend marks <state> authorized for the authenticated user
+```
+
+### `POST /auth/vscode/complete`
+
+Purpose: allow the authenticated BrAIniac frontend session to authorize a
+pending VS Code polling request.
+
+Input:
+
+```json
+{
+  "state": "random-single-use-state"
+}
+```
+
+Headers:
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+Output:
+
+```json
+{
+  "status": "authorized",
+  "expiresAt": "2026-04-30T12:00:00.000Z"
+}
+```
+
+Rules:
+
+- Completion requires a valid existing BrAIniac access token and MUST reuse the
+  same auth middleware or token verification path as protected API routes.
+- The bridge MUST NOT issue a token by directly signing JWTs.
+- Invalid, expired, missing, failed, or already consumed states return
+  distinguishable errors.
+- The frontend MUST preserve the exact `vscode_state` query parameter while the
+  user logs in. If state is missing after login, the frontend continues normal
+  web login but cannot complete VS Code sign-in.
+- If the browser already has a valid BrAIniac web session/token when `/auth`
+  opens with `vscode_state`, the frontend should complete that state without
+  requiring another password entry.
 
 ### `POST /auth/vscode/exchange`
 
@@ -150,6 +200,8 @@ Rules:
 - Pending exchange never returns a token.
 - Invalid, expired, reused, or failed states return distinguishable errors.
 - Tokens returned here are stored only in VS Code SecretStorage.
+- `expiresAt` in the authorized response MAY be omitted when the existing token
+  issuer does not expose a reliable expiry timestamp to the bridge.
 
 ## Extension Provider
 

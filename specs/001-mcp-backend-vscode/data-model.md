@@ -229,11 +229,16 @@ Fields:
 - `expires_at`
 - `status`: `pending`, `authorized`, `failed`, `expired`, or `consumed`.
 - `user_id`: set only after successful browser login.
+- `completed_at`: set when the authenticated frontend completes the request.
 
 Validation:
 
 - `state` must be unguessable and single-use.
 - Polling auth requests must expire quickly.
+- The frontend must preserve `vscode_state` through normal BrAIniac login and
+  call `POST /auth/vscode/complete` with the issued access token.
+- Completion must validate that access token through the existing protected API
+  auth path before marking the request authorized.
 - The backend must issue credentials only after normal BrAIniac login succeeds.
 - The extension must exchange only the active sign-in request `state`.
 - Authorized exchange consumes the state and replay returns an explicit error.
