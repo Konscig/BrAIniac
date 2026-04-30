@@ -551,11 +551,45 @@ export function judgeChat(req: JudgeChatRequest): Promise<JudgeChatResponse> {
   return postJson<JudgeChatResponse>("/judge/chat", req);
 }
 
+export interface AssessmentSkippedDetail {
+  metric_code: string;
+  axis: string;
+  reason: string;
+  occurrences: number;
+}
+
+export interface AssessmentAxisCoverageEntry {
+  axis: "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H";
+  metrics: string[];
+  weight_total: number;
+}
+
+export interface AssessmentProfileSelection {
+  applied: string;
+  origin: "request" | "auto" | "fallback";
+  reason: string;
+  requested?: string;
+}
+
+export interface AssessmentGate {
+  T_p95_ms: number | null;
+  T_max_ms: number | null;
+  C_total: number | null;
+  C_max: number | null;
+  R_fail: number;
+  R_fail_max: number;
+  f_safe: number | null;
+  f_safe_min: number;
+  passes: boolean;
+  reasons: string[];
+}
+
 export interface AssessmentReport {
   pipeline_id: number;
   final_score: number;
   verdict: "pass" | "improvement" | "fail";
   weight_profile: string;
+  profile_selection: AssessmentProfileSelection;
   weights_used: Record<string, number>;
   metric_scores: Array<{
     metric_code: string;
@@ -570,6 +604,10 @@ export interface AssessmentReport {
     metrics: Array<{ metric_code: string; axis: string; value: number; sample_size: number; executor: string }>;
   }>;
   skipped_metrics: string[];
+  skipped_metrics_detail: AssessmentSkippedDetail[];
+  axis_coverage: AssessmentAxisCoverageEntry[];
+  axis_warning?: string;
+  gate: AssessmentGate;
   item_count: number;
 }
 

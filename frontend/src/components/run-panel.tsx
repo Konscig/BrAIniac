@@ -145,7 +145,7 @@ export function RunPanel({
   const [startedAt, setStartedAt] = React.useState<number | null>(null);
   const [now, setNow] = React.useState(Date.now());
   const [isAssessOpen, setIsAssessOpen] = React.useState(false);
-  const [assessProfile, setAssessProfile] = React.useState<string>("rag");
+  const [assessProfile, setAssessProfile] = React.useState<string>("auto");
   const [assessReference, setAssessReference] = React.useState<string>("");
   const [assessMode, setAssessMode] = React.useState<"single" | "batch">("single");
   const [assessSampleFraction, setAssessSampleFraction] = React.useState<string>("0.2");
@@ -556,7 +556,9 @@ export function RunPanel({
                   disabled={isAssessing}
                   className="mt-1 h-8 w-full rounded-md border border-border/60 bg-background/85 px-2 text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
                 >
+                  <option value="auto">auto (по структуре графа)</option>
                   <option value="rag">rag</option>
+                  <option value="agentic_rag">agentic_rag</option>
                   <option value="tool_use">tool_use</option>
                   <option value="extractor">extractor</option>
                   <option value="default">default</option>
@@ -693,9 +695,27 @@ export function RunPanel({
                   </div>
                   <div className="text-muted-foreground">
                     profile = <span className="text-foreground">{assessReport.weight_profile}</span>
+                    {assessReport.profile_selection?.origin === "auto" && (
+                      <span className="ml-1 rounded bg-primary/10 px-1 py-0.5 text-[10px] text-primary">auto</span>
+                    )}
+                    {assessReport.profile_selection?.origin === "fallback" && (
+                      <span className="ml-1 rounded bg-amber-500/15 px-1 py-0.5 text-[10px] text-amber-300">fallback</span>
+                    )}
                     {"  "}|  items = <span className="text-foreground">{assessReport.item_count}</span>
                   </div>
                 </div>
+
+                {assessReport.profile_selection?.reason && (
+                  <div className="mt-1 text-[10px] text-muted-foreground">
+                    {assessReport.profile_selection.reason}
+                  </div>
+                )}
+
+                {assessReport.axis_warning && (
+                  <div className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-amber-200">
+                    ⚠ {assessReport.axis_warning}
+                  </div>
+                )}
 
                 <details className="mt-2" open>
                   <summary className="cursor-pointer font-medium text-foreground">
@@ -764,10 +784,112 @@ export function RunPanel({
                   })}
                 </div>
 
-                {assessReport.skipped_metrics.length > 0 && (
-                  <div className="mt-2 text-muted-foreground">
-                    Skipped: {assessReport.skipped_metrics.join(", ")}
+                {assessReport.axis_coverage && assessReport.axis_coverage.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer font-medium text-foreground">
+                      Покрытие осей ({assessReport.axis_coverage.length}/8)
+                    </summary>
+                    <table className="mt-1 w-full border-collapse">
+                      <thead>
+                        <tr className="text-left text-muted-foreground">
+                          <th className="pr-2">Axis</th>
+                          <th className="pr-2">Метрики</th>
+                          <th>Σ w</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {assessReport.axis_coverage.map((entry) => (
+                          <tr key={entry.axis} className="border-t border-border/30">
+                            <td className="pr-2 py-0.5 text-foreground">{entry.axis}</td>
+                            <td className="pr-2 py-0.5 text-muted-foreground">{entry.metrics.join(", ")}</td>
+                            <td className="py-0.5 text-foreground">{entry.weight_total.toFixed(3)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </details>
+                )}
+
+                {assessReport.gate && (
+                  <div className="mt-2 rounded border border-border/40 bg-muted/5 px-2 py-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-foreground">Operational gate</span>
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                          assessReport.gate.passes
+                            ? "bg-emerald-500/15 text-emerald-300"
+                            : "bg-red-500/15 text-red-300"
+                        }`}
+                      >
+                        {assessReport.gate.passes ? "PASS" : "FAIL"}
+                      </span>
+                    </div>
+                    <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground sm:grid-cols-4">
+                      <div>
+                        T<sub>p95</sub> ={" "}
+                        <span className="text-foreground">
+                          {assessReport.gate.T_p95_ms !== null ? `${assessReport.gate.T_p95_ms} ms` : "—"}
+                        </span>
+                        {assessReport.gate.T_max_ms !== null && (
+                          <span> / {assessReport.gate.T_max_ms} ms</span>
+                        )}
+                      </div>
+                      <div>
+                        C ={" "}
+                        <span className="text-foreground">
+                          {assessReport.gate.C_total !== null ? assessReport.gate.C_total.toFixed(0) : "—"}
+                        </span>
+                        {assessReport.gate.C_max !== null && (
+                          <span> / {assessReport.gate.C_max.toFixed(0)}</span>
+                        )}
+                      </div>
+                      <div>
+                        R<sub>fail</sub> ={" "}
+                        <span className="text-foreground">{(assessReport.gate.R_fail * 100).toFixed(1)}%</span>
+                        <span> / {(assessReport.gate.R_fail_max * 100).toFixed(0)}%</span>
+                      </div>
+                      <div>
+                        f<sub>safe</sub> ={" "}
+                        <span className="text-foreground">
+                          {assessReport.gate.f_safe !== null ? assessReport.gate.f_safe.toFixed(3) : "—"}
+                        </span>
+                        <span> / {assessReport.gate.f_safe_min.toFixed(2)}</span>
+                      </div>
+                    </div>
+                    {assessReport.gate.reasons.length > 0 && (
+                      <div className="mt-1 text-[10px] text-red-300">
+                        {assessReport.gate.reasons.join(" · ")}
+                      </div>
+                    )}
                   </div>
+                )}
+
+                {assessReport.skipped_metrics_detail && assessReport.skipped_metrics_detail.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      Пропущено метрик: {assessReport.skipped_metrics_detail.length}
+                    </summary>
+                    <table className="mt-1 w-full border-collapse">
+                      <thead>
+                        <tr className="text-left text-muted-foreground">
+                          <th className="pr-2">Axis</th>
+                          <th className="pr-2">Metric</th>
+                          <th className="pr-2">Reason</th>
+                          <th>×</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {assessReport.skipped_metrics_detail.map((s) => (
+                          <tr key={s.metric_code} className="border-t border-border/30">
+                            <td className="pr-2 py-0.5 text-muted-foreground">{s.axis}</td>
+                            <td className="pr-2 py-0.5 text-foreground">{s.metric_code}</td>
+                            <td className="pr-2 py-0.5 text-muted-foreground">{s.reason}</td>
+                            <td className="py-0.5 text-muted-foreground">{s.occurrences}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </details>
                 )}
               </div>
             )}
