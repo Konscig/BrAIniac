@@ -35,11 +35,14 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - PRISMA_MIGRATE=${PRISMA_MIGRATE:-deploy}
       - PRISMA_DB_PUSH_ACCEPT_DATA_LOSS=1
+      - MCP_ENABLED=${MCP_ENABLED:-true}
+      - MCP_PATH=${MCP_PATH:-/mcp}
+      - HTTP_ENABLE_CLUSTER=${HTTP_ENABLE_CLUSTER:-false}
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "8080:3000"
+      - "${API_PORT:-8080}:3000"
     networks:
      - brainiac-network
     healthcheck:
@@ -62,6 +65,7 @@ services:
   db-tests:
     image: node:20-alpine
     container_name: db-tests
+    profiles: ["tests"]
     restart: "no"
     working_dir: /app/backend
     volumes:
@@ -81,7 +85,10 @@ services:
       "
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-http://localhost:8080}
     container_name: frontend
     profiles: ["app"]
     restart: unless-stopped

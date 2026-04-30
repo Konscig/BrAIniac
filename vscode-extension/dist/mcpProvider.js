@@ -44,6 +44,7 @@ exports.PROVIDER_ID = 'brainiacMcp';
 exports.PROVIDER_LABEL = 'BrAIniac MCP';
 exports.DEFAULT_BACKEND_URL = 'http://localhost:8080/mcp';
 const providerChangeEmitter = new vscode.EventEmitter();
+const output = vscode.window.createOutputChannel('BrAIniac MCP');
 function normalizeBackendUrl(value) {
     if (typeof value !== 'string' || value.trim().length === 0) {
         return exports.DEFAULT_BACKEND_URL;
@@ -62,15 +63,12 @@ function isExpired(session) {
     return Number.isFinite(expiresAt) && expiresAt <= Date.now();
 }
 function createHttpServerDefinition(backendUrl, token) {
-    return {
-        id: exports.PROVIDER_ID,
-        label: exports.PROVIDER_LABEL,
-        type: 'http',
-        uri: backendUrl,
-        headers: {
+    const headers = token
+        ? {
             Authorization: `Bearer ${token}`,
-        },
-    };
+        }
+        : {};
+    return new vscode.McpHttpServerDefinition(exports.PROVIDER_LABEL, vscode.Uri.parse(backendUrl), headers, '0.1.0');
 }
 function createBrainiacMcpProvider(sessionStore) {
     return {
@@ -78,19 +76,35 @@ function createBrainiacMcpProvider(sessionStore) {
         async provideMcpServerDefinitions() {
             const configuredBackendUrl = readConfiguredBackendUrl();
             const session = await sessionStore.readSession();
-            if (!session?.accessToken) {
-                vscode.window.showWarningMessage('BrAIniac MCP authentication required. Run BrAIniac: Sign in.');
-                return [];
-            }
-            if (isExpired(session)) {
-                vscode.window.showWarningMessage('BrAIniac MCP token expired; sign in again.');
-                return [];
-            }
+            const hasValidSession = session ? Boolean(session.accessToken) && !isExpired(session) : false;
+            output.appendLine(`[provider] provide definitions url=${normalizeBackendUrl(session?.backendUrl ?? configuredBackendUrl)} hasSession=${Boolean(session?.accessToken)} valid=${hasValidSession}`);
             return [
-                createHttpServerDefinition(normalizeBackendUrl(session.backendUrl ?? configuredBackendUrl), session.accessToken),
+                createHttpServerDefinition(normalizeBackendUrl(session?.backendUrl ?? configuredBackendUrl), hasValidSession && session ? session.accessToken : undefined),
             ];
         },
         async resolveMcpServerDefinition(definition) {
+            if (!(definition instanceof vscode.McpHttpServerDefinition)) {
+                return definition;
+            }
+            const configuredBackendUrl = readConfiguredBackendUrl();
+            const session = await sessionStore.readSession();
+            output.appendLine(`[provider] resolve definition label=${definition.label} hasSession=${Boolean(session?.accessToken)} expired=${session ? isExpired(session) : false}`);
+            if (!session?.accessToken) {
+                output.appendLine('[provider] resolve failed: no stored session');
+                vscode.window.showWarningMessage('BrAIniac MCP authentication required. Run BrAIniac: Sign in.');
+                return undefined;
+            }
+            if (isExpired(session)) {
+                output.appendLine('[provider] resolve failed: stored token expired');
+                vscode.window.showWarningMessage('BrAIniac MCP token expired; sign in again.');
+                return undefined;
+            }
+            definition.uri = vscode.Uri.parse(normalizeBackendUrl(session.backendUrl ?? configuredBackendUrl));
+            definition.headers = {
+                ...definition.headers,
+                Authorization: `Bearer ${session.accessToken}`,
+            };
+            output.appendLine(`[provider] resolved ${definition.uri.toString()} with Authorization header`);
             return definition;
         },
     };
@@ -106,7 +120,9 @@ function registerBrainiacMcpProvider(context, sessionStore) {
         return;
     }
     const disposable = registerProvider.call(lmApi, exports.PROVIDER_ID, createBrainiacMcpProvider(sessionStore));
+    output.appendLine(`[provider] registered ${exports.PROVIDER_ID}`);
     if (disposable && typeof disposable === 'object' && 'dispose' in disposable) {
         context.subscriptions.push(disposable);
     }
+    context.subscriptions.push(output);
 }

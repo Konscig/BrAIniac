@@ -2,7 +2,7 @@
   "name": "brainiac-vscode-mcp",
   "displayName": "BrAIniac MCP",
   "description": "Registers the local BrAIniac backend as a VS Code MCP server.",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "publisher": "brainiac",
   "engines": {
     "vscode": "^1.102.0"
