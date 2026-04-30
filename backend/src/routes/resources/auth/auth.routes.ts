@@ -2,8 +2,11 @@ import express from 'express';
 import { loginAndIssueTokens, signupAndIssueTokens } from '../../../services/application/auth/auth.application.service.js';
 import { mapAuthCredentialsDTO } from '../../shared/create-dto.mappers.js';
 import { sendRouteError } from '../../shared/route-error.js';
+import vscodeAuthRouter from './vscode-auth.routes.js';
 
 const router = express.Router();
+
+router.use('/vscode', vscodeAuthRouter);
 
 router.post('/signup', async (req, res) => {
   try {
