@@ -21,7 +21,7 @@ function normalizeBackendUrl(value: unknown): string {
   return value.trim();
 }
 
-function readConfiguredBackendUrl(): string {
+export function readConfiguredBackendUrl(): string {
   const configured = vscode.workspace.getConfiguration('brainiacMcp').get<string>('backendUrl');
   return normalizeBackendUrl(configured);
 }

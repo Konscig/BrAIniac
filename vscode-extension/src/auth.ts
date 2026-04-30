@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { BrainiacAuthSession, BrainiacAuthSessionStore } from './mcpProvider.js';
 
 const SESSION_SECRET_KEY = 'brainiacMcp.session';
+const DEFAULT_SIGN_IN_TIMEOUT_MS = 30_000;
 
 function normalizeSession(input: unknown): BrainiacAuthSession | null {
   if (!input || typeof input !== 'object') {
@@ -57,8 +58,89 @@ export class BrainiacAuthManager implements BrainiacAuthSessionStore {
     const session = await this.readSession();
     return Boolean(session?.accessToken) && !isSessionExpired(session);
   }
+
+  async signInWithBrowser(backendUrl: string): Promise<BrainiacAuthSession> {
+    const authBaseUrl = getAuthBaseUrl(backendUrl);
+    const started = await postJson<VscodeAuthStartResponse>(`${authBaseUrl}/auth/vscode/start`, {
+      callback: 'polling',
+      mcpBaseUrl: backendUrl,
+    });
+
+    await vscode.env.openExternal(vscode.Uri.parse(started.loginUrl));
+    vscode.window.showInformationMessage('BrAIniac sign-in started in your browser.');
+
+    const deadline = Date.now() + DEFAULT_SIGN_IN_TIMEOUT_MS;
+    const pollIntervalMs = Math.max(250, started.pollIntervalMs || 1000);
+
+    while (Date.now() < deadline) {
+      const exchanged = await postJson<VscodeAuthExchangeResponse>(`${authBaseUrl}/auth/vscode/exchange`, {
+        state: started.state,
+      });
+
+      if (exchanged.status === 'authorized') {
+        const session: BrainiacAuthSession = {
+          accessToken: exchanged.accessToken,
+          backendUrl,
+          expiresAt: exchanged.expiresAt,
+        };
+        await this.writeSession(session);
+        vscode.window.showInformationMessage('BrAIniac MCP signed in.');
+        return session;
+      }
+
+      await delay(pollIntervalMs);
+    }
+
+    throw new Error('BrAIniac sign-in timed out.');
+  }
 }
 
 export function createBrainiacAuthManager(context: vscode.ExtensionContext): BrainiacAuthManager {
   return new BrainiacAuthManager(context.secrets);
+}
+
+type VscodeAuthStartResponse = {
+  state: string;
+  loginUrl: string;
+  expiresAt: string;
+  pollIntervalMs: number;
+};
+
+type VscodeAuthExchangeResponse =
+  | {
+      status: 'pending';
+      expiresAt: string;
+    }
+  | {
+      status: 'authorized';
+      accessToken: string;
+      tokenType: 'Bearer';
+      expiresAt?: string;
+    };
+
+function getAuthBaseUrl(backendUrl: string): string {
+  const parsed = new URL(backendUrl);
+  parsed.pathname = parsed.pathname.replace(/\/mcp\/?$/, '') || '/';
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed.toString().replace(/\/+$/, '');
+}
+
+async function postJson<TResponse>(url: string, body: unknown): Promise<TResponse> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+
+  return (await response.json()) as TResponse;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
