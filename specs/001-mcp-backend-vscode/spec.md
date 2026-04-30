@@ -15,6 +15,14 @@
 - Q: Should tool catalog resources live in their own file? -> A: yes, separate file.
 - Q: Should VS Code extension have a build/test task? -> A: yes, add task.
 
+### Session 2026-04-30
+
+- Q: Which auth contract should the VS Code MCP client use for the next slice? -> A: explicit backend browser-auth contract in `contracts/vscode-client.md`.
+- Q: Should full OAuth/DCR be implemented immediately? -> A: no, defer full OAuth/DCR; implement a polling browser-auth bridge now while keeping the route/state model compatible with future OAuth.
+- Q: How should the VS Code extension receive browser login completion? -> A: polling flow: extension starts an auth request, opens BrAIniac login URL, then polls/exchanges by `state`.
+- Q: How should documentation and smoke checks be represented? -> A: split documentation updates from automated smoke assertions.
+- Q: What is the old manual-token VS Code verification? -> A: dev-token fallback verification only, not the product path.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Inspect BrAIniac From An AI Client (Priority: P1)
@@ -138,6 +146,8 @@ states.
   content, or resources outside the user's access scope.
 - BrAIniac is unavailable, misconfigured, or returns partial data while the
   VS Code integration is connected.
+- A VS Code browser-auth request expires before login completes or is exchanged
+  with an invalid or reused `state`.
 - The workflow is used on narrow editor sidebars and common desktop layouts
   without hidden or overlapping primary controls.
 
@@ -177,6 +187,11 @@ states.
 - **FR-012**: The VS Code integration MUST provide setup, connection status,
   resource browsing, tool invocation entry points, result display, and clear
   error feedback.
+- **FR-012a**: The VS Code integration MUST use browser sign-in with polling
+  token exchange as the primary local product path and MUST store credentials
+  only in VS Code SecretStorage.
+- **FR-012b**: Manual access-token entry MUST remain available only as an
+  explicit developer fallback and MUST NOT be the default VS Code setup path.
 - **FR-013**: The VS Code integration MUST remain usable in normal editor
   layouts, including narrow sidebars, without clipped critical actions or
   overlapping controls.

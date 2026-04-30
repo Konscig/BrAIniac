@@ -13,11 +13,14 @@ built-in MCP client use BrAIniac resources/tools on behalf of the signed-in
 user. The backend remains the MCP server and source of truth; the extension is a
 client-side setup/auth adapter, not a duplicate MCP implementation.
 
-The desired first production shape is OAuth-compatible MCP authorization where
-VS Code can drive the auth flow directly. If the current local BrAIniac auth
-stack cannot support the full OAuth metadata/DCR shape immediately, implement a
-browser-login callback flow as a transitional bridge and keep manual token entry
-only as an explicit developer fallback.
+The desired long-term production shape is OAuth-compatible MCP authorization
+where VS Code can drive the auth flow directly. Full OAuth metadata, Dynamic
+Client Registration, refresh/revoke, and hosted SaaS hardening are explicitly
+deferred from this slice. The next implementation slice uses a polling
+browser-auth bridge: the extension starts an auth request, opens a BrAIniac
+login URL, then exchanges a validated short-lived `state` for the existing
+BrAIniac access token after browser login succeeds. Manual token entry remains
+only an explicit developer fallback.
 
 ## Technical Context
 
@@ -27,8 +30,9 @@ TypeScript and VS Code extension APIs matching the contributed engine version.
 **Primary Dependencies**: Existing Express/Prisma backend, official
 `@modelcontextprotocol/sdk`, VS Code `vscode.lm.registerMcpServerDefinitionProvider`
 API, VS Code `SecretStorage`, `vscode.env.openExternal`, and browser auth
-callback plumbing. Full production auth should align with VS Code MCP OAuth
-support. Manual access-token input remains a dev fallback only.
+polling/exchange plumbing. Full production auth should align with VS Code MCP
+OAuth support in a later slice. Manual access-token input remains a dev fallback
+only.
 **Storage**: Backend continues using PostgreSQL/Prisma and existing artifact
 filesystem state. Extension stores access/refresh credential material only in
 VS Code SecretStorage. No token should be stored in workspace files or normal
@@ -49,9 +53,9 @@ credential exists. Failed or expired credentials should produce an actionable
 re-auth prompt within 5 seconds.
 **Constraints**: Do not implement a second MCP server in the extension. Do not
 store tokens in `.vscode/mcp.json`, repository files, or plain settings. Do not
-duplicate backend auth/ownership rules. Prefer official VS Code/MCP OAuth
-behavior where feasible; transitional local callback flow must be documented as
-temporary and compatible with a future OAuth replacement.
+duplicate backend auth/ownership rules. Prefer route/state naming that can be
+replaced by official VS Code/MCP OAuth behavior later; the local polling bridge
+must be documented as temporary and compatible with a future OAuth replacement.
 **Scale/Scope**: One authenticated BrAIniac account per VS Code profile for the
 local/dev product slice. Multi-account account switching, hosted SaaS OAuth
 hardening, and marketplace packaging are follow-up slices.
@@ -75,7 +79,7 @@ hardening, and marketplace packaging are follow-up slices.
 - **Simplicity**: Keep backend as MCP server and extension as auth/setup
   adapter. Avoid custom sidebars/webviews until VS Code built-in MCP surfaces
   prove insufficient.
-- **Tests**: Required checks include backend auth callback contract tests,
+- **Tests**: Required checks include backend auth polling bridge contract tests,
   extension smoke tests for provider/sign-in/sign-out paths, MCP auth/ownership
   tests, and a manual VS Code flow covering browser login, resource browsing,
   tool invocation, expired token, and backend unavailable states.
@@ -117,7 +121,7 @@ backend/
 |   |   `-- resources/
 |   |       `-- auth/
 |   |           |-- auth.routes.ts
-|   |           `-- vscode-auth.routes.ts       # planned callback/device/browser auth bridge
+|   |           `-- vscode-auth.routes.ts       # planned polling browser auth bridge
 |   `-- services/
 |       |-- application/
 |       |   `-- auth/
@@ -125,7 +129,7 @@ backend/
 |           `-- jwt.service.ts
 `-- scripts/
     |-- mcp-auth-ownership-test.mjs
-    `-- vscode-mcp-auth-flow-test.mjs          # planned backend auth bridge contract test
+    `-- vscode-mcp-auth-flow-test.mjs          # planned polling auth bridge contract test
 
 vscode-extension/
 |-- package.json
@@ -139,9 +143,9 @@ vscode-extension/
 ```
 
 **Structure Decision**: Keep the MCP server in `backend/src/mcp/`. Add only the
-minimum backend auth bridge needed for browser sign-in, and split extension auth
-from provider registration so token storage/re-auth behavior can be tested
-without changing MCP tool/resource implementations.
+minimum backend auth bridge needed for polling browser sign-in, and split
+extension auth from provider registration so token storage/re-auth behavior can
+be tested without changing MCP tool/resource implementations.
 
 ## Complexity Tracking
 

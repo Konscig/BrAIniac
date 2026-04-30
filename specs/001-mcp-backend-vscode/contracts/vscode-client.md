@@ -38,23 +38,118 @@ User installs BrAIniac VS Code extension
   -> user starts/connects BrAIniac MCP
   -> VS Code/MCP auth opens BrAIniac authorization in external browser
   -> user logs in with normal BrAIniac credentials
-  -> backend returns authorization result to VS Code/extension callback
+  -> extension polls/exchanges the auth state with the backend
   -> token is stored in VS Code SecretStorage
   -> MCP HTTP requests include Authorization: Bearer <token>
 ```
 
-Implementation may use a transitional local browser callback flow before full
-OAuth metadata/DCR support:
+Implementation uses a transitional local browser polling flow before full OAuth
+metadata/DCR support:
 
 - extension command `BrAIniac: Sign in` starts a short-lived auth request;
 - extension opens the BrAIniac web login in the external browser;
-- backend redirects to a localhost or VS Code URI callback with a validated
-  state and credential result;
+- backend records successful browser login against the validated `state`;
+- extension polls/exchanges by `state` until it receives a credential result or
+  timeout;
 - extension stores credentials in SecretStorage;
 - extension refreshes MCP server definitions.
 
 Manual access-token prompt remains available only as `BrAIniac: Use Dev Token`
 or equivalent dev fallback.
+
+## Browser Auth Bridge Contract
+
+Full OAuth metadata, Dynamic Client Registration, refresh/revoke, and hosted
+SaaS OAuth hardening are deferred. The local bridge MUST keep state/route
+semantics narrow enough to replace with OAuth later.
+
+### `POST /auth/vscode/start`
+
+Purpose: create a short-lived VS Code browser-auth request.
+
+Input:
+
+```json
+{
+  "callback": "polling",
+  "mcpBaseUrl": "http://localhost:8080/mcp"
+}
+```
+
+Output:
+
+```json
+{
+  "state": "random-single-use-state",
+  "loginUrl": "http://localhost:3000/login?vscode_state=random-single-use-state",
+  "expiresAt": "2026-04-30T12:00:00.000Z",
+  "pollIntervalMs": 1000
+}
+```
+
+Rules:
+
+- `state` is random, unguessable, single-use, and expires quickly.
+- `loginUrl` opens the normal BrAIniac browser login flow.
+- No access token is returned from this endpoint.
+
+### Browser Login Completion
+
+After normal BrAIniac login succeeds with a valid `vscode_state`, the backend
+marks that state as authorized for the authenticated user. This completion path
+may be implemented through the existing frontend login redirect or a backend
+route, but it MUST reuse existing BrAIniac auth services and MUST NOT issue a
+token by directly signing JWTs in the bridge.
+
+### `POST /auth/vscode/exchange`
+
+Purpose: exchange an authorized polling `state` for the existing BrAIniac access
+token.
+
+Input:
+
+```json
+{
+  "state": "random-single-use-state"
+}
+```
+
+Pending output:
+
+```json
+{
+  "status": "pending",
+  "expiresAt": "2026-04-30T12:00:00.000Z"
+}
+```
+
+Authorized output:
+
+```json
+{
+  "status": "authorized",
+  "accessToken": "...",
+  "tokenType": "Bearer",
+  "expiresAt": "2026-04-30T13:00:00.000Z"
+}
+```
+
+Error output:
+
+```json
+{
+  "ok": false,
+  "code": "INVALID_STATE",
+  "message": "invalid or expired VS Code auth state"
+}
+```
+
+Rules:
+
+- Authorized exchange consumes the state; replay returns an explicit error.
+- Pending exchange never returns a token.
+- Invalid, expired, reused, or failed states return distinguishable errors.
+- Tokens returned here are stored only in VS Code SecretStorage.
 
 ## Extension Provider
 

@@ -84,9 +84,11 @@ The intended flow is:
 
 1. Install the BrAIniac VS Code extension.
 2. Run `BrAIniac: Sign in` or connect the `BrAIniac MCP` server.
-3. VS Code opens the BrAIniac login in the external browser.
-4. After successful login, the extension receives the auth callback and stores
-   the credential in VS Code SecretStorage.
+3. The extension calls `POST /auth/vscode/start`, opens the returned BrAIniac
+   `loginUrl` in the external browser, and polls `POST /auth/vscode/exchange`
+   with the returned `state`.
+4. After successful browser login, exchange returns an access token and the
+   extension stores the credential in VS Code SecretStorage.
 5. VS Code connects to `http://localhost:8080/mcp` with
    `Authorization: Bearer <stored token>`.
 6. Use VS Code's built-in MCP tools/resources UI to browse BrAIniac context and

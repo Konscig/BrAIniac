@@ -147,11 +147,11 @@ users to paste an access token into settings or `.vscode/mcp.json`. The target
 production shape is the official VS Code MCP authorization path: the MCP server
 advertises authorization metadata, VS Code drives OAuth 2.1/2.0 browser login,
 and the resulting token is attached to HTTP MCP requests. For the local/dev
-slice, BrAIniac may use a transitional browser callback flow: the extension
-opens BrAIniac login in the external browser, receives a short-lived callback
-code/token on a localhost callback or VS Code URI handler, stores credentials in
-VS Code SecretStorage, and returns an HTTP MCP server definition with an
-Authorization header.
+slice, BrAIniac uses a transitional browser polling bridge: the extension opens
+BrAIniac login in the external browser, polls/exchanges a short-lived `state`
+with the backend after browser login succeeds, stores credentials in VS Code
+SecretStorage, and returns an HTTP MCP server definition with an Authorization
+header.
 
 **Rationale**: Manual token handling is acceptable for smoke tests, but it is
 not a product-grade VS Code MCP client. Users expect the installed extension to

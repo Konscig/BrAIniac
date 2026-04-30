@@ -223,15 +223,17 @@ Transient backend/extension state used to complete browser login.
 Fields:
 
 - `state`: random CSRF/session correlation value.
-- `callback_uri`: localhost or VS Code URI callback target.
+- `mode`: `polling`.
+- `login_url`: BrAIniac browser login URL containing the `state`.
 - `created_at`
 - `expires_at`
-- `user_id`: set only after successful login.
+- `status`: `pending`, `authorized`, `failed`, `expired`, or `consumed`.
+- `user_id`: set only after successful browser login.
 
 Validation:
 
 - `state` must be unguessable and single-use.
-- Callback requests must expire quickly.
+- Polling auth requests must expire quickly.
 - The backend must issue credentials only after normal BrAIniac login succeeds.
-- The extension must reject callbacks whose state does not match the active
-  sign-in request.
+- The extension must exchange only the active sign-in request `state`.
+- Authorized exchange consumes the state and replay returns an explicit error.
