@@ -27,7 +27,6 @@ assert.equal(packageJson.contributes.mcpServerDefinitionProviders[0].label, 'BrA
 assert.match(mcpProviderSource, /registerMcpServerDefinitionProvider/);
 assert.match(mcpProviderSource, /http:\/\/localhost:8080\/mcp/);
 assert.match(mcpProviderSource, /Authorization/);
-assert.match(mcpProviderSource, /SecretStorage|secretStorage/);
 assert.doesNotMatch(mcpProviderSource, /getConfiguration\('brainiacMcp'\)\.get<string>\('accessToken'\)/);
 
 const commandIds = (packageJson.contributes.commands ?? []).map((command) => command.command);
@@ -46,7 +45,7 @@ assert.match(extensionSource, /registerCommand\(['"]brainiacMcp\.reconnect['"]/)
 assert.match(extensionSource, /registerCommand\(['"]brainiacMcp\.useDevToken['"]/);
 assert.doesNotMatch(extensionSource, /showInputBox\(\{[\s\S]*access token/i);
 
-assert.match(authSource, /secretStorage/);
+assert.match(authSource, /SecretStorage|secretStorage/);
 assert.match(authSource, /\/auth\/vscode\/start/);
 assert.match(authSource, /\/auth\/vscode\/exchange/);
 assert.match(authSource, /openExternal/);
