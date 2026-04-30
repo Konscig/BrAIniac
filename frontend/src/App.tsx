@@ -335,6 +335,7 @@ function MainPage(): React.ReactElement {
             onError={setDataError}
             onRunningChange={setIsGraphRunning}
             onExecutionComplete={() => setGraphRefreshToken((current) => current + 1)}
+            onAssessComplete={() => setGraphRefreshToken((current) => current + 1)}
           />
 
           {isLoading && <div className="shrink-0 text-sm text-muted-foreground">Загружаем каталог узлов...</div>}

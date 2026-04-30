@@ -582,7 +582,9 @@ export interface AssessmentItem {
 
 export interface AssessmentRequest {
   pipeline_id: number;
-  items: AssessmentItem[];
+  items?: AssessmentItem[];
+  dataset_id?: number;
+  sample?: { fraction?: number; size?: number; seed?: number };
   weight_profile?: string;
 }
 

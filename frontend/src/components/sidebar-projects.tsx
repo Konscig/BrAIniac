@@ -178,7 +178,7 @@ export function SidebarProjects({
                   <div
                     key={project.project_id}
                     className={cn(
-                      "overflow-hidden rounded-xl border transition",
+                      "min-w-0 overflow-hidden rounded-xl border transition",
                       isActiveProject
                         ? "border-primary/45 bg-primary/8 shadow-[inset_0_0_0_1px_rgba(39,135,245,0.12)]"
                         : "border-border/50 bg-card/30"
@@ -301,7 +301,7 @@ export function SidebarProjects({
                               <div
                                 key={pipeline.pipeline_id}
                                 className={cn(
-                                  "flex items-center gap-2 rounded-lg border px-2 py-1.5 transition",
+                                  "flex w-full min-w-0 items-center gap-2 rounded-lg border px-2 py-1.5 transition",
                                   pipeline.pipeline_id === activePipelineId
                                     ? "border-primary/50 bg-primary/12"
                                     : "border-border/40 bg-background/20"
@@ -344,7 +344,7 @@ export function SidebarProjects({
                                     className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left"
                                   >
                                     <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                    <span className="truncate text-sm font-medium text-foreground">
+                                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
                                       {pipeline.name}
                                     </span>
                                     {pipeline.score != null && (
