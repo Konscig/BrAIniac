@@ -26,7 +26,9 @@ Supported MVP configuration:
 ```
 
 Manual configuration is a developer fallback only. The product flow is the
-extension-driven sign-in path below.
+extension-driven sign-in path below. The extension contributes only
+`brainiacMcp.backendUrl` as a normal VS Code setting; access tokens MUST NOT be
+stored in `brainiacMcp.*` settings.
 
 ## Product Auth Flow
 
@@ -217,11 +219,17 @@ with:
 
 ## Extension Commands
 
-- `BrAIniac: Sign in`: opens browser auth and stores a session.
-- `BrAIniac: Sign out`: deletes stored credentials and refreshes server definitions.
-- `BrAIniac: Reconnect MCP`: refreshes MCP server definitions after backend URL
-  or auth state changes.
-- `BrAIniac: Use Dev Token`: optional fallback for local development only.
+- `brainiacMcp.signIn` / `BrAIniac: Sign in`: starts `POST
+  /auth/vscode/start`, opens `loginUrl`, polls `POST /auth/vscode/exchange`,
+  stores an authorized session in SecretStorage, and refreshes MCP server
+  definitions.
+- `brainiacMcp.signOut` / `BrAIniac: Sign out`: deletes stored credentials from
+  SecretStorage and refreshes MCP server definitions.
+- `brainiacMcp.reconnect` / `BrAIniac: Reconnect MCP`: refreshes MCP server
+  definitions after backend URL or auth state changes.
+- `brainiacMcp.useDevToken` / `BrAIniac: Use Dev Token`: optional fallback for
+  local development only. It stores the pasted token in SecretStorage and MUST
+  NOT write it to workspace files or VS Code settings.
 
 ## Required User Feedback
 
