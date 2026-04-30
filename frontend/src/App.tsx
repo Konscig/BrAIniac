@@ -26,6 +26,7 @@ import {
   type PipelineRecord,
   type ProjectRecord
 } from "./lib/api";
+import { shouldRenderAuthPage } from "./lib/vscode-auth";
 import { AuthPage } from "./pages/auth-page";
 import { useAuth } from "./providers/AuthProvider";
 
@@ -378,9 +379,8 @@ function RequireAuth({ children }: { children: React.ReactElement }): React.Reac
 function PublicOnly({ children }: { children: React.ReactElement }): React.ReactElement {
   const { isAuthenticated } = useAuth();
   const location = useLocation();
-  const hasVscodeState = new URLSearchParams(location.search).has("vscode_state");
 
-  if (isAuthenticated && !hasVscodeState) {
+  if (!shouldRenderAuthPage(isAuthenticated, location.search)) {
     return <Navigate to="/" replace />;
   }
 

@@ -1,8 +1,9 @@
-import { buildQuestionInput, isExecutionTerminal, type NodeRecord, type NodeTypeRecord, type ToolRecord } from "./lib/api";
+import { buildQuestionInput, completeVscodeAuth, isExecutionTerminal, type NodeRecord, type NodeTypeRecord, type ToolRecord } from "./lib/api";
 import { buildNodeConfigPatch } from "./lib/node-config";
 import { getNodeRoleVisual } from "./lib/node-roles";
 import { getVisibleNodeTypeCatalog, getVisibleToolCatalog, getNodeTypeUiLabel, getNodeTypeUiTagline } from "./lib/node-catalog";
 import { toReadableError } from "./lib/readable-errors";
+import { completeVscodeAuthState, readVscodeAuthState, shouldRenderAuthPage } from "./lib/vscode-auth";
 
 const makeNodeType = (type_id: number, name: string): NodeTypeRecord => ({
   type_id,
@@ -16,6 +17,56 @@ const makeTool = (tool_id: number, name: string, config_json: ToolRecord["config
   tool_id,
   name,
   config_json
+});
+
+const jsonResponse = (body: unknown, status = 200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  text: async () => JSON.stringify(body),
+  json: async () => body
+}) as Response;
+
+beforeEach(() => {
+  localStorage.clear();
+  jest.restoreAllMocks();
+});
+
+test("reads VS Code auth state from the frontend auth URL", () => {
+  expect(readVscodeAuthState("?vscode_state=vscode-state-123")).toBe("vscode-state-123");
+  expect(readVscodeAuthState("?other=value")).toBeNull();
+  expect(shouldRenderAuthPage(false, "")).toBe(true);
+  expect(shouldRenderAuthPage(true, "")).toBe(false);
+  expect(shouldRenderAuthPage(true, "?vscode_state=vscode-state-123")).toBe(true);
+});
+
+test("completes VS Code auth with the issued BrAIniac access token", async () => {
+  const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue(
+    jsonResponse({ status: "authorized", expiresAt: "2026-04-30T12:00:00.000Z" })
+  );
+
+  await completeVscodeAuth("vscode-state-123", "browser-token");
+
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(new URL(String(fetchMock.mock.calls[0][0])).pathname).toBe("/auth/vscode/complete");
+  expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
+    Authorization: "Bearer browser-token"
+  });
+  expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ state: "vscode-state-123" }));
+});
+
+test("allows web login to continue when VS Code completion fails", async () => {
+  const onError = jest.fn();
+  const completed = await completeVscodeAuthState(
+    "vscode-state-456",
+    "browser-token",
+    async () => {
+      throw new Error("completion failed");
+    },
+    onError
+  );
+
+  expect(completed).toBe(false);
+  expect(onError).toHaveBeenCalledTimes(1);
 });
 
 test("builds canonical question input for pipeline execution", () => {

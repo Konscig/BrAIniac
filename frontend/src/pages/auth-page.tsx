@@ -5,6 +5,7 @@ import { ModeToggle } from "../components/mode-toggle";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { completeVscodeAuth, postJson, type ApiError } from "../lib/api";
+import { completeVscodeAuthState, readVscodeAuthState } from "../lib/vscode-auth";
 import { useAuth, normalizeAuthTokens } from "../providers/AuthProvider";
 
 type AuthMode = "login" | "register";
@@ -78,8 +79,7 @@ export function AuthPage(): React.ReactElement {
     return state?.from?.pathname || "/";
   }, [location.state]);
   const vscodeState = React.useMemo(() => {
-    const value = new URLSearchParams(location.search).get("vscode_state");
-    return value && value.trim().length > 0 ? value.trim() : null;
+    return readVscodeAuthState(location.search);
   }, [location.search]);
 
   const completeVscodeAuthIfNeeded = React.useCallback(async (nextAccessToken: string) => {
@@ -88,11 +88,16 @@ export function AuthPage(): React.ReactElement {
     }
 
     completedVscodeStateRef.current = vscodeState;
-    try {
-      await completeVscodeAuth(vscodeState, nextAccessToken);
-    } catch (completionError) {
+    const completed = await completeVscodeAuthState(
+      vscodeState,
+      nextAccessToken,
+      completeVscodeAuth,
+      (completionError) => {
+        console.warn("Failed to complete VS Code auth request", completionError);
+      }
+    );
+    if (!completed) {
       completedVscodeStateRef.current = null;
-      console.warn("Failed to complete VS Code auth request", completionError);
     }
   }, [vscodeState]);
 
