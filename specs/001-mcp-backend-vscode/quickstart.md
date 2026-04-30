@@ -66,16 +66,21 @@
 
 ## VS Code Check
 
-1. Add a temporary `.vscode/mcp.json` pointing to the backend MCP endpoint, or
-   install the later BrAIniac VS Code extension.
-2. Open VS Code MCP resource browsing.
-3. Confirm BrAIniac resources are listed with readable names.
-4. Invoke a read-only tool.
-5. Invoke `validate_pipeline` for a seeded pipeline.
-6. Invoke project, pipeline, and node export tools and confirm each export
+1. Install or run the BrAIniac VS Code extension.
+2. Run `BrAIniac: Sign in`.
+3. Confirm the extension opens the BrAIniac `/auth?vscode_state=...` browser
+   URL.
+4. Complete normal BrAIniac login in the browser.
+5. Confirm VS Code reports a signed-in or connected state without asking for a
+   pasted token.
+6. Open VS Code MCP resource browsing.
+7. Confirm BrAIniac resources are listed with readable names.
+8. Invoke a read-only tool.
+9. Invoke `validate_pipeline` for a seeded pipeline.
+10. Invoke project, pipeline, and node export tools and confirm each export
    resource opens with a redaction report.
-7. Confirm read-only tools do not request unnecessary confirmation.
-8. Confirm permission/backend errors are visible in VS Code output/status.
+11. Confirm read-only tools do not request unnecessary confirmation.
+12. Confirm permission/backend errors are visible in VS Code output/status.
 
 ## Target VS Code Client Flow
 
@@ -101,12 +106,37 @@ The intended flow is:
 Manual `.vscode/mcp.json` token configuration remains useful for local
 debugging, but it is not the target user experience.
 
+## Dev-Token Fallback
+
+Manual token entry is available only for local debugging and smoke isolation.
+Use it when browser sign-in is unavailable or when validating the backend MCP
+endpoint without the product auth bridge.
+
+1. Obtain an access token from the normal BrAIniac auth route:
+
+   ```bash
+   curl -s http://localhost:8080/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"email":"<email>","password":"<password>"}'
+   ```
+
+2. In VS Code, run `BrAIniac: Use Dev Token`.
+3. Paste the token only into the extension prompt. Do not put it in
+   `.vscode/mcp.json`, workspace files, or `brainiacMcp.*` settings.
+4. Run `BrAIniac: Reconnect MCP` and verify the MCP server uses the stored
+   SecretStorage session.
+5. Run `BrAIniac: Sign out` and confirm subsequent MCP access requires either
+   browser sign-in or another explicit dev-token fallback.
+
 ### Manual Smoke Checklist
 
-- [ ] `.vscode/mcp.json` can connect to `http://localhost:8080/mcp` with
-  `Authorization: Bearer <token>`.
-- [ ] The BrAIniac VS Code extension provider `brainiacMcp` offers the same
-  backend URL and token flow through prompts/settings.
+- [ ] `BrAIniac: Sign in` opens `/auth?vscode_state=...` in the external browser.
+- [ ] Browser login completes `POST /auth/vscode/complete`; VS Code polling
+  receives an authorized exchange result.
+- [ ] The extension stores the returned credential in VS Code SecretStorage,
+  not in `.vscode/mcp.json`, workspace files, or VS Code settings.
+- [ ] The BrAIniac VS Code extension provider `brainiacMcp` offers
+  `http://localhost:8080/mcp` using the stored session.
 - [ ] Resource browsing shows projects, pipelines, graph, validation, nodes,
   tools, agents, and export resources for the authenticated user only.
 - [ ] `list_projects` runs as a read-only tool without unnecessary confirmation.
@@ -121,6 +151,9 @@ debugging, but it is not the target user experience.
   within 5 seconds.
 - [ ] The VS Code command/status flow remains usable in a narrow editor layout
   without hidden primary actions.
+- [ ] `BrAIniac: Sign out` deletes the session and requires re-authentication.
+- [ ] `BrAIniac: Use Dev Token` remains available as an explicit developer
+  fallback and is not presented as the default setup path.
 
 ### Validation Notes
 
