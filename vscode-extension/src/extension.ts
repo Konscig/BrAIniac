@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { createBrainiacAuthManager } from './auth.js';
-import { readConfiguredBackendUrl, registerBrainiacMcpProvider } from './mcpProvider.js';
+import {
+  readConfiguredBackendUrl,
+  refreshBrainiacMcpDefinitions,
+  registerBrainiacMcpProvider,
+} from './mcpProvider.js';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -14,9 +18,19 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('brainiacMcp.signIn', async () => {
       try {
         await authManager.signInWithBrowser(readConfiguredBackendUrl());
+        refreshBrainiacMcpDefinitions();
       } catch (error) {
         vscode.window.showErrorMessage(`BrAIniac sign-in failed: ${getErrorMessage(error)}`);
       }
+    }),
+    vscode.commands.registerCommand('brainiacMcp.signOut', async () => {
+      await authManager.deleteSession();
+      refreshBrainiacMcpDefinitions();
+      vscode.window.showInformationMessage('BrAIniac MCP signed out.');
+    }),
+    vscode.commands.registerCommand('brainiacMcp.reconnect', async () => {
+      refreshBrainiacMcpDefinitions();
+      vscode.window.showInformationMessage('BrAIniac MCP reconnect requested.');
     }),
   );
 }

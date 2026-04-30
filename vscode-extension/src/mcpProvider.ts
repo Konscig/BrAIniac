@@ -14,6 +14,8 @@ export type BrainiacAuthSessionStore = {
   readSession(): Promise<BrainiacAuthSession | null>;
 };
 
+const providerChangeEmitter = new vscode.EventEmitter<void>();
+
 function normalizeBackendUrl(value: unknown): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
     return DEFAULT_BACKEND_URL;
@@ -49,6 +51,7 @@ export function createHttpServerDefinition(backendUrl: string, token: string) {
 
 export function createBrainiacMcpProvider(sessionStore: BrainiacAuthSessionStore) {
   return {
+    onDidChangeMcpServerDefinitions: providerChangeEmitter.event,
     async provideMcpServerDefinitions() {
       const configuredBackendUrl = readConfiguredBackendUrl();
       const session = await sessionStore.readSession();
@@ -74,6 +77,10 @@ export function createBrainiacMcpProvider(sessionStore: BrainiacAuthSessionStore
       return definition;
     },
   };
+}
+
+export function refreshBrainiacMcpDefinitions(): void {
+  providerChangeEmitter.fire();
 }
 
 export function registerBrainiacMcpProvider(
