@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, ClipboardCheck, Loader2, Play, Trash2, Upload, X } from "lucide-react";
 
 import {
@@ -32,6 +33,7 @@ interface RunPanelProps {
   onError?: (message: string | null) => void;
   onRunningChange?: (isRunning: boolean) => void;
   onExecutionComplete?: () => void;
+  onAssessComplete?: () => void;
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -90,6 +92,27 @@ function readAgentDebug(nodes: NodeRecord[], nodeTypes: NodeTypeRecord[]): Array
     .filter((entry): entry is { id: number; data: Record<string, unknown> } => Boolean(entry.data));
 }
 
+function readNodeTrace(
+  nodes: NodeRecord[],
+  nodeTypes: NodeTypeRecord[]
+): Array<{ id: number; type: string; label: string; data: Record<string, unknown> }> {
+  const typeById = new Map(nodeTypes.map((nodeType) => [nodeType.type_id, normalizeNodeTypeName(nodeType.name)]));
+  return nodes
+    .map((node) => {
+      const data = readOutputData(node);
+      if (!data) return null;
+      const ui = node.ui_json && typeof node.ui_json === "object" ? (node.ui_json as Record<string, unknown>) : {};
+      const label = typeof ui.label === "string" ? ui.label : "";
+      return {
+        id: node.node_id,
+        type: typeById.get(node.fk_type_id) ?? "?",
+        label,
+        data
+      };
+    })
+    .filter((entry): entry is { id: number; type: string; label: string; data: Record<string, unknown> } => Boolean(entry));
+}
+
 function summarizeJson(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value;
@@ -108,7 +131,8 @@ export function RunPanel({
   nodeTypes,
   onError,
   onRunningChange,
-  onExecutionComplete
+  onExecutionComplete,
+  onAssessComplete
 }: RunPanelProps): React.ReactElement {
   const [datasets, setDatasets] = React.useState<DatasetRecord[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = React.useState<number | "">("");
@@ -123,13 +147,49 @@ export function RunPanel({
   const [isAssessOpen, setIsAssessOpen] = React.useState(false);
   const [assessProfile, setAssessProfile] = React.useState<string>("rag");
   const [assessReference, setAssessReference] = React.useState<string>("");
+  const [assessMode, setAssessMode] = React.useState<"single" | "batch">("single");
+  const [assessSampleFraction, setAssessSampleFraction] = React.useState<string>("0.2");
+  const [assessSampleSize, setAssessSampleSize] = React.useState<string>("");
+  const [assessSeed, setAssessSeed] = React.useState<string>("42");
   const [isAssessing, setIsAssessing] = React.useState(false);
   const [assessReport, setAssessReport] = React.useState<AssessmentReport | null>(null);
+
+  const assessReportStorageKey = React.useMemo(
+    () => (pipelineId ? `brainiac:assess-report:${pipelineId}` : null),
+    [pipelineId]
+  );
+
+  React.useEffect(() => {
+    if (!assessReportStorageKey) {
+      setAssessReport(null);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(assessReportStorageKey);
+      setAssessReport(raw ? (JSON.parse(raw) as AssessmentReport) : null);
+    } catch {
+      setAssessReport(null);
+    }
+  }, [assessReportStorageKey]);
+
+  React.useEffect(() => {
+    if (!assessReportStorageKey) return;
+    try {
+      if (assessReport) {
+        localStorage.setItem(assessReportStorageKey, JSON.stringify(assessReport));
+      } else {
+        localStorage.removeItem(assessReportStorageKey);
+      }
+    } catch {
+      // localStorage может упасть на quota — игнорируем, в памяти всё равно есть.
+    }
+  }, [assessReportStorageKey, assessReport]);
   const [assessError, setAssessError] = React.useState<ReadableError | null>(null);
   const [expandedNodeIds, setExpandedNodeIds] = React.useState<Record<number, boolean>>({});
 
   const question = React.useMemo(() => readManualQuestion(nodes, nodeTypes), [nodes, nodeTypes]);
   const agentDebug = React.useMemo(() => readAgentDebug(nodes, nodeTypes), [nodes, nodeTypes]);
+  const nodeTrace = React.useMemo(() => readNodeTrace(nodes, nodeTypes), [nodes, nodeTypes]);
 
   React.useEffect(() => {
     onRunningChange?.(isRunning);
@@ -267,26 +327,57 @@ export function RunPanel({
   }, [onError, onExecutionComplete, pipelineId, question, selectedDatasetId]);
 
   const diagnostics = formatDiagnostics(validation);
-  const hasDetails = Boolean(execution || agentDebug.length > 0 || diagnostics.length > 0 || localError);
+  const hasDetails = Boolean(execution || agentDebug.length > 0 || nodeTrace.length > 0 || diagnostics.length > 0 || localError);
   const elapsedSeconds = isRunning && startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
   const runStatus = isRunning ? `Выполняется ${elapsedSeconds}с` : execution ? `Статус: ${execution.status}` : "Готов к запуску";
 
   const handleAssess = React.useCallback(async () => {
     if (!pipelineId) return;
-    const currentQuestion = question.trim();
-    if (!currentQuestion) {
-      setAssessError(toReadableError("ManualInput question is empty", "Введите вопрос в узле ManualInput."));
-      return;
-    }
-    if (!execution || !isExecutionTerminal(execution.status) || execution.status !== "succeeded") {
-      setAssessError(toReadableError("no successful execution", "Сначала запустите пайплайн (нужен успешный прогон для agent_output)."));
-      return;
-    }
 
     setIsAssessing(true);
     setAssessError(null);
     setAssessReport(null);
     try {
+      if (assessMode === "batch") {
+        if (!selectedDatasetId) {
+          setAssessError(toReadableError("dataset required", "Выберите golden dataset в верхней панели."));
+          return;
+        }
+        const sample: Record<string, number> = {};
+        const sizeRaw = assessSampleSize.trim();
+        const fractionRaw = assessSampleFraction.trim();
+        const seedRaw = assessSeed.trim();
+        if (sizeRaw) {
+          const n = Number.parseInt(sizeRaw, 10);
+          if (Number.isInteger(n) && n > 0) sample.size = n;
+        } else if (fractionRaw) {
+          const f = Number.parseFloat(fractionRaw);
+          if (Number.isFinite(f) && f > 0) sample.fraction = f;
+        }
+        if (seedRaw) {
+          const s = Number.parseInt(seedRaw, 10);
+          if (Number.isInteger(s)) sample.seed = s;
+        }
+        const report = await runAssessment({
+          pipeline_id: pipelineId,
+          weight_profile: assessProfile,
+          dataset_id: Number(selectedDatasetId),
+          ...(Object.keys(sample).length > 0 ? { sample } : {})
+        });
+        setAssessReport(report);
+        onAssessComplete?.();
+        return;
+      }
+
+      const currentQuestion = question.trim();
+      if (!currentQuestion) {
+        setAssessError(toReadableError("ManualInput question is empty", "Введите вопрос в узле ManualInput."));
+        return;
+      }
+      if (!execution || !isExecutionTerminal(execution.status) || execution.status !== "succeeded") {
+        setAssessError(toReadableError("no successful execution", "Сначала запустите пайплайн (нужен успешный прогон для agent_output)."));
+        return;
+      }
       const agentOutputText = execution.final_result?.text || execution.final_result?.output_preview || "";
       const reference = assessReference.trim();
       const report = await runAssessment({
@@ -302,13 +393,14 @@ export function RunPanel({
         ]
       });
       setAssessReport(report);
+      onAssessComplete?.();
     } catch (error) {
       console.error("Failed to run assessment", error);
       setAssessError(toReadableError(error, "Не удалось запустить оценку."));
     } finally {
       setIsAssessing(false);
     }
-  }, [assessProfile, assessReference, execution, pipelineId, question]);
+  }, [assessMode, assessProfile, assessReference, assessSampleFraction, assessSampleSize, assessSeed, execution, onAssessComplete, pipelineId, question, selectedDatasetId]);
 
   const verdictBadgeClass: Record<AssessmentReport["verdict"], string> = {
     pass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40",
@@ -416,8 +508,8 @@ export function RunPanel({
         </div>
       </div>
 
-      {isAssessOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
+      {isAssessOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
           <div className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-3 overflow-hidden rounded-xl border border-border/60 bg-card p-4 shadow-xl">
             <div className="flex items-center justify-between">
               <div>
@@ -436,6 +528,25 @@ export function RunPanel({
               </button>
             </div>
 
+            <div className="flex gap-1 rounded-md border border-border/60 bg-muted/10 p-1 text-[11px]">
+              <button
+                type="button"
+                onClick={() => setAssessMode("single")}
+                disabled={isAssessing}
+                className={`flex-1 rounded px-2 py-1 transition ${assessMode === "single" ? "bg-primary/20 text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Один прогон
+              </button>
+              <button
+                type="button"
+                onClick={() => setAssessMode("batch")}
+                disabled={isAssessing}
+                className={`flex-1 rounded px-2 py-1 transition ${assessMode === "batch" ? "bg-primary/20 text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Batch по golden dataset
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2">
               <div>
                 <div className="font-medium text-foreground">Профиль весов</div>
@@ -451,14 +562,70 @@ export function RunPanel({
                   <option value="default">default</option>
                 </select>
               </div>
-              <div>
-                <div className="font-medium text-foreground">Вопрос (из ManualInput)</div>
-                <div className="mt-1 line-clamp-2 rounded-md border border-border/40 bg-muted/10 px-2 py-1.5 text-muted-foreground">
-                  {question || "Не задан"}
+              {assessMode === "single" ? (
+                <div>
+                  <div className="font-medium text-foreground">Вопрос (из ManualInput)</div>
+                  <div className="mt-1 line-clamp-2 rounded-md border border-border/40 bg-muted/10 px-2 py-1.5 text-muted-foreground">
+                    {question || "Не задан"}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <div className="font-medium text-foreground">Golden dataset</div>
+                  <div className="mt-1 line-clamp-2 rounded-md border border-border/40 bg-muted/10 px-2 py-1.5 text-muted-foreground">
+                    {selectedDatasetId
+                      ? datasets.find((d) => d.dataset_id === selectedDatasetId)?.uri ?? `dataset_id=${selectedDatasetId}`
+                      : "Не выбран — укажи в верхней панели"}
+                  </div>
+                </div>
+              )}
             </div>
 
+            {assessMode === "batch" && (
+              <div className="grid grid-cols-3 gap-2 text-[11px]">
+                <div>
+                  <div className="font-medium text-foreground">Fraction (0..1)</div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={assessSampleFraction}
+                    onChange={(event) => setAssessSampleFraction(event.target.value)}
+                    disabled={isAssessing || assessSampleSize.trim() !== ""}
+                    placeholder="0.2"
+                    className="mt-1 h-8 w-full rounded-md border border-border/60 bg-background/85 px-2 text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <div className="font-medium text-foreground">Size (override)</div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={assessSampleSize}
+                    onChange={(event) => setAssessSampleSize(event.target.value)}
+                    disabled={isAssessing}
+                    placeholder="—"
+                    className="mt-1 h-8 w-full rounded-md border border-border/60 bg-background/85 px-2 text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div>
+                  <div className="font-medium text-foreground">Seed</div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={assessSeed}
+                    onChange={(event) => setAssessSeed(event.target.value)}
+                    disabled={isAssessing}
+                    placeholder="42"
+                    className="mt-1 h-8 w-full rounded-md border border-border/60 bg-background/85 px-2 text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="col-span-3 text-muted-foreground">
+                  Backend сэмплирует детерминированно (mulberry32, seed → shuffle → первые N). Size перекрывает fraction.
+                </div>
+              </div>
+            )}
+
+            {assessMode === "single" && (
             <div className="text-[11px]">
               <div className="font-medium text-foreground">Эталонный ответ (необязательно)</div>
               <textarea
@@ -473,13 +640,16 @@ export function RunPanel({
                 Без эталона будут посчитаны только reference-free метрики (axis B/D/F/H).
               </div>
             </div>
+            )}
 
+            {assessMode === "single" && (
             <div className="text-[11px]">
               <div className="font-medium text-foreground">Ответ агента (из последнего прогона)</div>
               <div className="mt-1 line-clamp-3 rounded-md border border-border/40 bg-muted/10 px-2 py-1.5 text-muted-foreground">
                 {execution?.final_result?.text || execution?.final_result?.output_preview || "Запустите пайплайн перед оценкой."}
               </div>
             </div>
+            )}
 
             {assessError && (
               <div className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-200">
@@ -602,7 +772,8 @@ export function RunPanel({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {isDrawerOpen && (
@@ -653,6 +824,28 @@ export function RunPanel({
                 </div>
               )}
             </section>
+
+            {nodeTrace.length > 0 && (
+              <section className="min-w-0">
+                <div className="font-medium text-foreground">Трейс по узлам ({nodeTrace.length})</div>
+                <div className="mt-1 space-y-1.5">
+                  {nodeTrace.map((entry) => {
+                    const preview = summarizeJson(entry.data).slice(0, 280);
+                    const title = entry.label ? `${entry.label} · ${entry.type}` : entry.type;
+                    return (
+                      <details key={entry.id} className="rounded-md border border-border/40 bg-muted/10 px-2 py-1">
+                        <summary className="cursor-pointer text-foreground">
+                          #{entry.id} {title}
+                        </summary>
+                        <div className="mt-1 break-words text-[11px] text-muted-foreground">
+                          {preview}{preview.length >= 280 ? "…" : ""}
+                        </div>
+                      </details>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             <section className="min-w-0">
               <div className="font-medium text-foreground">Agent debug</div>

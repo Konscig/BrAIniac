@@ -58,9 +58,9 @@ export const METRIC_BY_CODE = new Map(METRICS.map(m => [m.code, m]));
 /** Узел → метрики из каталога SDD-12 */
 export const NODE_TYPE_METRICS: Record<string, string[]> = {
   llmcall:         ['f_EM', 'f_F1', 'f_sim', 'f_judge_ref'],
-  llmanswer:       ['f_faith', 'f_corr', 'f_sim', 'f_cite', 'f_fact'],
+  llmanswer:       ['f_EM', 'f_F1', 'f_faith', 'f_corr', 'f_sim', 'f_cite', 'f_fact'],
   promptbuilder:   ['f_schema', 'f_TED'],
-  agentcall:       ['f_toolsel', 'f_argF1', 'f_trajIoU', 'f_planEff', 'f_node_cov', 'f_judge_ref', 'f_consist', 'f_loop_budget'],
+  agentcall:       ['f_EM', 'f_F1', 'f_toolsel', 'f_argF1', 'f_trajIoU', 'f_planEff', 'f_node_cov', 'f_judge_ref', 'f_consist', 'f_loop_budget'],
   toolnode:        ['f_tool_ok', 'f_argF1', 'f_schema'],
   hybridretriever: ['f_recall@k', 'f_ndcg@k', 'f_ctx_prec', 'f_ctx_rec'],
   reranker:        ['f_ndcg@k', 'f_ctx_prec'],
@@ -81,10 +81,22 @@ export const NODE_TYPE_METRICS: Record<string, string[]> = {
 /** AHP-профили весов. Σwⱼ = 1 */
 export const WEIGHT_PROFILES: Record<string, Record<string, number>> = {
   rag: {
-    f_EM: 0.05, f_F1: 0.05, f_sim: 0.10, f_corr: 0.10,
-    f_faith: 0.15, f_fact: 0.10, f_cite: 0.05, f_contra: 0.05,
-    'f_recall@k': 0.10, 'f_ndcg@k': 0.10, f_ctx_prec: 0.075, f_ctx_rec: 0.075,
-    f_safe: 0.05,
+    // Axis A — Correctness (0.20)
+    f_EM: 0.04, f_F1: 0.04, f_sim: 0.06, f_corr: 0.06,
+    // Axis B — Grounding (0.25)
+    f_faith: 0.10, f_fact: 0.07, f_cite: 0.04, f_contra: 0.04,
+    // Axis C — Retrieval (0.25)
+    'f_recall@k': 0.075, 'f_ndcg@k': 0.075, f_ctx_prec: 0.05, f_ctx_rec: 0.05,
+    // Axis D — Tool-Use & Planning (0.15)
+    f_tool_ok: 0.03, f_argF1: 0.03, f_toolsel: 0.03, f_trajIoU: 0.03, f_planEff: 0.03,
+    // Axis E — Output Structure (0.02)
+    f_schema: 0.02,
+    // Axis F — Loop Discipline (0.03)
+    f_loop_budget: 0.03,
+    // Axis G — Self-Check (0.05)
+    f_check: 0.05,
+    // Axis H — Safety & Consistency (0.05)
+    f_safe: 0.025, f_consist: 0.025,
   },
   tool_use: {
     f_toolsel: 0.20, f_argF1: 0.20, f_tool_ok: 0.15, f_trajIoU: 0.15,

@@ -33,6 +33,27 @@
 | GRAPH_ROLE_COMPATIBILITY | warning | пара ролей выходит за рекомендуемые матрицы |
 | GRAPH_EXECUTION_BUDGET_MISSING | warning | не заданы бюджеты выполнения pipeline |
 
+## Коды Ошибок RAG Dataset Tool
+
+Введены feature 002-rag-dataset-tool. Все сообщения возвращаются на русском (FR-015 спеки).
+
+| code | http | type | when |
+|---|---:|---|---|
+| RAG_DATASET_FILE_LIST_EMPTY | 400 | hard | в `Node.ui_json` узла RAGDataset нет ни одного URI |
+| RAG_DATASET_FILE_LIST_TOO_LONG | 400 | hard | превышен лимит количества файлов на узел (64) |
+| RAG_DATASET_URI_INVALID | 400 | hard | URI не начинается с `workspace://backend/.artifacts/rag-corpus/` или path traversal |
+| RAG_DATASET_FORMAT_INVALID | 400 | hard | расширение файла не входит в `{.txt, .sql, .csv}` |
+| RAG_DATASET_FILE_DUPLICATE | 400 | hard | дубликат URI в списке файлов одного узла |
+| RAG_DATASET_FILE_NOT_FOUND | 400 | hard (runtime) | файл по URI отсутствует на диске на момент исполнения |
+| RAG_DATASET_SIZE_EXCEEDED | 400 / 413 | hard | размер файла превышает 1 МБ (1 048 576 байт); 413 при загрузке, 400 при чтении |
+| RAG_DATASET_ENCODING_INVALID | 400 | hard | файл не декодируется как UTF-8 |
+| RAG_DATASET_FILE_READ_ERROR | 400 | hard | прочие проблемы чтения (IO, права доступа) |
+| RAG_CORPUS_FILENAME_INVALID | 400 | hard | filename содержит запрещённые символы (`/`, `\`, `..`, `\0`, etc.) |
+| RAG_CORPUS_CONTENT_INVALID | 400 | hard | content_base64 невалиден / не декодируется |
+| INVALID_KIND | 400 | hard | неизвестное значение поля `kind` в `POST /datasets/upload` |
+
+Семантика кодов и контракт ответа описаны в [specs/002-rag-dataset-tool/contracts/](../../specs/002-rag-dataset-tool/contracts/).
+
 ## Политика Стабильности
 - Коды являются стабильной частью API-контракта.
 - Текст сообщения может меняться, семантика кода меняться не должна.

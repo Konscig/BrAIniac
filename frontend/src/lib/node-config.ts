@@ -84,7 +84,9 @@ export const NODE_CONFIG_DEFINITIONS: Record<string, NodeConfigDefinition> = {
 };
 
 export function isConfigurableNodeType(nodeTypeName: string): boolean {
-  return Boolean(NODE_CONFIG_DEFINITIONS[normalizeNodeTypeName(nodeTypeName)]);
+  const normalized = normalizeNodeTypeName(nodeTypeName);
+  if (normalized === "RAGDataset") return true;
+  return Boolean(NODE_CONFIG_DEFINITIONS[normalized]);
 }
 
 export function parseNodeConfigFieldValue(field: NodeConfigField, rawValue: string): unknown {

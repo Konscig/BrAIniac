@@ -119,3 +119,9 @@ backend/.artifacts/
 backend/.artifacts/executions/**/execution-snapshot.json
 
 *.docx
+
+# -----------------------
+# Local research & one-off scripts
+# -----------------------
+scripts/
+docs/research/

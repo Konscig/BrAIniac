@@ -4,6 +4,7 @@ export type ToolExecutorKind = 'http-json' | 'openrouter-embeddings';
 
 export type ToolContractName =
   | 'DocumentLoader'
+  | 'RAGDataset'
   | 'QueryBuilder'
   | 'Chunker'
   | 'Embedder'

@@ -1,7 +1,12 @@
 import prisma from '../../../db.js';
+import { HttpError } from '../../../common/http-error.js';
 import { METRIC_BY_CODE, NODE_TYPE_METRICS, WEIGHT_PROFILES } from './metric_registry.js';
 import { computeNativeMetric } from './native_metrics.js';
 import { computeSidecarMetric, isSidecarAvailable } from '../../core/eval_worker/eval_worker.client.js';
+import { getDatasetById } from '../../data/dataset.service.js';
+import { readGoldenItemsFromUri, type GoldenItem } from './dataset-items.reader.js';
+import { runPipelineForItem, extractAgentOutputText } from './pipeline-runner.js';
+import { deterministicSample, type SampleSpec } from './sampling.js';
 
 export interface AssessItem {
   item_key: string;
@@ -12,8 +17,26 @@ export interface AssessItem {
 
 export interface AssessRequest {
   pipeline_id: number;
-  items: AssessItem[];
+  items?: AssessItem[];
+  dataset_id?: number;
+  sample?: SampleSpec;
   weight_profile?: string;
+  user_id?: number;
+}
+
+export interface SamplingReport {
+  seed: number;
+  fraction: number;
+  size: number;
+  total_population: number;
+  selected_item_keys: string[];
+}
+
+export interface ItemRunReport {
+  item_key: string;
+  execution_id?: string;
+  status: 'succeeded' | 'failed' | 'skipped';
+  error?: string;
 }
 
 export interface MetricResult {
@@ -40,6 +63,8 @@ export interface AssessReport {
   per_node: NodeReport[];
   skipped_metrics: string[];
   item_count: number;
+  sampling?: SamplingReport;
+  item_runs?: ItemRunReport[];
 }
 
 const ALPHA = { pass: 0.8, improvement: 0.6 };
@@ -48,7 +73,11 @@ function normalize(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/** Выбирает метрики для пайплайна на основе типов узлов (M'₀) */
+/** Выбирает метрики для пайплайна на основе типов узлов (M'₀)
+ *  Матчим как по node_type.name, так и по ui_json.tool.name (binding) —
+ *  ToolNode со специфичным контрактом (LLMAnswer, HybridRetriever и т.п.)
+ *  должен получать соответствующий набор метрик.
+ */
 async function selectMetrics(pipelineId: number) {
   const nodes = await prisma.node.findMany({
     where: { fk_pipeline_id: pipelineId },
@@ -59,14 +88,26 @@ async function selectMetrics(pipelineId: number) {
   const seen = new Set<string>();
 
   for (const node of nodes) {
+    const candidates = new Set<string>();
     const typeName = normalize(node.node_type?.name ?? '');
-    for (const [key, codes] of Object.entries(NODE_TYPE_METRICS)) {
-      if (!typeName.includes(key)) continue;
-      for (const code of codes) {
-        const k = `${code}::${node.node_id}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
-        entries.push({ metric_code: code, node_id: node.node_id });
+    if (typeName) candidates.add(typeName);
+
+    const ui = node.ui_json && typeof node.ui_json === 'object' ? (node.ui_json as Record<string, any>) : null;
+    const toolName = ui?.tool && typeof ui.tool === 'object' ? ui.tool.name : undefined;
+    if (typeof toolName === 'string') {
+      const normalized = normalize(toolName);
+      if (normalized) candidates.add(normalized);
+    }
+
+    for (const candidate of candidates) {
+      for (const [key, codes] of Object.entries(NODE_TYPE_METRICS)) {
+        if (!candidate.includes(key)) continue;
+        for (const code of codes) {
+          const k = `${code}::${node.node_id}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          entries.push({ metric_code: code, node_id: node.node_id });
+        }
       }
     }
   }
@@ -94,9 +135,119 @@ function resolveWeights(activeCodes: string[], profileName: string): Record<stri
   return filtered;
 }
 
+async function buildItemsFromDataset(
+  pipelineId: number,
+  userId: number,
+  datasetId: number,
+  sampleSpec: SampleSpec | undefined,
+): Promise<{ items: AssessItem[]; sampling: SamplingReport; itemRuns: ItemRunReport[] }> {
+  const dataset = await getDatasetById(datasetId);
+  if (!dataset) {
+    throw new HttpError(404, { code: 'JUDGE_DATASET_NOT_FOUND', error: 'dataset not found', details: { dataset_id: datasetId } });
+  }
+  if (dataset.fk_pipeline_id !== pipelineId) {
+    throw new HttpError(400, {
+      code: 'JUDGE_DATASET_PIPELINE_MISMATCH',
+      error: 'dataset does not belong to pipeline',
+      details: { dataset_id: datasetId, pipeline_id: pipelineId },
+    });
+  }
+
+  const golden = await readGoldenItemsFromUri(dataset.uri);
+  if (golden.length === 0) {
+    throw new HttpError(422, { code: 'JUDGE_DATASET_EMPTY', error: 'dataset has no usable items', details: { dataset_id: datasetId } });
+  }
+
+  const sampled = deterministicSample<GoldenItem>(golden, sampleSpec ?? {});
+  const sampling: SamplingReport = {
+    seed: sampled.seed,
+    fraction: sampled.fraction,
+    size: sampled.size,
+    total_population: sampled.total,
+    selected_item_keys: sampled.selected.map((g) => g.item_key),
+  };
+
+  const items: AssessItem[] = [];
+  const itemRuns: ItemRunReport[] = [];
+  for (const g of sampled.selected) {
+    try {
+      const snapshot = await runPipelineForItem(pipelineId, userId, g.question);
+      if (snapshot.status !== 'succeeded') {
+        const errorText = snapshot.error?.message ?? snapshot.error?.code;
+        itemRuns.push({
+          item_key: g.item_key,
+          execution_id: snapshot.execution_id,
+          status: 'failed',
+          ...(errorText ? { error: errorText } : {}),
+        });
+        continue;
+      }
+      const text = extractAgentOutputText(snapshot);
+      items.push({
+        item_key: g.item_key,
+        input: { question: g.question },
+        agent_output: { text },
+        ...(g.reference ? { reference: g.reference } : {}),
+      });
+      itemRuns.push({ item_key: g.item_key, execution_id: snapshot.execution_id, status: 'succeeded' });
+    } catch (err) {
+      itemRuns.push({
+        item_key: g.item_key,
+        status: 'failed',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (items.length === 0) {
+    throw new HttpError(502, {
+      code: 'JUDGE_PIPELINE_RUNS_ALL_FAILED',
+      error: 'no successful pipeline runs to assess',
+      details: { dataset_id: datasetId, pipeline_id: pipelineId, runs: itemRuns },
+    });
+  }
+
+  return { items, sampling, itemRuns };
+}
+
 export async function runAssessment(req: AssessRequest): Promise<AssessReport> {
   const profileName = req.weight_profile ?? 'default';
   const sidecarUp = await isSidecarAvailable();
+
+  let assessItems: AssessItem[];
+  let sampling: SamplingReport | undefined;
+  let itemRuns: ItemRunReport[] | undefined;
+
+  if (req.dataset_id !== undefined) {
+    if (req.user_id === undefined) {
+      throw new HttpError(400, {
+        code: 'JUDGE_USER_REQUIRED',
+        error: 'user_id required when sampling from dataset_id',
+      });
+    }
+    const built = await buildItemsFromDataset(req.pipeline_id, req.user_id, req.dataset_id, req.sample);
+    assessItems = built.items;
+    sampling = built.sampling;
+    itemRuns = built.itemRuns;
+  } else if (Array.isArray(req.items) && req.items.length > 0) {
+    assessItems = req.items;
+    if (req.sample && (req.sample.fraction !== undefined || req.sample.size !== undefined)) {
+      const sampled = deterministicSample<AssessItem>(assessItems, req.sample);
+      assessItems = sampled.selected;
+      sampling = {
+        seed: sampled.seed,
+        fraction: sampled.fraction,
+        size: sampled.size,
+        total_population: sampled.total,
+        selected_item_keys: sampled.selected.map((it) => it.item_key),
+      };
+    }
+  } else {
+    throw new HttpError(400, {
+      code: 'JUDGE_ITEMS_OR_DATASET_REQUIRED',
+      error: 'either items[] or dataset_id is required',
+    });
+  }
 
   const { entries, nodes } = await selectMetrics(req.pipeline_id);
 
@@ -114,7 +265,7 @@ export async function runAssessment(req: AssessRequest): Promise<AssessReport> {
   // Per-metric accumulators across all items: code → values[]
   const accumulator: Record<string, number[]> = {};
 
-  for (const item of req.items) {
+  for (const item of assessItems) {
     for (const [nodeId, codes] of byNode.entries()) {
       for (const code of codes) {
         const def = METRIC_BY_CODE.get(code);
@@ -185,7 +336,9 @@ export async function runAssessment(req: AssessRequest): Promise<AssessReport> {
     metric_scores: metricScores,
     per_node: perNode,
     skipped_metrics: Array.from(skippedMetrics),
-    item_count: req.items.length,
+    item_count: assessItems.length,
+    ...(sampling ? { sampling } : {}),
+    ...(itemRuns ? { item_runs: itemRuns } : {}),
   };
 
   await prisma.pipeline.update({

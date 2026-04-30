@@ -57,6 +57,7 @@ const statusTokens: Record<CanvasNodeStatus, { label: string; tone: string }> = 
 const iconByType: Record<string, React.ComponentType<{ className?: string }>> = {
   Trigger: CirclePlay,
   ManualInput: Database,
+  RAGDataset: Database,
   PromptBuilder: Braces,
   Filter: Cable,
   Ranker: Cable,
@@ -135,7 +136,8 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
             className="nodrag flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
             onClick={(event) => {
               stopCanvasGesture(event);
-              if (isToolNode) {
+              // ToolNode без bind → открыть пикер; иначе — окно настроек тула.
+              if (isToolNode && !data.selectedToolId) {
                 setIsToolPickerOpen((current) => !current);
                 return;
               }
@@ -143,7 +145,7 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
             }}
             onMouseDown={stopCanvasGesture}
             onPointerDown={stopCanvasGesture}
-            aria-label={isToolNode ? "Сменить инструмент" : "Настроить узел"}
+            aria-label={isToolNode && data.selectedToolId ? "Настроить инструмент" : "Настроить узел"}
           >
             <Settings className="h-3.5 w-3.5" />
           </button>
@@ -241,12 +243,8 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
         </details>
       )}
 
-      {!isToolNode && (
-        <>
-          <Handle type="target" id="flow-in" position={Position.Left} className={handleClassName} />
-          <Handle type="source" id="flow-out" position={Position.Right} className={handleClassName} />
-        </>
-      )}
+      <Handle type="target" id="flow-in" position={Position.Left} className={handleClassName} />
+      <Handle type="source" id="flow-out" position={Position.Right} className={handleClassName} />
 
       {isToolNode && (
         <>

@@ -440,6 +440,35 @@ export function deleteDataset(datasetId: number): Promise<void> {
   return deleteRequest(`/datasets/${datasetId}`);
 }
 
+export interface RagCorpusUploadResult {
+  uri: string;
+  filename: string;
+  size_bytes: number;
+  kind: "rag-corpus";
+}
+
+/**
+ * Загружает один файл (.txt/.sql/.csv, ≤1 МБ) в управляемое хранилище RAG-корпуса.
+ * Возвращает стабильный URI для использования в `Node.ui_json.uris[]` узла RAGDataset.
+ */
+export async function uploadRagCorpus(file: File): Promise<RagCorpusUploadResult> {
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  const contentBase64 = btoa(binary);
+
+  return postJson<RagCorpusUploadResult>("/datasets/upload", {
+    filename: file.name,
+    content_base64: contentBase64,
+    kind: "rag-corpus"
+  });
+}
+
 export function validatePipelineGraph(
   pipelineId: number,
   preset: "default" | "dev" | "production" = "default"
@@ -553,7 +582,9 @@ export interface AssessmentItem {
 
 export interface AssessmentRequest {
   pipeline_id: number;
-  items: AssessmentItem[];
+  items?: AssessmentItem[];
+  dataset_id?: number;
+  sample?: { fraction?: number; size?: number; seed?: number };
   weight_profile?: string;
 }
 

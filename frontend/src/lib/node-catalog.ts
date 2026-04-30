@@ -3,6 +3,7 @@ import type { NodeTypeRecord, ToolRecord } from "./api";
 export const VISIBLE_NODE_TYPE_NAMES = [
   "Trigger",
   "ManualInput",
+  "RAGDataset",
   "PromptBuilder",
   "Filter",
   "Ranker",
@@ -57,7 +58,11 @@ export function isVisibleTool(tool: ToolRecord): boolean {
   const family = typeof config.family === "string" ? config.family.trim() : "";
   const catalog = typeof config.catalog === "string" ? config.catalog.trim() : "";
 
-  return TOOL_ORDER.has(name) && family === "builtin-contract" && catalog === "mvp-tool-contracts";
+  // Source-тулы (например, rag-dataset) выставляются как самостоятельные NodeType
+  // в группе «Вход» и НЕ должны попадать в группу «Инструменты», потому что
+  // ToolNode-handler не умеет исполнять source-тулы без входных данных.
+  if (family !== "builtin-contract") return false;
+  return TOOL_ORDER.has(name) && catalog === "mvp-tool-contracts";
 }
 
 export function getVisibleToolCatalog(tools: ToolRecord[]): ToolRecord[] {
@@ -114,6 +119,7 @@ export function getNodeTypeGroupLabel(nodeType: NodeTypeRecord): string {
   switch (normalizeNodeTypeName(nodeType.name)) {
     case "Trigger":
     case "ManualInput":
+    case "RAGDataset":
       return "Вход";
     case "AgentCall":
     case "LLMCall":
@@ -133,6 +139,8 @@ export function getNodeTypeUiLabel(nodeType: NodeTypeRecord): string {
       return "Триггер";
     case "ManualInput":
       return "Вопрос пользователя";
+    case "RAGDataset":
+      return "RAG Dataset";
     case "PromptBuilder":
       return "Сборка промпта";
     case "Filter":
@@ -162,6 +170,8 @@ export function getNodeTypeTechnicalLabel(name: string): string {
       return "вход";
     case "ManualInput":
       return "вход";
+    case "RAGDataset":
+      return "источник";
     case "PromptBuilder":
       return "обработка";
     case "Filter":
@@ -224,6 +234,8 @@ export function getNodeTypeUiTagline(nodeType: NodeTypeRecord): string {
       return "Запускает граф вручную или по событию.";
     case "ManualInput":
       return "Передает вопрос пользователя в граф.";
+    case "RAGDataset":
+      return "Подключает корпус документов (txt/sql/csv) к RAG-агенту.";
     case "PromptBuilder":
       return "Собирает текст промпта из входных данных.";
     case "Filter":

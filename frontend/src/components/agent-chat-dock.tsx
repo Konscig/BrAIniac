@@ -180,7 +180,7 @@ export function AgentChatDock({
                 <div
                   key={msg.id}
                   className={cn(
-                    "rounded-lg border px-2.5 py-1.5 text-[12px] leading-[1.45]",
+                    "min-w-0 max-w-full overflow-hidden rounded-lg border px-2.5 py-1.5 text-[12px] leading-[1.45] [overflow-wrap:anywhere] [word-break:break-word]",
                     msg.role === "user"
                       ? "ml-4 border-primary/20 bg-primary/10 text-foreground"
                       : "mr-2 border-border/50 bg-muted/30 text-muted-foreground"
