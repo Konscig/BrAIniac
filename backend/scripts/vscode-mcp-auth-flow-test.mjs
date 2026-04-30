@@ -1,7 +1,22 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 const base = process.env.BASE_URL || 'http://localhost:8080';
 const jsonHeaders = { 'Content-Type': 'application/json' };
+
+const serviceSource = await readFile(
+  new URL('../src/services/application/auth/vscode-auth.application.service.ts', import.meta.url),
+  'utf8',
+);
+const routeSource = await readFile(
+  new URL('../src/routes/resources/auth/vscode-auth.routes.ts', import.meta.url),
+  'utf8',
+);
+
+assert.doesNotMatch(serviceSource, /signAccessToken|jwt\.service|jsonwebtoken/);
+assert.doesNotMatch(routeSource, /signAccessToken|jsonwebtoken/);
+assert.match(routeSource, /resolveMcpAuthContext/);
+assert.match(routeSource, /completeVscodeAuthRequest/);
 
 async function req(path, opts = {}) {
   const res = await fetch(base + path, opts);
