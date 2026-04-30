@@ -174,7 +174,7 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T060 [P] [US4] Add backend browser-auth bridge contract tests for `POST /auth/vscode/start`, `POST /auth/vscode/complete`, `POST /auth/vscode/exchange`, polling pending state, authorized token exchange, expiry, replay, and invalid state in `backend/scripts/vscode-mcp-auth-flow-test.mjs`
 - [X] T061 [P] [US4] Extend VS Code extension smoke tests for sign-in command, sign-out command, SecretStorage usage, no token-in-settings behavior, and provider split in `vscode-extension/scripts/smoke-test.mjs`
 - [X] T062 [P] [US4] Document browser sign-in polling, dev-token fallback, and manual VS Code verification in `specs/001-mcp-backend-vscode/quickstart.md`
-- [ ] T063 [US4] Add automated smoke assertions for browser sign-in documentation, dev-token fallback wording, and no token-in-settings behavior in `vscode-extension/scripts/smoke-test.mjs`
+- [X] T063 [US4] Add automated smoke assertions for browser sign-in documentation, dev-token fallback wording, and no token-in-settings behavior in `vscode-extension/scripts/smoke-test.mjs`
 
 ### Backend Auth Bridge Implementation
 

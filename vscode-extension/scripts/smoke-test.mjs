@@ -6,6 +6,10 @@ const extensionSource = await readFile(new URL('../src/extension.ts', import.met
 const mcpProviderSource = await readOptional('../src/mcpProvider.ts');
 const authSource = await readOptional('../src/auth.ts');
 const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
+const quickstart = await readFile(
+  new URL('../../specs/001-mcp-backend-vscode/quickstart.md', import.meta.url),
+  'utf8',
+);
 
 async function readOptional(path) {
   try {
@@ -55,5 +59,15 @@ assert.match(readme, /BrAIniac: Sign in/);
 assert.match(readme, /BrAIniac: Sign out/);
 assert.match(readme, /SecretStorage/);
 assert.match(readme, /BrAIniac: Use Dev Token/);
+assert.doesNotMatch(readme, /brainiacMcp\.accessToken/);
+
+assert.match(quickstart, /BrAIniac: Sign in/);
+assert.match(quickstart, /\/auth\?vscode_state=/);
+assert.match(quickstart, /\/auth\/vscode\/complete/);
+assert.match(quickstart, /SecretStorage/);
+assert.match(quickstart, /Dev-Token Fallback/);
+assert.match(quickstart, /BrAIniac: Use Dev Token/);
+assert.match(quickstart, /not the target user experience/);
+assert.match(quickstart, /Do not put it in[\s\S]*settings/);
 
 console.log('VS Code MCP extension smoke checks OK');
