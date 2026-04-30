@@ -193,7 +193,7 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T073 [P] [US4] Implement VS Code auth session manager with SecretStorage keys, session read/write/delete, expiry detection, and no settings token storage in `vscode-extension/src/auth.ts`
 - [X] T074 [US4] Implement `BrAIniac: Sign in` command that starts `POST /auth/vscode/start`, opens `loginUrl` externally, polls `POST /auth/vscode/exchange`, handles pending/success/failure/timeout, and stores the session in `vscode-extension/src/auth.ts`
 - [X] T075 [US4] Implement `BrAIniac: Sign out` and `BrAIniac: Reconnect MCP` commands that clear SecretStorage and refresh MCP definitions in `vscode-extension/src/extension.ts`
-- [ ] T076 [US4] Keep manual access-token prompt only behind an explicit developer fallback command `BrAIniac: Use Dev Token` in `vscode-extension/src/auth.ts`
+- [X] T076 [US4] Keep manual access-token prompt only behind an explicit developer fallback command `BrAIniac: Use Dev Token` in `vscode-extension/src/auth.ts`
 - [ ] T077 [US4] Update `vscode-extension/package.json` contributes for commands, configuration without token settings, activation events, and provider metadata
 - [ ] T078 [US4] Update `vscode-extension/README.md` with browser sign-in, sign-out, SecretStorage, backend URL, dev fallback, and troubleshooting instructions
 - [ ] T079 [US4] Run `npm --prefix vscode-extension run test`

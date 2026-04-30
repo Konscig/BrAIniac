@@ -93,6 +93,27 @@ export class BrainiacAuthManager implements BrainiacAuthSessionStore {
 
     throw new Error('BrAIniac sign-in timed out.');
   }
+
+  async useDevToken(backendUrl: string): Promise<BrainiacAuthSession | null> {
+    const token = await vscode.window.showInputBox({
+      title: 'BrAIniac dev access token',
+      prompt: 'Paste an existing BrAIniac access token for local development only.',
+      password: true,
+      ignoreFocusOut: true,
+    });
+
+    if (!token?.trim()) {
+      return null;
+    }
+
+    const session: BrainiacAuthSession = {
+      accessToken: token.trim(),
+      backendUrl,
+    };
+    await this.writeSession(session);
+    vscode.window.showInformationMessage('BrAIniac MCP dev token stored in SecretStorage.');
+    return session;
+  }
 }
 
 export function createBrainiacAuthManager(context: vscode.ExtensionContext): BrainiacAuthManager {

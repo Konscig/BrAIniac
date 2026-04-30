@@ -32,6 +32,12 @@ export function activate(context: vscode.ExtensionContext) {
       refreshBrainiacMcpDefinitions();
       vscode.window.showInformationMessage('BrAIniac MCP reconnect requested.');
     }),
+    vscode.commands.registerCommand('brainiacMcp.useDevToken', async () => {
+      const session = await authManager.useDevToken(readConfiguredBackendUrl());
+      if (session) {
+        refreshBrainiacMcpDefinitions();
+      }
+    }),
   );
 }
 
