@@ -11,7 +11,11 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCommand:brainiacMcp.signIn",
+    "onCommand:brainiacMcp.signOut",
+    "onCommand:brainiacMcp.reconnect",
+    "onCommand:brainiacMcp.useDevToken"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -21,6 +25,24 @@
         "label": "BrAIniac MCP"
       }
     ],
+    "commands": [
+      {
+        "command": "brainiacMcp.signIn",
+        "title": "BrAIniac: Sign in"
+      },
+      {
+        "command": "brainiacMcp.signOut",
+        "title": "BrAIniac: Sign out"
+      },
+      {
+        "command": "brainiacMcp.reconnect",
+        "title": "BrAIniac: Reconnect MCP"
+      },
+      {
+        "command": "brainiacMcp.useDevToken",
+        "title": "BrAIniac: Use Dev Token"
+      }
+    ],
     "configuration": {
       "title": "BrAIniac MCP",
       "properties": {
@@ -28,11 +50,6 @@
           "type": "string",
           "default": "http://localhost:8080/mcp",
           "description": "BrAIniac backend MCP endpoint URL."
-        },
-        "brainiacMcp.accessToken": {
-          "type": "string",
-          "default": "",
-          "description": "Existing BrAIniac access token used as a bearer token for MCP requests."
         }
       }
     }
