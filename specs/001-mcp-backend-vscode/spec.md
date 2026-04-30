@@ -23,6 +23,7 @@
 - Q: How should documentation and smoke checks be represented? -> A: split documentation updates from automated smoke assertions.
 - Q: What is the old manual-token VS Code verification? -> A: dev-token fallback verification only, not the product path.
 - Q: How does browser login mark a VS Code auth state authorized? -> A: frontend-aware login preserves `vscode_state` and calls `POST /auth/vscode/complete` with the normal BrAIniac access token after successful login.
+- Q: How should frontend VS Code auth changes be verified? -> A: add frontend test/build verification covering `vscode_state`, already-authenticated completion, and completion failure fallback.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -255,7 +256,7 @@ states.
   tested MCP and VS Code flows.
 - **SC-008**: Required automated or documented manual checks cover read-only
   discovery, execution tools, export, authorization boundaries, diagnostic
-  states, and VS Code integration behavior.
+  states, frontend auth behavior, and VS Code integration behavior.
 
 ## Assumptions
 
