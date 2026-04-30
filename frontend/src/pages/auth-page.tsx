@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ModeToggle } from "../components/mode-toggle";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
-import { postJson, type ApiError } from "../lib/api";
+import { completeVscodeAuth, postJson, type ApiError } from "../lib/api";
 import { useAuth, normalizeAuthTokens } from "../providers/AuthProvider";
 
 type AuthMode = "login" | "register";
@@ -62,9 +62,10 @@ export function AuthPage(): React.ReactElement {
   const [form, setForm] = React.useState<AuthFormState>(initialFormState);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const { setSession } = useAuth();
+  const { tokens: currentTokens, setSession } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const completedVscodeStateRef = React.useRef<string | null>(null);
   const passwordStrength = React.useMemo(() => evaluatePassword(form.password), [form.password]);
   const strengthProgress = React.useMemo(() => {
     if (!form.password) {
@@ -76,6 +77,35 @@ export function AuthPage(): React.ReactElement {
     const state = location.state as { from?: { pathname?: string } } | null;
     return state?.from?.pathname || "/";
   }, [location.state]);
+  const vscodeState = React.useMemo(() => {
+    const value = new URLSearchParams(location.search).get("vscode_state");
+    return value && value.trim().length > 0 ? value.trim() : null;
+  }, [location.search]);
+
+  const completeVscodeAuthIfNeeded = React.useCallback(async (nextAccessToken: string) => {
+    if (!vscodeState || completedVscodeStateRef.current === vscodeState) {
+      return;
+    }
+
+    completedVscodeStateRef.current = vscodeState;
+    try {
+      await completeVscodeAuth(vscodeState, nextAccessToken);
+    } catch (completionError) {
+      completedVscodeStateRef.current = null;
+      console.warn("Failed to complete VS Code auth request", completionError);
+    }
+  }, [vscodeState]);
+
+  React.useEffect(() => {
+    if (!vscodeState || !currentTokens?.accessToken) {
+      return;
+    }
+
+    void (async () => {
+      await completeVscodeAuthIfNeeded(currentTokens.accessToken);
+      navigate(redirectTo, { replace: true });
+    })();
+  }, [completeVscodeAuthIfNeeded, currentTokens?.accessToken, navigate, redirectTo, vscodeState]);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -118,6 +148,7 @@ export function AuthPage(): React.ReactElement {
           throw new Error("Ответ сервиса аутентификации не содержит токены");
         }
         setSession(tokens);
+        await completeVscodeAuthIfNeeded(tokens.accessToken);
         navigate(redirectTo, { replace: true });
         return;
       }
@@ -139,6 +170,7 @@ export function AuthPage(): React.ReactElement {
         throw new Error("Ответ сервиса регистрации не содержит токены");
       }
       setSession(tokens);
+      await completeVscodeAuthIfNeeded(tokens.accessToken);
       navigate(redirectTo, { replace: true });
     } catch (err) {
       const apiError = err as ApiError;

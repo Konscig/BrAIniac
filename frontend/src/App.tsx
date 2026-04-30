@@ -377,8 +377,10 @@ function RequireAuth({ children }: { children: React.ReactElement }): React.Reac
 
 function PublicOnly({ children }: { children: React.ReactElement }): React.ReactElement {
   const { isAuthenticated } = useAuth();
+  const location = useLocation();
+  const hasVscodeState = new URLSearchParams(location.search).has("vscode_state");
 
-  if (isAuthenticated) {
+  if (isAuthenticated && !hasVscodeState) {
     return <Navigate to="/" replace />;
   }
 

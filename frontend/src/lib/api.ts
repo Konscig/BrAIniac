@@ -167,6 +167,17 @@ export async function deleteRequest(path: string, options: ApiOptions = {}): Pro
   });
 }
 
+export function completeVscodeAuth(state: string, accessToken: string): Promise<{ status: "authorized"; expiresAt: string }> {
+  return postJson<{ status: "authorized"; expiresAt: string }>(
+    "/auth/vscode/complete",
+    { state },
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      skipAuthHeaders: true
+    }
+  );
+}
+
 export type JsonRecord = Record<string, unknown>;
 
 export interface ProjectRecord {
