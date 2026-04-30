@@ -193,3 +193,45 @@ Validation:
 - Connection errors and auth errors must be visible to the user.
 - The extension should rely on VS Code MCP resource/tool surfaces before adding
   custom UI.
+
+## VS Code Auth Session
+
+Editor-side authentication state for a signed-in BrAIniac user.
+
+Fields:
+
+- `account_id`: stable BrAIniac user/account identifier when known.
+- `backend_url`: MCP backend URL associated with the session.
+- `access_token`: stored only in VS Code SecretStorage.
+- `refresh_token` or `refresh_code`: optional, stored only in SecretStorage if
+  the backend supports refresh.
+- `expires_at`: optional token expiry timestamp.
+- `status`: `signed_out`, `signing_in`, `signed_in`, `expired`, or `error`.
+- `last_error`: actionable auth/backend error message for the user.
+
+Validation:
+
+- Tokens must not be written to workspace config, repository files, logs, or
+  normal VS Code settings.
+- Expired or rejected tokens must trigger a visible re-auth path.
+- Sign-out must delete SecretStorage entries and refresh MCP server definitions.
+
+## Browser Auth Request
+
+Transient backend/extension state used to complete browser login.
+
+Fields:
+
+- `state`: random CSRF/session correlation value.
+- `callback_uri`: localhost or VS Code URI callback target.
+- `created_at`
+- `expires_at`
+- `user_id`: set only after successful login.
+
+Validation:
+
+- `state` must be unguessable and single-use.
+- Callback requests must expire quickly.
+- The backend must issue credentials only after normal BrAIniac login succeeds.
+- The extension must reject callbacks whose state does not match the active
+  sign-in request.

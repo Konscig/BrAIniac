@@ -139,3 +139,37 @@ those built-in surfaces avoids a custom UI while the backend contract stabilizes
 References:
 
 - https://code.visualstudio.com/api/extension-guides/ai/mcp
+
+## Decision: Product VS Code Client Uses Browser Auth, Not Manual Token Paste
+
+The VS Code extension should start a user-facing sign-in flow instead of asking
+users to paste an access token into settings or `.vscode/mcp.json`. The target
+production shape is the official VS Code MCP authorization path: the MCP server
+advertises authorization metadata, VS Code drives OAuth 2.1/2.0 browser login,
+and the resulting token is attached to HTTP MCP requests. For the local/dev
+slice, BrAIniac may use a transitional browser callback flow: the extension
+opens BrAIniac login in the external browser, receives a short-lived callback
+code/token on a localhost callback or VS Code URI handler, stores credentials in
+VS Code SecretStorage, and returns an HTTP MCP server definition with an
+Authorization header.
+
+**Rationale**: Manual token handling is acceptable for smoke tests, but it is
+not a product-grade VS Code MCP client. Users expect the installed extension to
+initiate sign-in, use the browser, remember the credential securely, and recover
+from expiration. VS Code's MCP documentation explicitly supports extension
+server definition providers and OAuth-based MCP authorization.
+
+**Alternatives considered**:
+
+- Keep prompting for access tokens: rejected as the primary UX because it leaks
+  auth implementation details and encourages storing secrets in workspace files.
+- Build a custom VS Code webview login form: rejected because it duplicates the
+  BrAIniac web login and is weaker than browser-based auth.
+- Make the extension a separate MCP client/server process: rejected because VS
+  Code already provides the MCP client/host and the backend already exposes the
+  MCP server.
+
+References:
+
+- https://code.visualstudio.com/api/extension-guides/ai/mcp
+- https://modelcontextprotocol.io/docs/learn

@@ -1,60 +1,88 @@
 # Implementation Plan: MCP Access For BrAIniac
 
-**Branch**: `001-mcp-backend-vscode` | **Date**: 2026-04-29 | **Spec**: [spec.md](./spec.md)
+**Branch**: `001-mcp-backend-vscode` | **Date**: 2026-04-30 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `specs/001-mcp-backend-vscode/spec.md`
 
 ## Summary
 
-Implement BrAIniac MCP as a thin backend adapter layer over the existing
-authenticated application/API contracts. The first implementation slice is
-read-only: discover projects, pipelines, nodes, tool catalog entries, agent/tool
-relationships, validation summaries, execution snapshots, and project,
-pipeline, and node export snapshots.
-Later slices can add execution tools and then agent-creation/editing tools, but
-only by reusing the same backend services and route contracts already used by
-the web API.
+Evolve the VS Code MCP slice from a developer-only token prompt into a product
+client flow: a BrAIniac VS Code extension registers the backend HTTP MCP server,
+starts sign-in from VS Code, opens the BrAIniac login in an external browser,
+stores the resulting credential in VS Code secret storage, and lets VS Code's
+built-in MCP client use BrAIniac resources/tools on behalf of the signed-in
+user. The backend remains the MCP server and source of truth; the extension is a
+client-side setup/auth adapter, not a duplicate MCP implementation.
+
+The desired first production shape is OAuth-compatible MCP authorization where
+VS Code can drive the auth flow directly. If the current local BrAIniac auth
+stack cannot support the full OAuth metadata/DCR shape immediately, implement a
+browser-login callback flow as a transitional bridge and keep manual token entry
+only as an explicit developer fallback.
 
 ## Technical Context
 
-**Language/Version**: TypeScript, backend compiler/tooling from `backend/package.json` (`typescript` 5.9.x, Node types 24.x), VS Code extension TypeScript tooling to be added only for the extension slice
-**Primary Dependencies**: Existing backend Express/Prisma services plus the official MCP TypeScript SDK. Default implementation target is the stable `@modelcontextprotocol/sdk` package with `zod` schemas; if the official v2 split packages are stable at implementation time, document the package switch before coding. Use SDK server/resources/tools APIs and Streamable HTTP transport. VS Code slice uses VS Code MCP server definition provider APIs.
-**Storage**: Existing PostgreSQL via Prisma and existing executor/artifact filesystem state. MCP adds no persistent business storage in the MVP.
-**Testing**: Backend MCP contract/smoke scripts, existing `test:auth`, `test:ownership`, `test:contracts:freeze`, `test:executor:*`, targeted RAG/execution tests when non-read-only tools are enabled, and VS Code extension smoke/manual checks for the extension slice.
-**Target Platform**: Local Docker Compose web app; backend exposes MCP endpoint alongside existing Express API. VS Code connects to the backend MCP endpoint.
-**Project Type**: Web application with backend adapter and later VS Code extension/client.
-**Performance Goals**: Read-only resource listing for seeded projects should complete in under 2 seconds locally; individual pipeline/node resources should resolve in under 1 second; large exports should return resource links or bounded summaries rather than embedding unbounded payloads. These targets must be covered by a lightweight MCP smoke/performance check.
-**Constraints**: MCP MUST NOT duplicate graph validation, executor, auth, ownership, agent runtime, or export business logic. MCP tools/resources call existing application services or route-equivalent service facades. First slice is read-only; write/create-agent tools are deferred until read-only contracts are stable.
-**Scale/Scope**: One authenticated user's BrAIniac workspace at a time. MVP covers local/dev trusted usage and owner-scoped resources, not multi-tenant public hosting hardening.
+**Language/Version**: TypeScript; backend uses existing `backend/package.json`
+tooling (`typescript` 5.9.x, Node types 24.x); VS Code extension uses
+TypeScript and VS Code extension APIs matching the contributed engine version.
+**Primary Dependencies**: Existing Express/Prisma backend, official
+`@modelcontextprotocol/sdk`, VS Code `vscode.lm.registerMcpServerDefinitionProvider`
+API, VS Code `SecretStorage`, `vscode.env.openExternal`, and browser auth
+callback plumbing. Full production auth should align with VS Code MCP OAuth
+support. Manual access-token input remains a dev fallback only.
+**Storage**: Backend continues using PostgreSQL/Prisma and existing artifact
+filesystem state. Extension stores access/refresh credential material only in
+VS Code SecretStorage. No token should be stored in workspace files or normal
+settings.
+**Testing**: Backend MCP/auth contract scripts, existing `test:auth`,
+`test:ownership`, `test:contracts:freeze`, targeted MCP tests, VS Code
+extension smoke tests for provider/auth state, and documented manual VS Code
+MCP connection checks.
+**Target Platform**: Local Docker Compose BrAIniac web app plus VS Code desktop
+extension. Browser login targets the BrAIniac frontend/backend origin; MCP
+endpoint remains the backend HTTP endpoint.
+**Project Type**: Web application with backend MCP adapter and VS Code
+extension/client setup layer.
+**Performance Goals**: Sign-in should require one browser round trip and
+complete within 30 seconds in local dev after the user submits credentials.
+MCP server definition resolution should return immediately when a stored valid
+credential exists. Failed or expired credentials should produce an actionable
+re-auth prompt within 5 seconds.
+**Constraints**: Do not implement a second MCP server in the extension. Do not
+store tokens in `.vscode/mcp.json`, repository files, or plain settings. Do not
+duplicate backend auth/ownership rules. Prefer official VS Code/MCP OAuth
+behavior where feasible; transitional local callback flow must be documented as
+temporary and compatible with a future OAuth replacement.
+**Scale/Scope**: One authenticated BrAIniac account per VS Code profile for the
+local/dev product slice. Multi-account account switching, hosted SaaS OAuth
+hardening, and marketplace packaging are follow-up slices.
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- **SDD/code truth**: Reviewed `docs/sdd/02-graph-constitution.md`,
-  `05-preflight-contract.md`, `09-backend-runtime-truth-snapshot.md`,
-  `11-backend-contract-freeze.md`, `12-frontend-rag-alignment.md`, and
-  `13-real-issues-fix-list.md`; reviewed existing backend route/service shape
-  under `backend/src/routes/resources/*`, `backend/src/services/application/*`,
-  `backend/src/services/core/ownership.service.ts`, and
-  `backend/src/services/core/graph_validation.service.ts`.
-- **Technology stack**: Stays in the existing TypeScript/Express backend. Adds
-  the official MCP TypeScript SDK as the only new backend integration dependency
-  needed for protocol compliance. VS Code extension tooling is deferred to its
-  own slice.
-- **UX/adaptivity**: MCP resources/tools expose explicit diagnostic states,
-  permission errors, validation failures, provider failures, and unsupported
-  node states. VS Code integration uses built-in MCP resource/tool surfaces
-  first; no custom UI surface is planned for MVP.
-- **Simplicity**: MCP is an adapter over existing application services and API
-  contracts. No new graph model, executor, auth model, agent runtime, or hidden
-  dataset behavior is introduced.
-- **Tests**: MVP requires MCP contract tests for resource/tool schemas,
-  authorization/ownership tests, read-only smoke tests, export redaction tests,
-  and regression coverage with existing backend freeze/executor tests.
+- **SDD/code truth**: Reviewed `docs/sdd/14-mcp-adapter-plan.md`,
+  `docs/sdd/09-backend-runtime-truth-snapshot.md`, existing backend auth routes
+  under `backend/src/routes/resources/auth/`, MCP transport/auth code under
+  `backend/src/mcp/`, and the VS Code extension scaffold under
+  `vscode-extension/src/extension.ts`.
+- **Technology stack**: Stays in the current TypeScript backend and VS Code
+  extension shape. No new service boundary is introduced. Any OAuth helper
+  dependency must be justified during implementation; the preferred first pass
+  uses Express routes and VS Code APIs directly.
+- **UX/adaptivity**: The user-facing flow becomes explicit: Sign in, connected,
+  expired session, backend unavailable, sign out, and retry states. Manual token
+  copy/paste is not the primary UX.
+- **Simplicity**: Keep backend as MCP server and extension as auth/setup
+  adapter. Avoid custom sidebars/webviews until VS Code built-in MCP surfaces
+  prove insufficient.
+- **Tests**: Required checks include backend auth callback contract tests,
+  extension smoke tests for provider/sign-in/sign-out paths, MCP auth/ownership
+  tests, and a manual VS Code flow covering browser login, resource browsing,
+  tool invocation, expired token, and backend unavailable states.
 
-Post-design re-check: PASS. The contracts below keep MCP as a bounded adapter,
-phase write/create-agent tools after read-only stability, and avoid any
-constitution violation requiring a complexity exception.
+Post-design re-check: PASS. The design keeps MCP business behavior in the
+backend, introduces no new service boundary, and replaces manual token handling
+with a user-facing auth flow using existing BrAIniac identity.
 
 ## Project Structure
 
@@ -70,62 +98,54 @@ specs/001-mcp-backend-vscode/
 |   |-- mcp-resources.md
 |   |-- mcp-tools.md
 |   `-- vscode-client.md
-`-- checklists/
-    `-- requirements.md
+|-- checklists/
+|   `-- requirements.md
+`-- tasks.md
 ```
 
 ### Source Code (repository root)
 
 ```text
 backend/
-|-- package.json
 |-- src/
 |   |-- index.ts
 |   |-- mcp/
-|   |   |-- mcp.server.ts
-|   |   |-- mcp.transport.ts
 |   |   |-- mcp.auth.ts
-|   |   |-- resources/
-|   |   |   |-- project.resources.ts
-|   |   |   |-- pipeline.resources.ts
-|   |   |   |-- node.resources.ts
-|   |   |   |-- tool.resources.ts
-|   |   |   |-- agent.resources.ts
-|   |   |   `-- export.resources.ts
-|   |   |-- tools/
-|   |   |   |-- readonly.tools.ts
-|   |   |   |-- pipeline.tools.ts
-|   |   |   |-- export.tools.ts
-|   |   |   `-- agent-authoring.tools.ts
-|   |   `-- serializers/
-|   |       |-- mcp-resource-uri.ts
-|   |       |-- mcp-safe-json.ts
-|   |       `-- mcp-redaction.ts
+|   |   |-- mcp.server.ts
+|   |   `-- mcp.transport.ts
 |   |-- routes/
+|   |   `-- resources/
+|   |       `-- auth/
+|   |           |-- auth.routes.ts
+|   |           `-- vscode-auth.routes.ts       # planned callback/device/browser auth bridge
 |   `-- services/
+|       |-- application/
+|       |   `-- auth/
+|       `-- core/
+|           `-- jwt.service.ts
 `-- scripts/
-    |-- mcp-readonly-contract-test.mjs
     |-- mcp-auth-ownership-test.mjs
-    |-- mcp-performance-smoke-test.mjs
-    `-- mcp-export-redaction-test.mjs
+    `-- vscode-mcp-auth-flow-test.mjs          # planned backend auth bridge contract test
 
-vscode-extension/             # Deferred until backend MCP read-only slice passes
+vscode-extension/
 |-- package.json
 |-- src/
-|   `-- extension.ts
+|   |-- extension.ts
+|   |-- auth.ts                                # planned sign-in/sign-out/secret storage
+|   `-- mcpProvider.ts                         # planned server definition provider
+|-- scripts/
+|   `-- smoke-test.mjs
 `-- README.md
 ```
 
-**Structure Decision**: Add a `backend/src/mcp/` adapter module and backend
-MCP test scripts. Keep business logic in existing `services/application`,
-`services/core`, and route DTO helpers. Add `vscode-extension/` only when the
-backend MCP endpoint is stable enough to connect from VS Code.
+**Structure Decision**: Keep the MCP server in `backend/src/mcp/`. Add only the
+minimum backend auth bridge needed for browser sign-in, and split extension auth
+from provider registration so token storage/re-auth behavior can be tested
+without changing MCP tool/resource implementations.
 
 ## Complexity Tracking
 
-No constitution violations are planned. The new MCP SDK dependency
-(`@modelcontextprotocol/sdk` plus schema validation with `zod`, unless the
-official stable docs require the v2 split packages at implementation time) is
-justified because MCP protocol compliance, resource/tool registration, transport
-handling, and VS Code compatibility should come from the official SDK rather
-than a custom protocol implementation.
+No constitution violations are planned. The only added complexity is auth flow
+state between VS Code, browser, and backend. It is justified because manual
+token copy/paste is not acceptable for the product UX. The simpler manual-token
+alternative remains as an explicit developer fallback, not the primary design.

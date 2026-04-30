@@ -77,6 +77,24 @@
 7. Confirm read-only tools do not request unnecessary confirmation.
 8. Confirm permission/backend errors are visible in VS Code output/status.
 
+## Target VS Code Client Flow
+
+The product client should not require users to paste tokens into config files.
+The intended flow is:
+
+1. Install the BrAIniac VS Code extension.
+2. Run `BrAIniac: Sign in` or connect the `BrAIniac MCP` server.
+3. VS Code opens the BrAIniac login in the external browser.
+4. After successful login, the extension receives the auth callback and stores
+   the credential in VS Code SecretStorage.
+5. VS Code connects to `http://localhost:8080/mcp` with
+   `Authorization: Bearer <stored token>`.
+6. Use VS Code's built-in MCP tools/resources UI to browse BrAIniac context and
+   invoke tools.
+
+Manual `.vscode/mcp.json` token configuration remains useful for local
+debugging, but it is not the target user experience.
+
 ### Manual Smoke Checklist
 
 - [ ] `.vscode/mcp.json` can connect to `http://localhost:8080/mcp` with
