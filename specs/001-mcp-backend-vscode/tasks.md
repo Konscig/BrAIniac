@@ -178,7 +178,7 @@ the MVP before operation tools, export, and VS Code integration.
 
 ### Backend Auth Bridge Implementation
 
-- [ ] T064 [US4] Add short-lived VS Code auth request state helpers with signed random `state`, expiry, pending/authorized/failed states, and single-use validation in `backend/src/services/application/auth/vscode-auth.application.service.ts`
+- [X] T064 [US4] Add short-lived VS Code auth request state helpers with signed random `state`, expiry, pending/authorized/failed states, and single-use validation in `backend/src/services/application/auth/vscode-auth.application.service.ts`
 - [ ] T065 [US4] Add polling browser auth bridge routes for `POST /auth/vscode/start`, `POST /auth/vscode/complete`, and `POST /auth/vscode/exchange` in `backend/src/routes/resources/auth/vscode-auth.routes.ts`
 - [ ] T066 [US4] Update frontend auth flow to preserve `vscode_state` on `/auth`, call `POST /auth/vscode/complete` after successful or already-authenticated login, and continue normal web login if VS Code completion fails in `frontend/src/App.tsx`, `frontend/src/pages/auth-page.tsx`, and `frontend/src/lib/api.ts`
 - [ ] T067 [US4] Add frontend auth-flow verification for `/auth?vscode_state=...`, already-authenticated completion, completion failure fallback, and no web login regression in `frontend/src/App.test.tsx`, then run `CI=true npm --prefix frontend test -- --watchAll=false` and `npm --prefix frontend run build`
