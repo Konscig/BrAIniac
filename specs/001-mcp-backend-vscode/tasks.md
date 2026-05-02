@@ -211,24 +211,24 @@ the MVP before operation tools, export, and VS Code integration.
 
 ## Phase 8: User Story 4 Continuation - OAuth 2.1 And Token Refresh Hardening (Priority: P4)
 
-**Goal**: Fix the VS Code token refresh problem and verify or migrate the auth flow to OAuth 2.1-compatible MCP authorization with PKCE, refresh, revoke, metadata discovery, and scoped authorization.
+**Goal**: Fix the VS Code token refresh problem and verify or migrate the auth flow to OAuth 2.1-compatible MCP authorization with PKCE, refresh, revoke, scoped authorization, and a documented metadata exposure decision that does not trigger unsupported local DCR prompts.
 
 **Independent Test**: From VS Code, sign in through the browser, force or simulate access-token expiry, confirm the extension refreshes the token without manual token paste, browse MCP resources, invoke `list_projects`, revoke/sign out, verify refresh no longer works, and confirm expired/revoked refresh credentials trigger visible browser re-authentication.
 
 ### OAuth 2.1 Decision Gate
 
-- [X] T084 [US4] Audit current backend auth bridge against MCP/VS Code OAuth 2.1 requirements and record a blocking decision before T085 and T089-T093: verify-as-compatible or migrate, exact endpoint names, metadata documents, redirect strategy, PKCE decision, refresh/revoke contract, and MCP scope mapping in `docs/sdd/14-mcp-adapter-plan.md` and `specs/001-mcp-backend-vscode/contracts/vscode-client.md`
+- [X] T084 [US4] Audit current backend auth bridge against MCP/VS Code OAuth 2.1 requirements and record a blocking decision before T085 and T089-T093: verify-as-compatible or migrate, exact endpoint names, metadata exposure decision, redirect strategy, PKCE decision, refresh/revoke contract, and MCP scope mapping in `docs/sdd/14-mcp-adapter-plan.md` and `specs/001-mcp-backend-vscode/contracts/vscode-client.md`
 
 ### Tests for OAuth 2.1 And Token Lifecycle
 
-- [X] T085 [P] [US4] Add backend OAuth/token lifecycle contract tests for metadata discovery, PKCE verifier/challenge validation, authorization-code single-use behavior, refresh success, refresh expiry, refresh replay/reuse rejection, revoke/sign-out invalidation, and scope enforcement in `backend/scripts/vscode-oauth-token-lifecycle-test.mjs`
+- [X] T085 [P] [US4] Add backend OAuth/token lifecycle contract tests for the documented metadata exposure decision, PKCE verifier/challenge validation, authorization-code single-use behavior, refresh success, refresh expiry, refresh replay/reuse rejection, revoke/sign-out invalidation, scope enforcement, and no unsupported local `.well-known` discovery in `backend/scripts/vscode-oauth-token-lifecycle-test.mjs`
 - [X] T086 [P] [US4] Extend VS Code extension smoke tests for near-expiry access-token refresh, expired refresh fallback to browser sign-in, revoked refresh handling, no token-in-settings/logs behavior, and MCP provider refresh before returning server definitions in `vscode-extension/scripts/smoke-test.mjs`
 - [X] T087 [P] [US4] Update auth documentation and manual verification steps for OAuth 2.1 compatibility, refresh, revoke, forced expiry, and failure recovery in `specs/001-mcp-backend-vscode/quickstart.md` and `vscode-extension/README.md`
 - [X] T088 [US4] Add contract/static assertions that OAuth/token lifecycle code reuses existing BrAIniac auth services and ownership checks instead of directly minting ad hoc MCP-only credentials in `backend/scripts/vscode-oauth-token-lifecycle-test.mjs`
 
 ### Backend OAuth/Authorization Implementation
 
-- [X] T089 [US4] Implement or adapt OAuth 2.1-compatible authorization metadata and protected resource metadata for the MCP backend in `backend/src/routes/resources/auth/oauth.routes.ts` and route wiring under `backend/src/routes/resources/auth/auth.routes.ts`
+- [X] T089 [US4] Implement or adapt OAuth 2.1-compatible authorization routes for the MCP backend without exposing standard local `.well-known` discovery unless DCR or tested client registration exists in `backend/src/routes/resources/auth/oauth.routes.ts` and route wiring under `backend/src/routes/resources/auth/auth.routes.ts`
 - [X] T090 [US4] Implement PKCE-bound authorization-code issuance/exchange or a documented MCP/VS Code-compatible equivalent in `backend/src/services/application/auth/oauth-token.application.service.ts`
 - [X] T091 [US4] Implement refresh-token issuance, secure storage/validation, rotation where supported, expiry handling, and explicit errors for invalid/revoked/replayed refresh credentials in `backend/src/services/application/auth/oauth-token.application.service.ts`
 - [X] T092 [US4] Implement token revocation/sign-out invalidation for VS Code sessions in `backend/src/routes/resources/auth/oauth.routes.ts` and the auth application service layer
@@ -264,6 +264,67 @@ the MVP before operation tools, export, and VS Code integration.
 
 ---
 
+## Phase 9: User Story 3 Continuation - Inline JSON Export Tool UX (Priority: P3)
+
+**Goal**: Make project, pipeline, and node export tools return the redacted JSON snapshot inline in the tool result while keeping `brainiac://.../export` URIs only as secondary stable links.
+
+**Independent Test**: From an MCP client or backend contract script, invoke `export_project_snapshot`, `export_pipeline_snapshot`, and `export_node_snapshot` for seeded data and verify each tool result includes `snapshot`, `redaction_report`, `export_resource_uri`, `resource_links`, and no unredacted secrets without requiring a separate resource-open step.
+
+### Tests for Inline JSON Export UX
+
+- [X] T107 [US3] Extend `backend/scripts/mcp-export-redaction-test.mjs` to assert `export_project_snapshot`, `export_pipeline_snapshot`, and `export_node_snapshot` tool results include inline `snapshot`, `redaction_report`, secondary `export_resource_uri`, and `resource_links`
+- [X] T108 [US3] Extend `backend/scripts/mcp-export-redaction-test.mjs` to assert inline export tool snapshots preserve existing redaction behavior for token-like fields, provider credentials, unauthorized resources, and raw dataset content
+- [X] T109 [US3] Add static contract assertions in `backend/scripts/mcp-export-redaction-test.mjs` that export tools reuse `buildProjectExportSnapshot`, `buildPipelineExportSnapshot`, `buildNodeExportSnapshot`, and `redactMcpSecrets` instead of duplicating snapshot assembly
+
+### Implementation for Inline JSON Export UX
+
+- [X] T110 [US3] Update `backend/src/mcp/tools/export.tools.ts` so `export_project_snapshot`, `export_pipeline_snapshot`, and `export_node_snapshot` return redacted inline `snapshot` JSON plus `redaction_report`, `export_resource_uri`, `resource_links`, and `diagnostics`
+- [X] T111 [US3] Ensure `backend/src/mcp/tools/export.tools.ts` keeps `brainiac://projects/{projectId}/export`, `brainiac://pipelines/{pipelineId}/export`, and `brainiac://pipelines/{pipelineId}/nodes/{nodeId}/export` as secondary links without making them the only export payload
+- [X] T112 [US3] Update `backend/src/mcp/resources/export.resources.ts` only if needed so resource reads and inline tool output use the same redacted snapshot shape and redaction report naming
+
+### Documentation And Verification For Inline JSON Export UX
+
+- [X] T113 [P] [US3] Update `docs/sdd/14-mcp-adapter-plan.md` to record that export tools return inline JSON snapshots and export resource URIs are secondary references
+- [X] T114 [P] [US3] Update `README.md` and `vscode-extension/README.md` to describe the export tool UX as inline JSON with secondary resource links
+- [X] T115 [P] [US3] Update `specs/001-mcp-backend-vscode/quickstart.md` validation notes after implementation and keep the manual checkbox unchecked until verified in VS Code
+- [X] T116 [US3] Run `npm --prefix backend run build`, `npm --prefix backend run test:mcp:export`, and `npm --prefix backend run test:mcp:auth`
+- [ ] T117 [US3] Manually verify in VS Code MCP that project, pipeline, and node export tool results show inline JSON snapshots with `redaction_report` without opening `brainiac://.../export`, then mark the quickstart export checkbox
+- [X] T118 [US3] Run final inline export validation: `npm --prefix backend run build`, `npm --prefix backend run test:mcp:export`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:readonly`, and `npm --prefix vscode-extension run test`
+
+**Checkpoint**: Export tool UX no longer forces users to open a resource URI to inspect normal JSON exports; resource URIs remain available as secondary stable MCP resources.
+
+---
+
+## Phase 10: Auth UX Hardening - DCR Prompt And Browser Token Expiry (Priority: P4)
+
+**Goal**: Prevent VS Code from showing an unsupported Dynamic Client Registration prompt in the local extension-managed flow and prevent the browser frontend from repeatedly using expired access tokens after inactivity.
+
+**Independent Test**: Start local Docker/VS Code MCP, run `BrAIniac: Sign in`, and verify no DCR/client-id prompt appears. In the browser frontend, simulate or force an invalid/expired access token and verify protected API calls clear or refresh auth state and redirect to `/auth` with an actionable session-expired message instead of repeating `401 invalid token` requests.
+
+### Tests for Auth UX Hardening
+
+- [X] T119 [P] [US4] Add backend/static assertions in `backend/scripts/vscode-oauth-token-lifecycle-test.mjs` that local `.well-known` OAuth discovery endpoints are not exposed unless DCR/client registration support is implemented
+- [X] T120 [P] [US4] Add frontend tests in `frontend/src/App.test.tsx` for protected API `401 invalid token` handling that clears stale `brainiac.tokens` and redirects to `/auth`
+- [X] T121 [P] [US4] Add frontend API-layer tests in `frontend/src/lib/api.test.ts` for `frontend/src/lib/api.ts` to classify invalid/expired token responses without masking unrelated backend errors
+
+### Implementation for Auth UX Hardening
+
+- [X] T122 [US4] Ensure `backend/src/index.ts` and `backend/src/routes/resources/auth/oauth.routes.ts` do not expose standard `/.well-known/oauth-authorization-server` or `/.well-known/oauth-protected-resource` for the local extension-managed flow unless full DCR support is added
+- [X] T123 [US4] Update `frontend/src/lib/api.ts` to detect protected API `401` invalid/expired token responses and emit a typed auth-expired signal
+- [X] T124 [US4] Update `frontend/src/providers/AuthProvider.tsx` and `frontend/src/App.tsx` so auth-expired signals clear browser auth state, stop stale protected requests, and navigate to `/auth` with a session-expired message
+- [X] T125 [US4] Update `frontend/src/pages/auth-page.tsx` if needed to display the session-expired reason without breaking normal login, signup, or VS Code `vscode_state` completion
+
+### Documentation And Verification For Auth UX Hardening
+
+- [X] T126 [P] [US4] Update `specs/001-mcp-backend-vscode/contracts/vscode-client.md` to state that local extension-managed auth must not trigger VS Code Dynamic Client Registration prompts unless DCR support exists
+- [X] T127 [P] [US4] Update `specs/001-mcp-backend-vscode/quickstart.md` and `vscode-extension/README.md` with troubleshooting for DCR prompt avoidance and browser session-expired handling
+- [X] T128 [US4] Run `npm --prefix backend run build`, `npm --prefix backend run test:vscode:oauth`, `$env:CI='true'; npm --prefix frontend test -- --watchAll=false`, `npm --prefix frontend run build`, and `npm --prefix vscode-extension run test`
+- [ ] T129 [US4] Manually verify VS Code sign-in has no Dynamic Client Registration prompt and browser frontend expired-token handling redirects to `/auth` instead of repeating `401 invalid token`
+
+**Checkpoint**: Local VS Code auth stays extension-managed without unsupported DCR prompts, and stale browser tokens recover through refresh or visible re-authentication instead of repeated invalid-token failures.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -278,6 +339,8 @@ the MVP before operation tools, export, and VS Code integration.
 - **US4 OAuth/token lifecycle hardening (Phase 8)**: Depends on Phase 7 browser auth and manual extension verification. It fixes refresh behavior and upgrades or verifies OAuth 2.1 compatibility.
 - **Baseline Polish (Phase 6.5)**: Depends on Phase 6 and captures completed pre-browser-auth stabilization.
 - **Final OAuth-inclusive Polish**: Depends on all selected stories, including Phase 8 OAuth/token lifecycle hardening.
+- **US3 Inline JSON export continuation (Phase 9)**: Depends on completed US3 export resources/tools and can be implemented after T106 without changing auth or VS Code sign-in behavior.
+- **Auth UX hardening (Phase 10)**: Depends on Phase 7/8 auth infrastructure and can run after T106; it may be implemented before or after Phase 9 because it touches different files.
 
 ### User Story Dependencies
 
@@ -287,6 +350,8 @@ the MVP before operation tools, export, and VS Code integration.
 - **US4 (P4)**: Requires US1 backend endpoint; full validation/export demo requires US2 and US3.
 - **US4 continuation (P4)**: Requires the existing VS Code extension scaffold and backend auth routes.
 - **US4 OAuth/token lifecycle continuation (P4)**: Requires the existing browser sign-in flow and SecretStorage session model.
+- **US3 inline export continuation (P3)**: Requires existing export snapshot builders and redaction helpers from US3; independently testable through export contract scripts.
+- **US4 auth UX hardening (P4)**: Requires existing browser auth provider, frontend API layer, and VS Code auth routes; independently testable through frontend auth tests and VS Code manual sign-in.
 
 ### Within Each User Story
 
@@ -297,6 +362,8 @@ the MVP before operation tools, export, and VS Code integration.
 - Agent authoring stays deferred until a later separate plan/task set.
 - Browser auth tasks must preserve existing token issuance and must not store tokens in repository/workspace files.
 - OAuth/token lifecycle tasks must preserve existing BrAIniac auth/ownership rules and must not mint MCP-only credentials outside the auth service layer.
+- Inline export UX tasks must preserve existing export ownership/redaction rules and must not make `brainiac://.../export` links the only normal export payload.
+- Auth UX hardening tasks must not enable standard OAuth discovery endpoints without implementing DCR/client registration, and browser token recovery must not store VS Code refresh material in browser localStorage.
 
 ### Parallel Opportunities
 
@@ -312,9 +379,11 @@ the MVP before operation tools, export, and VS Code integration.
 - Frontend completion and verification tasks T066-T067 can run after T060 and before manual product
   auth verification.
 - Extension split tasks T072 and T073 can run in parallel after T061.
-- T084 blocks T085 and T089-T093 because it records the exact OAuth compatibility or migration contract before coding auth routes or contract tests.
+- T084 blocks T085 and T089-T093 because it records the exact OAuth compatibility, migration, and metadata exposure contract before coding auth routes or contract tests.
 - OAuth/token lifecycle tests and docs T085-T087 can run in parallel after T084 is complete; T088 follows T085 because both edit `backend/scripts/vscode-oauth-token-lifecycle-test.mjs`.
 - Extension session-model task T096 can run in parallel with backend audit task T084, but T089-T093 wait for T084 and provider refresh behavior T097 depends on the session model and backend refresh contract.
+- Inline export tests T107-T109 should run before implementation but are sequential because they edit the same contract script. Documentation tasks T113-T115 can run in parallel with implementation after T110-T112 behavior is clear. T116 and T118 are sequential validation gates.
+- Auth UX tests T119-T121 can run before implementation. Backend DCR guard T122 can run independently from frontend stale-token handling T123-T125. T128 and T129 are sequential validation gates.
 
 ---
 
@@ -343,16 +412,33 @@ Task: "T073 [P] [US4] Implement VS Code auth session manager in vscode-extension
 ## Parallel Example: OAuth 2.1 And Token Refresh
 
 ```bash
-Task: "T084 [US4] Record OAuth 2.1 compatibility/migration decision in docs/sdd/14-mcp-adapter-plan.md and specs/001-mcp-backend-vscode/contracts/vscode-client.md"
+Task: "T084 [US4] Record OAuth 2.1 compatibility/migration and metadata exposure decision in docs/sdd/14-mcp-adapter-plan.md and specs/001-mcp-backend-vscode/contracts/vscode-client.md"
 ```
 
 After T084 is complete:
 
 ```bash
-Task: "T085 [P] [US4] Add backend OAuth/token lifecycle contract tests in backend/scripts/vscode-oauth-token-lifecycle-test.mjs"
+Task: "T085 [P] [US4] Add backend OAuth/token lifecycle and local discovery guard contract tests in backend/scripts/vscode-oauth-token-lifecycle-test.mjs"
 Task: "T086 [P] [US4] Extend VS Code extension smoke tests in vscode-extension/scripts/smoke-test.mjs"
 Task: "T087 [P] [US4] Update OAuth/refresh documentation in specs/001-mcp-backend-vscode/quickstart.md and vscode-extension/README.md"
 Task: "T096 [P] [US4] Extend VS Code auth session model in vscode-extension/src/auth.ts"
+```
+
+## Parallel Example: Inline JSON Export UX
+
+```bash
+Task: "T113 [P] [US3] Update docs/sdd/14-mcp-adapter-plan.md with inline export contract"
+Task: "T114 [P] [US3] Update README.md and vscode-extension/README.md with inline export UX"
+Task: "T115 [P] [US3] Update specs/001-mcp-backend-vscode/quickstart.md validation notes"
+```
+
+## Parallel Example: Auth UX Hardening
+
+```bash
+Task: "T119 [P] [US4] Add backend/static assertions for local OAuth discovery guard"
+Task: "T120 [P] [US4] Add frontend tests for protected API 401 invalid-token handling"
+Task: "T126 [P] [US4] Update vscode-client contract with DCR prompt avoidance"
+Task: "T127 [P] [US4] Update quickstart and vscode-extension README troubleshooting"
 ```
 
 ---
@@ -374,7 +460,9 @@ Task: "T096 [P] [US4] Extend VS Code auth session model in vscode-extension/src/
 4. US4 VS Code extension/provider.
 5. US4 product browser auth and SecretStorage.
 6. US4 OAuth/token lifecycle hardening and refresh/revoke verification.
-7. A future separate feature for agent authoring tools.
+7. US3 inline JSON export tool UX correction.
+8. US4 auth UX hardening for DCR prompt avoidance and browser stale-token recovery.
+9. A future separate feature for agent authoring tools.
 
 ### Scope Guard
 

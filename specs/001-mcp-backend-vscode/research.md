@@ -208,3 +208,79 @@ References:
 - https://modelcontextprotocol.io/docs/tutorials/security/authorization
 - https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization
 - https://code.visualstudio.com/api/extension-guides/mcp
+
+## Decision: Export Tools Return Inline JSON Snapshots
+
+Change `export_project_snapshot`, `export_pipeline_snapshot`, and
+`export_node_snapshot` so the tool result includes a redacted `snapshot` object
+and `redaction_report` inline. Keep `export_resource_uri` and `resource_links`
+as secondary stable references for clients that want to reopen the same export
+as an MCP resource.
+
+**Rationale**: Users invoke an export tool expecting the exported JSON, not just
+a URI that may or may not be opened by the host client. VS Code currently shows
+the `brainiac://.../export` URI as a separate resource, which makes the export
+tool feel broken even though the resource exists. Inline JSON makes the tool
+result immediately useful in chat, logs, and copy/review workflows while
+preserving MCP resource compatibility.
+
+**Alternatives considered**:
+
+- Keep link-only exports: rejected because it is poor UX in VS Code and hides
+  the actual payload behind a second client-specific action.
+- Remove export resources entirely: rejected because resources are still useful
+  for browsing, repeated reads, and clients that prefer resource attachment.
+- Add a separate `get_export_json` tool: rejected because it duplicates the
+  existing export tools and forces users to learn two commands for one action.
+
+References:
+
+- Existing implementation in `backend/src/mcp/tools/export.tools.ts`
+- Existing resource contract in `backend/src/mcp/resources/export.resources.ts`
+
+## Decision: Keep Local VS Code Auth Extension-Managed Until DCR Is Supported
+
+Do not expose standard `.well-known` OAuth discovery endpoints for the local
+BrAIniac MCP server while the backend does not support Dynamic Client
+Registration or a complete VS Code-compatible OAuth client-registration path.
+Keep the existing extension-managed `BrAIniac: Sign in` flow using
+`/auth/vscode/start`, `/auth/vscode/exchange`, and refresh/revoke endpoints.
+
+**Rationale**: VS Code interprets standard OAuth discovery metadata as a signal
+that it can drive its built-in OAuth flow. If the server advertises metadata but
+does not support automatic client registration, VS Code shows a confusing
+"Dynamic Client Registration not supported" prompt and asks users for a client
+id. That is not the intended local product UX.
+
+**Alternatives considered**:
+
+- Implement full DCR immediately: rejected for this slice because the local
+  extension-managed auth path already works and DCR needs a separate security
+  review and contract.
+- Keep `.well-known` metadata and tell users to cancel the prompt: rejected
+  because it creates a repeated confusing modal and undermines sign-in UX.
+
+## Decision: Browser Frontend Must Handle Expired Access Tokens
+
+Add a frontend session lifecycle fix so protected API calls that receive
+`401 invalid token` either refresh through a supported backend session endpoint
+or clear `brainiac.tokens`, redirect to `/auth`, and show a session-expired
+message. Until a durable web refresh-token contract exists, clearing and
+visible re-authentication is preferable to repeatedly calling protected APIs
+with a stale token.
+
+**Rationale**: The current browser app stores access tokens in localStorage and
+blindly attaches them to every protected API request. After token expiry or
+backend restart, project/tool/node loading produces repeated `401 invalid
+token` errors while the UI remains on the workspace. Users experience this as
+random breakage after inactivity.
+
+**Alternatives considered**:
+
+- Increase access token TTL: rejected because it only delays the failure and
+  weakens token hygiene.
+- Ignore 401s and show data load errors: rejected because the stored auth state
+  remains invalid and every subsequent request repeats the failure.
+- Reuse VS Code refresh tokens for the web app: rejected because VS Code
+  SecretStorage sessions are editor-side and should not become browser
+  localStorage refresh material without a separate web-session design.

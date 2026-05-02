@@ -77,8 +77,10 @@
 7. Confirm BrAIniac resources are listed with readable names.
 8. Invoke a read-only tool.
 9. Invoke `validate_pipeline` for a seeded pipeline.
-10. Invoke project, pipeline, and node export tools and confirm each export
-   resource opens with a redaction report.
+10. Invoke project, pipeline, and node export tools and confirm each tool result
+   includes the redacted JSON snapshot inline, including a `redaction_report`,
+   without requiring the user to open a separate `brainiac://.../export`
+   resource. The resource URI may still be present as a secondary link.
 11. Confirm read-only tools do not request unnecessary confirmation.
 12. Confirm permission/backend errors are visible in VS Code output/status.
 
@@ -147,8 +149,9 @@ endpoint without the product auth bridge.
   tools, agents, and export resources for the authenticated user only.
 - [X] `list_projects` runs as a read-only tool without unnecessary confirmation.
 - [X] `validate_pipeline` returns the existing graph validation result shape.
-- [X] Export tools return resource links and the opened export resources include
-  a redaction report.
+- [ ] Export tools return inline redacted JSON snapshots with a
+  `redaction_report`; `brainiac://.../export` links remain secondary and are not
+  required to inspect the normal export payload.
 - [X] Invalid token, missing token, backend unavailable, forbidden resource, and
   tool runtime errors are visible to the user.
 - [X] Browser sign-in completes within 30 seconds after credentials are
@@ -180,6 +183,12 @@ endpoint without the product auth bridge.
   primary actions.
 - [X] Run `npm --prefix backend run test:contracts:freeze` and OAuth lifecycle
   validation before marking automated OAuth validation complete.
+- [ ] Confirm VS Code local sign-in does not show a "Dynamic Client
+  Registration not supported" prompt; if it appears, verify standard
+  `.well-known` OAuth discovery is disabled or full DCR support is implemented.
+- [ ] Leave the browser web app idle until the access token is rejected, then
+  confirm protected API calls do not keep repeating `401 invalid token`; the app
+  must refresh or redirect to `/auth` with a clear session-expired message.
 
 ### OAuth/Refresh Command Checks
 
@@ -192,6 +201,7 @@ endpoint without the product auth bridge.
 2. Confirm the script checks:
    - `GET /auth/oauth/authorization-server`
    - `GET /auth/oauth/protected-resource`
+   - standard `/.well-known/oauth-*` discovery remains unavailable locally
    - `POST /auth/oauth/token`
    - `POST /auth/oauth/revoke`
    - refresh-token rotation and replay rejection
@@ -215,10 +225,17 @@ endpoint without the product auth bridge.
   sign-in against `http://localhost:8080/mcp`: resource browsing,
   `list_projects`, `validate_pipeline`, one export tool, sign-out, and
   auth/backend error feedback were checked.
-- OAuth/token lifecycle automated validation passed for metadata discovery,
-  refresh-token rotation, replay rejection, revoke invalidation, scoped MCP
-  authorization, VS Code SecretStorage-only session behavior, provider
-  refresh-before-use, and re-auth fallback on refresh failure.
+- OAuth/token lifecycle automated validation passed for local metadata endpoints,
+  disabled standard `.well-known` discovery, refresh-token rotation, replay
+  rejection, revoke invalidation, scoped MCP authorization, VS Code
+  SecretStorage-only session behavior, provider refresh-before-use, and re-auth
+  fallback on refresh failure.
+- Inline export automated validation passed for project, pipeline, and node
+  tool responses containing inline redacted `snapshot`, `redaction_report`,
+  secondary `export_resource_uri`, and `resource_links`.
+- Browser stale-token automated validation passed for protected API
+  `401 invalid token` responses clearing `brainiac.tokens` and surfacing a
+  session-expired state.
 - Remaining manual gap: verify the full OAuth refresh/revoke UX inside a real VS
   Code window, including forced access-token expiry, automatic refresh,
   revoked-refresh recovery, re-auth prompts, and narrow editor layout feedback.

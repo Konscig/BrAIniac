@@ -41,7 +41,8 @@ is also stored only in SecretStorage.
 - `validate_pipeline` should return validation diagnostics for the selected
   pipeline.
 - `export_project_snapshot`, `export_pipeline_snapshot`, and
-  `export_node_snapshot` should return redacted export resource links.
+  `export_node_snapshot` should return the redacted JSON snapshot inline with a
+  `redaction_report`; `brainiac://.../export` links are secondary references.
 - `start_pipeline_execution` should require explicit confirmation from VS Code.
 - To verify refresh behavior, force or simulate access-token expiry, then
   reconnect MCP. VS Code should refresh before returning the MCP server
@@ -67,5 +68,9 @@ is also stored only in SecretStorage.
 - Token expired; sign in again: dev-token sessions and sessions without refresh
   material cannot be refreshed; run `BrAIniac: Sign in` to replace the stored
   SecretStorage session.
+- Dynamic Client Registration prompt appears: the local BrAIniac backend is
+  exposing standard `.well-known` OAuth discovery without full DCR support.
+  Rebuild/restart the backend with local discovery disabled; normal BrAIniac
+  sign-in should use the extension-managed browser polling flow instead.
 - Tool failed: inspect the MCP tool result diagnostics for validation,
   permission, provider, or runtime details.

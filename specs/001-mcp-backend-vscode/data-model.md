@@ -167,13 +167,19 @@ Fields:
 - `datasets`
 - `validation`
 - `executions`
-- `redactions`
+- `redaction_report`: explicit list/summary of omitted or masked fields
+- `export_resource_uri`: optional secondary MCP resource URI for reopening the
+  same export
+- `resource_links`: optional related project/pipeline/node links
 
 Validation:
 
 - Must omit secrets, credentials, provider keys, and unauthorized resources.
 - Raw dataset content is excluded by default; include only metadata and safe
   references unless a later explicit content-export option is approved.
+- Export tools must return the redacted snapshot inline for ordinary project,
+  pipeline, and node exports. Resource URIs are supplemental and must not be the
+  only way to inspect the JSON from a normal export tool invocation.
 
 ## VS Code Integration State
 
@@ -215,6 +221,31 @@ Validation:
   normal VS Code settings.
 - Expired or rejected tokens must trigger a visible re-auth path.
 - Sign-out must delete SecretStorage entries and refresh MCP server definitions.
+
+## Browser Auth Session
+
+Browser-side authentication state for the BrAIniac web app.
+
+Fields:
+
+- `access_token`: bearer credential stored in browser auth state.
+- `expires_at`: optional access token expiry timestamp if available to the
+  frontend.
+- `refresh_token`: optional only if a future web-session refresh contract is
+  explicitly added.
+- `status`: `signed_in`, `expired`, `refreshing`, `signed_out`, or `error`.
+- `last_error`: user-visible session-expired or auth failure message.
+
+Validation:
+
+- Protected API `401` responses with invalid/expired-token semantics must clear
+  unsafe browser auth state or refresh through an explicitly supported web
+  session endpoint.
+- The app must redirect to `/auth` after clearing expired auth state rather than
+  continuing to load projects, tools, node types, or graph data with the stale
+  token.
+- Browser session refresh, if added, must not reuse VS Code SecretStorage-only
+  refresh material.
 
 ## Browser Auth Request
 

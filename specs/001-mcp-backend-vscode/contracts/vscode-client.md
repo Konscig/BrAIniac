@@ -88,8 +88,8 @@ For the local VS Code product slice, BrAIniac keeps the existing polling browser
 handoff and upgrades the exchanged credential to an OAuth-compatible token
 lifecycle:
 
-- authorization metadata endpoint: `GET /auth/oauth/authorization-server`;
-- protected resource metadata endpoint: `GET /auth/oauth/protected-resource`;
+- local metadata endpoints: `GET /auth/oauth/authorization-server` and
+  `GET /auth/oauth/protected-resource`;
 - token endpoint: `POST /auth/oauth/token`;
 - revoke endpoint: `POST /auth/oauth/revoke`;
 - redirect strategy: VS Code continues using the polling `state` bridge as the
@@ -101,6 +101,14 @@ lifecycle:
   expiry, scope, and session id; refresh uses `grant_type=refresh_token`; revoke
   invalidates refresh material;
 - MCP scopes: `mcp:read`, `mcp:execute`, `mcp:export`, and `mcp:dev-token`.
+
+The local extension-managed flow MUST NOT expose
+`/.well-known/oauth-authorization-server` or
+`/.well-known/oauth-protected-resource` unless Dynamic Client Registration or a
+tested compatible client-registration contract is implemented. Exposing those
+standard discovery URLs makes VS Code start its built-in DCR flow and show a
+manual client-registration prompt, which is not part of the BrAIniac local
+product path.
 
 ## Browser Auth Bridge Contract
 

@@ -50,8 +50,11 @@ The JSON payload inside `text` uses:
 - List callbacks return only resources accessible to the authenticated user.
 - Resource names must be descriptive enough for VS Code Quick Pick/resource
   browsing.
-- Resource content must be bounded. Large execution reports or exports should
-  summarize and link to nested resources instead of embedding everything.
+- Resource content must be bounded. Large execution reports may summarize and
+  link to nested resources instead of embedding everything. Export resources
+  remain available as stable JSON reads, but export tools must return the normal
+  redacted snapshot JSON inline so users are not forced to open a URI for the
+  primary export payload.
 
 ## Project Resources
 
@@ -156,3 +159,10 @@ Must exclude:
 - raw secrets
 - unauthorized project data
 - raw dataset content by default
+
+Export resource behavior:
+
+- Resource reads return the same redacted JSON shape used by export tools.
+- Resource URIs are supplemental stable references. They must not be the only
+  output from `export_project_snapshot`, `export_pipeline_snapshot`, or
+  `export_node_snapshot`.

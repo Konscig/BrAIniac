@@ -194,14 +194,15 @@ and `metrics`.
 
 ### `export_pipeline_snapshot`
 
-Purpose: Generate a redacted export snapshot for one pipeline.
+Purpose: Generate and return a redacted JSON export snapshot for one pipeline.
 
 Input:
 
 ```json
 {
   "pipelineId": 10,
-  "includeExecutions": true
+  "includeExecutions": true,
+  "inline": true
 }
 ```
 
@@ -210,13 +211,45 @@ Output:
 ```json
 {
   "export_resource_uri": "brainiac://pipelines/10/export",
-  "redactions": []
+  "snapshot": {
+    "scope": {
+      "type": "pipeline",
+      "pipeline_id": 10
+    },
+    "pipeline": {},
+    "graph": {
+      "nodes": [],
+      "edges": []
+    },
+    "node_types": [],
+    "tools": [],
+    "validation": {},
+    "execution_metadata": {}
+  },
+  "redaction_report": [],
+  "resource_links": [
+    {
+      "uri": "brainiac://pipelines/10/export",
+      "name": "Pipeline 10 export"
+    }
+  ],
+  "diagnostics": []
 }
 ```
 
+Behavior:
+
+- The tool response must include the redacted JSON snapshot inline for normal
+  project sizes. The URI is a secondary stable reference, not the primary
+  payload.
+- If a future size guard prevents full inline output, return a bounded
+  `snapshot_preview`, explicit diagnostic, and the `export_resource_uri`.
+- The same snapshot builder and redaction logic must back both the tool output
+  and the export resource.
+
 ### `export_project_snapshot`
 
-Purpose: Generate a redacted export snapshot for one project.
+Purpose: Generate and return a redacted JSON export snapshot for one project.
 
 Input:
 
@@ -224,7 +257,8 @@ Input:
 {
   "projectId": 1,
   "includePipelines": true,
-  "includeExecutions": true
+  "includeExecutions": true,
+  "inline": true
 }
 ```
 
@@ -233,21 +267,37 @@ Output:
 ```json
 {
   "export_resource_uri": "brainiac://projects/1/export",
-  "redactions": []
+  "snapshot": {
+    "scope": {
+      "type": "project",
+      "project_id": 1
+    },
+    "project": {},
+    "pipelines": []
+  },
+  "redaction_report": [],
+  "resource_links": [
+    {
+      "uri": "brainiac://projects/1/export",
+      "name": "Project 1 export"
+    }
+  ],
+  "diagnostics": []
 }
 ```
 
 ### `export_node_snapshot`
 
-Purpose: Generate a redacted export snapshot for one node plus minimal related
-pipeline, type, agent/tool, and edge context.
+Purpose: Generate and return a redacted JSON export snapshot for one node plus
+minimal related pipeline, type, agent/tool, and edge context.
 
 Input:
 
 ```json
 {
   "pipelineId": 10,
-  "nodeId": 100
+  "nodeId": 100,
+  "inline": true
 }
 ```
 
@@ -256,7 +306,30 @@ Output:
 ```json
 {
   "export_resource_uri": "brainiac://pipelines/10/nodes/100/export",
-  "redactions": []
+  "snapshot": {
+    "scope": {
+      "type": "node",
+      "pipeline_id": 10,
+      "node_id": 100
+    },
+    "pipeline": {},
+    "graph": {
+      "nodes": [],
+      "edges": []
+    },
+    "node_types": [],
+    "tools": [],
+    "validation": {},
+    "execution_metadata": {}
+  },
+  "redaction_report": [],
+  "resource_links": [
+    {
+      "uri": "brainiac://pipelines/10/nodes/100/export",
+      "name": "Node 100 export"
+    }
+  ],
+  "diagnostics": []
 }
 ```
 

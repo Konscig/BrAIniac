@@ -17,7 +17,10 @@ store.
 - Pipeline operation tools reuse `validatePipelineGraph`,
   `startPipelineExecutionForUser`, and `getPipelineExecutionForUser`.
 - Export tools/resources assemble bounded project, pipeline, and node snapshots
-  and run them through MCP redaction helpers before returning content.
+  and run them through MCP redaction helpers before returning content. The
+  export tools return the redacted JSON snapshot inline with
+  `redaction_report`, while `brainiac://.../export` URIs remain secondary
+  stable resource links.
 - VS Code integration starts as a server definition provider and relies on
   VS Code built-in MCP browsing, tool confirmation, logging, and auth prompts.
 - Product VS Code auth uses a local polling browser bridge: the extension calls
@@ -30,8 +33,8 @@ store.
   browser handoff but upgrades the exchanged session to an OAuth-compatible
   token lifecycle. The implementation records the following local product
   contract before route coding:
-  - authorization metadata: `GET /auth/oauth/authorization-server`;
-  - protected resource metadata: `GET /auth/oauth/protected-resource`;
+  - local metadata endpoints: `GET /auth/oauth/authorization-server` and
+    `GET /auth/oauth/protected-resource`;
   - refresh token endpoint: `POST /auth/oauth/token` with
     `grant_type=refresh_token`;
   - revoke endpoint: `POST /auth/oauth/revoke`;
@@ -42,6 +45,10 @@ store.
     this local bridge documents an equivalent single-use, high-entropy polling
     state and refresh-token lifecycle until VS Code can drive OAuth directly;
   - scopes: `mcp:read`, `mcp:execute`, `mcp:export`, and `mcp:dev-token`.
+  Standard `/.well-known/oauth-authorization-server` and
+  `/.well-known/oauth-protected-resource` discovery endpoints are not exposed
+  in the local extension-managed flow because they make VS Code start Dynamic
+  Client Registration, which BrAIniac does not support locally.
 
 ## Guardrails
 
@@ -62,6 +69,9 @@ store.
 - Refresh and revoke behavior must reuse the backend auth application layer.
   Access tokens used by MCP may carry MCP scopes, but MCP handlers still enforce
   existing owner-scoped auth after token validation.
+- Browser frontend protected API calls that receive invalid/expired-token
+  `401` responses must clear stale `brainiac.tokens` and move the user to
+  re-authentication instead of repeating failed requests.
 
 ## Deferred Agent Authoring
 

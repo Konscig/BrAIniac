@@ -125,6 +125,9 @@ Implemented MCP tools include `list_projects`, `list_pipelines`,
 `list_tool_catalog`, `validate_pipeline`, `start_pipeline_execution`,
 `get_pipeline_execution`, `export_project_snapshot`,
 `export_pipeline_snapshot`, and `export_node_snapshot`.
+The export tools return the redacted JSON snapshot inline with
+`redaction_report`; `brainiac://.../export` URIs are retained only as secondary
+links for reopening the same snapshot resource.
 
 Agent authoring tools such as `create_agent_node`, `update_agent_config`, and
 `bind_tool_to_agent` are intentionally deferred to a later mutation-focused
@@ -137,6 +140,9 @@ Code SecretStorage. The extension refreshes expired access tokens through
 `POST /auth/oauth/token` and revokes refresh material on sign-out through
 `POST /auth/oauth/revoke`. Manual token paste remains an explicit development
 fallback only.
+The local backend intentionally does not expose standard `.well-known` OAuth
+discovery endpoints unless full Dynamic Client Registration support is added,
+so VS Code should not show a client-registration prompt during BrAIniac sign-in.
 
 ## Contributing
 

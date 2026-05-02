@@ -28,11 +28,24 @@
 ### Session 2026-05-02
 
 - Q: What is the next auth change after manual VS Code verification passed? -> A: fix the VS Code token refresh problem and add explicit token lifecycle coverage.
-- Q: Should the current auth bridge remain if it is not OAuth 2.1-compatible? -> A: no, verify the current flow against MCP/VS Code OAuth 2.1 expectations and migrate it to OAuth 2.1 with PKCE, refresh, revoke, and metadata support if gaps exist.
+- Q: Should the current auth bridge remain if it is not OAuth 2.1-compatible? -> A: no, verify the current flow against MCP/VS Code OAuth 2.1 expectations and migrate it to OAuth 2.1 with PKCE, refresh, revoke, and compatible metadata/client-registration support if gaps exist.
 - Q: How should completed manual extension checks be represented? -> A: mark the existing manual VS Code/dev-token and browser sign-in verification tasks as passed, then add separate follow-up tasks for OAuth/token lifecycle hardening.
-- Q: What must be decided before OAuth/token lifecycle implementation starts? -> A: record endpoint names, metadata documents, redirect strategy, PKCE decision, refresh/revoke contract, and scope mapping before coding OAuth routes.
+- Q: What must be decided before OAuth/token lifecycle implementation starts? -> A: record endpoint names, metadata exposure decision, redirect strategy, PKCE decision, refresh/revoke contract, and scope mapping before coding OAuth routes.
 - Q: How should Phase 8 public auth contract changes be validated? -> A: include contract-freeze or an explicitly equivalent OAuth contract gate in final validation.
 - Q: Which layout states need renewed VS Code manual coverage? -> A: refresh success, refresh failure, revoke/sign-out, and re-auth prompts must be checked in narrow editor layouts.
+- Q: How should MCP export snapshot tools return data? -> A: project,
+  pipeline, and node export tools must return the redacted JSON snapshot inline
+  in the tool result; `brainiac://.../export` resource URIs may remain as
+  secondary links but must not be the only way to get the JSON.
+- Q: Why does VS Code show "Dynamic Client Registration not supported"? -> A:
+  because standard OAuth discovery metadata can make VS Code try its built-in
+  OAuth/DCR flow. Local BrAIniac must either fully support that flow or keep
+  standard discovery endpoints disabled and use the extension-managed browser
+  sign-in path only.
+- Q: Why does the web app later show `invalid token` after inactivity? -> A:
+  the browser frontend stores an access token but does not refresh it or clear
+  the session on protected API `401` responses. Add a web-session lifecycle
+  plan so expired access tokens trigger refresh or visible re-authentication.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -117,6 +130,10 @@ while excluding secrets and unauthorized resources.
 3. **Given** an export would include secrets, credentials, provider keys, or
    unauthorized project data, **When** the export is generated, **Then** those
    values are omitted or redacted and the export reports what was redacted.
+4. **Given** a user invokes an export tool from VS Code or another MCP client,
+   **When** the tool completes, **Then** the response includes the redacted JSON
+   snapshot inline and does not require opening a separate `brainiac://...`
+   resource URI to inspect the normal export content.
 
 ---
 
@@ -162,14 +179,22 @@ states.
 - A VS Code access token expires while the refresh credential is still valid;
   the extension should refresh without requiring manual token paste or hidden
   repeated retries.
+- The browser web app keeps an expired access token in localStorage and receives
+  `401 invalid token` while loading projects, tools, node types, graph data, or
+  other protected API resources; the app should refresh if supported or clear
+  the session and redirect to login with an actionable message.
+- VS Code MCP discovers standard OAuth metadata for a server that does not
+  support dynamic client registration and opens a client-registration prompt;
+  local extension-managed auth must avoid advertising incompatible discovery
+  metadata until the backend supports the full flow.
 - A refresh token is expired, revoked, malformed, replayed, or belongs to a
   different user/session; the extension should clear unsafe state and prompt
   for browser re-authentication.
 - OAuth metadata, PKCE verifier/challenge, redirect URI, token endpoint, or
   revoke endpoint behavior is missing or incompatible with VS Code/MCP OAuth
   expectations; implementation must not start until the exact endpoint names,
-  metadata documents, redirect strategy, PKCE decision, refresh/revoke contract,
-  and MCP scope mapping are recorded.
+  metadata exposure decision, redirect strategy, PKCE decision,
+  refresh/revoke contract, and MCP scope mapping are recorded.
 - The BrAIniac login page receives `vscode_state` but login fails, the state is
   lost during navigation, or completion is attempted without a valid BrAIniac
   access token.
@@ -200,7 +225,10 @@ states.
   relationships for agents.
 - **FR-008**: Users MUST be able to export project, pipeline, and node snapshots
   that include enough graph, node, agent, tool, validation, and metadata context
-  for the selected scope to support external review or AI-assisted work.
+  for the selected scope to support external review or AI-assisted work. Export
+  tool responses MUST include the redacted JSON snapshot inline; export resource
+  URIs MAY remain as supplemental stable links but MUST NOT be the only returned
+  export payload for normal project, pipeline, or node snapshots.
 - **FR-009**: Exports MUST omit or redact secrets, credentials, provider keys,
   unauthorized resources, and private content not explicitly included by the
   user's access and export choice.
@@ -225,13 +253,26 @@ states.
   SecretStorage, and fall back to visible browser re-authentication when refresh
   fails or is unsafe.
 - **FR-012d**: The MCP/VS Code auth flow MUST be verified against OAuth 2.1
-  expectations for public clients. If the current polling bridge is not
-  compatible, the implementation MUST migrate to OAuth 2.1 authorization code
-  with PKCE, protected resource/authorization metadata, token refresh, token
-  revocation, and scoped authorization for MCP resources/tools. Before OAuth
+  expectations for public clients without making VS Code enter unsupported
+  Dynamic Client Registration. If the current polling bridge is not compatible,
+  the implementation MUST migrate to OAuth 2.1 authorization code with PKCE,
+  token refresh, token revocation, scoped authorization, and either full
+  dynamic client registration or a tested static client-registration contract
+  before exposing standard OAuth discovery metadata. Before OAuth
   implementation tasks start, the plan MUST record exact endpoint names,
-  metadata documents, redirect strategy, PKCE decision, refresh/revoke
-  contract, and scope mapping.
+  discovery/metadata exposure decision, redirect strategy, PKCE decision,
+  refresh/revoke contract, and scope mapping.
+- **FR-012e**: The backend MUST NOT expose standard VS Code/MCP OAuth discovery
+  endpoints such as `/.well-known/oauth-authorization-server` or
+  `/.well-known/oauth-protected-resource` for the local extension-managed flow
+  unless dynamic client registration or an explicitly compatible client
+  registration contract is implemented and tested. The extension-managed
+  `BrAIniac: Sign in` flow remains the local product path.
+- **FR-012f**: The browser frontend MUST handle expired or invalid access
+  tokens for protected API calls by refreshing through a supported backend
+  session endpoint or by clearing stored auth state and redirecting to `/auth`
+  with an actionable session-expired message. It MUST NOT leave the user on the
+  workspace with repeated `401 invalid token` console errors.
 - **FR-013**: The VS Code integration MUST remain usable in normal editor
   layouts, including narrow sidebars, without clipped critical actions or
   overlapping controls. OAuth refresh success, refresh failure,
@@ -286,7 +327,8 @@ states.
   from an MCP client without opening the web UI.
 - **SC-005**: Export snapshots for seeded projects contain the expected graph,
   node, agent, tool, validation, and metadata sections while exposing zero
-  secrets or provider credentials.
+  secrets or provider credentials, and MCP export tool responses expose that
+  JSON inline without requiring a separate resource-open step.
 - **SC-006**: VS Code users can connect, browse resources, invoke a validation
   action, and view results with no hidden critical controls in standard editor
   layouts.
@@ -299,9 +341,16 @@ states.
 - **SC-009**: VS Code can recover from an expired access token through refresh
   when refresh is valid, and it prompts for browser sign-in when refresh is
   expired, revoked, or invalid.
-- **SC-010**: OAuth/token lifecycle contract checks prove metadata discovery,
-  PKCE or documented compatibility, refresh, revoke, scope enforcement, and
-  no token storage outside SecretStorage.
+- **SC-010**: OAuth/token lifecycle contract checks prove PKCE or documented
+  compatibility, refresh, revoke, scope enforcement, no token storage outside
+  SecretStorage, and no standard OAuth discovery metadata in the local
+  extension-managed flow unless DCR or tested client registration is present.
+- **SC-011**: When a browser frontend access token expires or is rejected,
+  protected API calls do not keep retrying with the stale token; the user is
+  either refreshed transparently or redirected to login with a clear
+  session-expired state.
+- **SC-012**: VS Code does not show a Dynamic Client Registration prompt during
+  the local BrAIniac extension-managed sign-in flow.
 
 ## Assumptions
 
