@@ -4,8 +4,15 @@ export const API_BASE_URL =
 type ApiOptions = RequestInit & { skipAuthHeaders?: boolean };
 
 export type ApiError = Error & { status?: number; details?: unknown };
+export type AuthExpiredDetail = {
+  message: string;
+  status: number;
+  details?: unknown;
+};
 
 const TOKENS_STORAGE_KEY = "brainiac.tokens";
+export const AUTH_EXPIRED_EVENT = "brainiac:auth-expired";
+export const AUTH_EXPIRED_MESSAGE = "Session expired. Sign in again.";
 const DEFAULT_PIPELINE_LIMITS = {
   max_time: 120,
   max_cost: 100,
@@ -96,11 +103,59 @@ const extractApiErrorMessage = (details: unknown): string | null => {
   return null;
 };
 
+const collectErrorText = (details: unknown): string => {
+  if (!details) return "";
+  if (typeof details === "string") return details;
+  if (typeof details !== "object") return "";
+
+  const record = details as Record<string, unknown>;
+  return [
+    record.code,
+    record.message,
+    record.error,
+    typeof record.details === "object" && record.details
+      ? (record.details as Record<string, unknown>).code
+      : undefined,
+    typeof record.details === "object" && record.details
+      ? (record.details as Record<string, unknown>).error
+      : undefined
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+};
+
+export const isInvalidOrExpiredTokenResponse = (status: number | undefined, details: unknown): boolean => {
+  if (status !== 401) return false;
+
+  const text = collectErrorText(details);
+  return (
+    /\binvalid[_ -]?token\b/.test(text) ||
+    /\bexpired[_ -]?token\b/.test(text) ||
+    /\bjwt expired\b/.test(text) ||
+    /\bmcp_invalid_token\b/.test(text) ||
+    /\btoken_expired\b/.test(text)
+  );
+};
+
+export const emitAuthExpired = (detail: AuthExpiredDetail): void => {
+  try {
+    localStorage.removeItem(TOKENS_STORAGE_KEY);
+  } catch {
+    /* noop */
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent<AuthExpiredDetail>(AUTH_EXPIRED_EVENT, { detail }));
+  }
+};
+
 export async function apiRequest<TResponse = unknown>(
   path: string,
   options: ApiOptions = {}
 ): Promise<TResponse> {
   const url = `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+  const sentStoredAccessToken = !options.skipAuthHeaders && Boolean(getStoredTokens()?.accessToken);
   const response = await fetch(url, {
     method: options.method ?? "GET",
     headers: buildHeaders(options.headers, !options.skipAuthHeaders),
@@ -122,6 +177,15 @@ export async function apiRequest<TResponse = unknown>(
     const message = extractApiErrorMessage(error.details);
     if (message) {
       error.message = message;
+    }
+
+    if (sentStoredAccessToken && isInvalidOrExpiredTokenResponse(error.status, error.details)) {
+      error.message = AUTH_EXPIRED_MESSAGE;
+      emitAuthExpired({
+        message: AUTH_EXPIRED_MESSAGE,
+        status: response.status,
+        details: error.details
+      });
     }
 
     throw error;

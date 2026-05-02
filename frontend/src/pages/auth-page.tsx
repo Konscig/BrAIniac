@@ -63,7 +63,7 @@ export function AuthPage(): React.ReactElement {
   const [form, setForm] = React.useState<AuthFormState>(initialFormState);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const { tokens: currentTokens, setSession } = useAuth();
+  const { tokens: currentTokens, setSession, clearAuthNotice } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const completedVscodeStateRef = React.useRef<string | null>(null);
@@ -77,6 +77,12 @@ export function AuthPage(): React.ReactElement {
   const redirectTo = React.useMemo(() => {
     const state = location.state as { from?: { pathname?: string } } | null;
     return state?.from?.pathname || "/";
+  }, [location.state]);
+  const sessionMessage = React.useMemo(() => {
+    const state = location.state as { sessionExpired?: string } | null;
+    return typeof state?.sessionExpired === "string" && state.sessionExpired.trim().length > 0
+      ? state.sessionExpired
+      : null;
   }, [location.state]);
   const vscodeState = React.useMemo(() => {
     return readVscodeAuthState(location.search);
@@ -120,6 +126,7 @@ export function AuthPage(): React.ReactElement {
   const toggleMode = () => {
     setMode((prev) => (prev === "login" ? "register" : "login"));
     setError(null);
+    clearAuthNotice();
     setForm((prev) => ({ ...prev, password: "", confirmPassword: "" }));
   };
 
@@ -127,6 +134,7 @@ export function AuthPage(): React.ReactElement {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
+    clearAuthNotice();
 
     try {
       if (mode === "register") {
@@ -308,6 +316,12 @@ export function AuthPage(): React.ReactElement {
             {error && (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive-foreground">
                 {error}
+              </div>
+            )}
+
+            {!error && sessionMessage && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                {sessionMessage}
               </div>
             )}
 

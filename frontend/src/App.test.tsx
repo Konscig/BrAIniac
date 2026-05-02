@@ -1,9 +1,20 @@
-import { buildQuestionInput, completeVscodeAuth, isExecutionTerminal, type NodeRecord, type NodeTypeRecord, type ToolRecord } from "./lib/api";
+import {
+  apiRequest,
+  AUTH_EXPIRED_MESSAGE,
+  buildQuestionInput,
+  completeVscodeAuth,
+  isExecutionTerminal,
+  type NodeRecord,
+  type NodeTypeRecord,
+  type ToolRecord
+} from "./lib/api";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { buildNodeConfigPatch } from "./lib/node-config";
 import { getNodeRoleVisual } from "./lib/node-roles";
 import { getVisibleNodeTypeCatalog, getVisibleToolCatalog, getNodeTypeUiLabel, getNodeTypeUiTagline } from "./lib/node-catalog";
 import { toReadableError } from "./lib/readable-errors";
 import { completeVscodeAuthState, readVscodeAuthState, shouldRenderAuthPage } from "./lib/vscode-auth";
+import { AuthProvider, useAuth } from "./providers/AuthProvider";
 
 const makeNodeType = (type_id: number, name: string): NodeTypeRecord => ({
   type_id,
@@ -67,6 +78,44 @@ test("allows web login to continue when VS Code completion fails", async () => {
 
   expect(completed).toBe(false);
   expect(onError).toHaveBeenCalledTimes(1);
+});
+
+function AuthStateProbe() {
+  const { authNotice, isAuthenticated } = useAuth();
+  return (
+    <div>
+      <span data-testid="auth-state">{isAuthenticated ? "authenticated" : "guest"}</span>
+      {authNotice && <span>{authNotice}</span>}
+    </div>
+  );
+}
+
+test("clears stale browser tokens and exposes session-expired state on invalid protected token", async () => {
+  localStorage.setItem("brainiac.tokens", JSON.stringify({ accessToken: "stale-token" }));
+  jest.spyOn(global, "fetch").mockResolvedValue(
+    jsonResponse({ ok: false, code: "UNAUTHORIZED", message: "invalid token" }, 401)
+  );
+
+  render(
+    <AuthProvider>
+      <AuthStateProbe />
+    </AuthProvider>
+  );
+
+  expect(screen.getByTestId("auth-state")).toHaveTextContent("authenticated");
+  let requestError: unknown;
+  await act(async () => {
+    try {
+      await apiRequest("/projects");
+    } catch (error) {
+      requestError = error;
+    }
+  });
+
+  expect(requestError).toMatchObject({ message: AUTH_EXPIRED_MESSAGE });
+  await waitFor(() => expect(localStorage.getItem("brainiac.tokens")).toBeNull());
+  expect(screen.getByTestId("auth-state")).toHaveTextContent("guest");
+  expect(await screen.findByText(AUTH_EXPIRED_MESSAGE)).toBeInTheDocument();
 });
 
 test("builds canonical question input for pipeline execution", () => {
