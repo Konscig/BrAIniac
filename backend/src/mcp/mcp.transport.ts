@@ -24,7 +24,7 @@ function toSdkAuthInfo(context: Awaited<ReturnType<typeof resolveMcpAuthContext>
   return {
     token: context.accessToken,
     clientId: `brainiac-user-${context.userId}`,
-    scopes: ['brainiac:mcp'],
+    scopes: context.scopes,
     extra: {
       userId: context.userId,
       email: context.user.email,

@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { requireMcpUserId } from '../mcp.auth.js';
+import { requireMcpScope, requireMcpUserId } from '../mcp.auth.js';
 import { toMcpToolJsonText } from '../serializers/mcp-safe-json.js';
 import { pipelineAgentsUri, pipelineGraphUri, pipelineNodeUri, pipelineUri, pipelineValidationUri, projectUri, toolUri } from '../serializers/mcp-resource-uri.js';
 import { listProjectsForUser } from '../../services/application/project/project.application.service.js';
@@ -44,6 +44,7 @@ export function registerReadOnlyProjectTools(server: McpServer): void {
       },
     },
     async (_args, extra) => {
+      requireMcpScope(extra, 'mcp:read');
       const userId = requireMcpUserId(extra);
       const projects = await listProjectsForUser(userId);
 
@@ -77,6 +78,7 @@ export function registerReadOnlyProjectTools(server: McpServer): void {
       },
     },
     async ({ projectId }, extra) => {
+      requireMcpScope(extra, 'mcp:read');
       const userId = requireMcpUserId(extra);
       const pipelines =
         projectId !== undefined
@@ -118,6 +120,7 @@ export function registerReadOnlyContextTools(server: McpServer): void {
       },
     },
     async ({ pipelineId, includeValidation, preset }, extra) => {
+      requireMcpScope(extra, 'mcp:read');
       const userId = requireMcpUserId(extra);
       const pipeline = await ensurePipelineOwnedByUser(pipelineId, userId);
       const validationPreset = parseGraphValidationPreset(preset) ?? 'default';
@@ -163,6 +166,7 @@ export function registerReadOnlyContextTools(server: McpServer): void {
       },
     },
     async ({ pipelineId }, extra) => {
+      requireMcpScope(extra, 'mcp:read');
       const userId = requireMcpUserId(extra);
       await ensurePipelineOwnedByUser(pipelineId, userId);
       const nodes = await listNodesByPipeline(pipelineId);
@@ -205,6 +209,7 @@ export function registerReadOnlyContextTools(server: McpServer): void {
       },
     },
     async ({ pipelineId, nodeId }, extra) => {
+      requireMcpScope(extra, 'mcp:read');
       const userId = requireMcpUserId(extra);
       await ensurePipelineOwnedByUser(pipelineId, userId);
       const node = await getNodeById(nodeId);
@@ -248,7 +253,8 @@ export function registerReadOnlyContextTools(server: McpServer): void {
         idempotentHint: true,
       },
     },
-    async () => {
+    async (_args, extra) => {
+      requireMcpScope(extra, 'mcp:read');
       const tools = await listToolEntries();
       return jsonToolResult({
         tools: tools.map((tool) => ({

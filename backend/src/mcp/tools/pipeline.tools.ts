@@ -7,7 +7,7 @@ import {
   startPipelineExecutionForUser,
 } from '../../services/application/pipeline/pipeline.executor.application.service.js';
 import { ensurePipelineOwnedByUser } from '../../services/core/ownership.service.js';
-import { requireMcpUserId } from '../mcp.auth.js';
+import { requireMcpScope, requireMcpUserId } from '../mcp.auth.js';
 import { pipelineExecutionUri, pipelineUri, pipelineValidationUri } from '../serializers/mcp-resource-uri.js';
 import { toMcpToolJsonText } from '../serializers/mcp-safe-json.js';
 
@@ -48,6 +48,7 @@ export function registerPipelineOperationTools(server: McpServer): void {
       },
     },
     async ({ pipelineId, preset }, extra) => {
+      requireMcpScope(extra, 'mcp:read');
       const userId = requireMcpUserId(extra);
       await ensurePipelineOwnedByUser(pipelineId, userId);
       const validationPreset = normalizePreset(preset);
@@ -86,6 +87,7 @@ export function registerPipelineOperationTools(server: McpServer): void {
       },
     },
     async ({ pipelineId, preset, datasetId, inputJson, idempotencyKey }, extra) => {
+      requireMcpScope(extra, 'mcp:execute');
       const userId = requireMcpUserId(extra);
       const validationPreset = normalizePreset(preset);
       const snapshot = await startPipelineExecutionForUser(
@@ -130,6 +132,7 @@ export function registerPipelineOperationTools(server: McpServer): void {
       },
     },
     async ({ pipelineId, executionId }, extra) => {
+      requireMcpScope(extra, 'mcp:read');
       const userId = requireMcpUserId(extra);
       const snapshot = await getPipelineExecutionForUser(pipelineId, executionId, userId);
 

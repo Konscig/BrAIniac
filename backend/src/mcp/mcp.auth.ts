@@ -1,6 +1,7 @@
 import type { Request } from 'express';
 import { HttpError } from '../common/http-error.js';
 import { verifyAccessToken } from '../services/core/jwt.service.js';
+import { DEFAULT_MCP_SCOPE, MCP_DEV_TOKEN_SCOPE, MCP_SCOPES } from '../services/application/auth/oauth-token.application.service.js';
 import { findUserById } from '../services/data/user.service.js';
 import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type { ServerNotification, ServerRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -14,7 +15,10 @@ export type McpAuthContext = {
   user: McpUser;
   userId: number;
   accessToken: string;
+  scopes: string[];
 };
+
+export type McpScope = (typeof MCP_SCOPES)[number] | typeof MCP_DEV_TOKEN_SCOPE;
 
 function extractBearerToken(authorizationHeader: string | undefined): string {
   if (!authorizationHeader || !authorizationHeader.startsWith('Bearer ')) {
@@ -40,6 +44,12 @@ function getSubjectUserId(payload: unknown): number {
   return userId;
 }
 
+function getScopes(payload: unknown): string[] {
+  const rawScope = typeof payload === 'object' && payload !== null ? (payload as { scope?: unknown }).scope : undefined;
+  const scope = typeof rawScope === 'string' && rawScope.trim().length > 0 ? rawScope : DEFAULT_MCP_SCOPE;
+  return scope.split(/\s+/).filter(Boolean);
+}
+
 export async function resolveMcpAuthContextFromToken(accessToken: string): Promise<McpAuthContext> {
   const payload = verifyAccessToken(accessToken);
   if (!payload) {
@@ -56,6 +66,7 @@ export async function resolveMcpAuthContextFromToken(accessToken: string): Promi
     user,
     userId: user.user_id,
     accessToken,
+    scopes: getScopes(payload),
   };
 }
 
@@ -70,4 +81,14 @@ export function requireMcpUserId(extra: RequestHandlerExtra<ServerRequest, Serve
     throw new HttpError(401, { error: 'unauthorized', code: 'MCP_UNAUTHORIZED' });
   }
   return userId;
+}
+
+export function requireMcpScope(
+  extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+  scope: McpScope,
+): void {
+  const scopes = Array.isArray(extra.authInfo?.scopes) ? extra.authInfo.scopes : DEFAULT_MCP_SCOPE.split(/\s+/);
+  if (!scopes.includes(scope)) {
+    throw new HttpError(403, { error: 'forbidden', code: 'MCP_SCOPE_FORBIDDEN', scope });
+  }
 }

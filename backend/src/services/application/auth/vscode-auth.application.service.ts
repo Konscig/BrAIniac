@@ -1,5 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { HttpError } from '../../../common/http-error.js';
+import {
+  issueVscodeOAuthSession,
+  type VscodeOAuthSessionResult,
+} from './oauth-token.application.service.js';
 
 export type VscodeAuthStatus = 'pending' | 'authorized' | 'failed' | 'expired' | 'consumed';
 
@@ -45,12 +49,9 @@ export type ExchangeVscodeAuthResult =
       status: 'pending';
       expiresAt: string;
     }
-  | {
+  | ({
       status: 'authorized';
-      accessToken: string;
-      tokenType: 'Bearer';
-      expiresAt?: string;
-    };
+    } & VscodeOAuthSessionResult);
 
 const DEFAULT_FRONTEND_BASE_URL = 'http://localhost:3000';
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
@@ -212,8 +213,10 @@ export function exchangeVscodeAuthRequest(state: unknown, now = new Date()): Exc
 
   return {
     status: 'authorized',
-    accessToken: request.accessToken,
-    tokenType: 'Bearer',
+    ...issueVscodeOAuthSession({
+      userId: request.userId ?? 0,
+      accessToken: request.accessToken,
+    }),
   };
 }
 

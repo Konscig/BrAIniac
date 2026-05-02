@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { requireMcpUserId } from '../mcp.auth.js';
+import { requireMcpScope, requireMcpUserId } from '../mcp.auth.js';
 import { pipelineExportUri, pipelineNodeExportUri, projectExportUri } from '../serializers/mcp-resource-uri.js';
 import { toMcpToolJsonText } from '../serializers/mcp-safe-json.js';
 import {
@@ -40,6 +40,7 @@ export function registerExportTools(server: McpServer): void {
       },
     },
     async ({ projectId }, extra) => {
+      requireMcpScope(extra, 'mcp:export');
       const userId = requireMcpUserId(extra);
       const snapshot = await buildProjectExportSnapshot(projectId, userId);
       return jsonToolResult({
@@ -67,6 +68,7 @@ export function registerExportTools(server: McpServer): void {
       },
     },
     async ({ pipelineId }, extra) => {
+      requireMcpScope(extra, 'mcp:export');
       const userId = requireMcpUserId(extra);
       const snapshot = await buildPipelineExportSnapshot(pipelineId, userId);
       return jsonToolResult({
@@ -94,6 +96,7 @@ export function registerExportTools(server: McpServer): void {
       },
     },
     async ({ pipelineId, nodeId }, extra) => {
+      requireMcpScope(extra, 'mcp:export');
       const userId = requireMcpUserId(extra);
       const snapshot = await buildNodeExportSnapshot(pipelineId, nodeId, userId);
       return jsonToolResult({
