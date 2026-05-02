@@ -46,4 +46,21 @@ assert.match(exportResourceSource, /validatePipelineGraph/, 'export snapshots mu
 assert.match(exportResourceSource, /ensurePipelineOwnedByUser/, 'export snapshots must verify pipeline ownership');
 assert.match(exportResourceSource, /redaction_report/, 'export snapshots must include redaction report');
 
+const exportToolSource = await readFile(new URL('../src/mcp/tools/export.tools.ts', import.meta.url), 'utf8');
+for (const toolName of ['export_project_snapshot', 'export_pipeline_snapshot', 'export_node_snapshot']) {
+  assert.match(exportToolSource, new RegExp(`['"]${toolName}['"]`), `${toolName} must remain registered`);
+}
+for (const expectedInlineField of ['inline', 'snapshot', 'redaction_report', 'export_resource_uri', 'resource_links']) {
+  assert.match(exportToolSource, new RegExp(`${expectedInlineField}`), `export tools must return ${expectedInlineField}`);
+}
+for (const builderName of ['buildProjectExportSnapshot', 'buildPipelineExportSnapshot', 'buildNodeExportSnapshot']) {
+  assert.match(exportToolSource, new RegExp(builderName), `export tools must reuse ${builderName}`);
+}
+assert.match(exportToolSource, /redactMcpSecrets/, 'export tools must reuse shared MCP redaction helper');
+assert.doesNotMatch(
+  exportToolSource,
+  /redactions:\s*redactionReportForSnapshot/,
+  'export tools must not return only a redaction report without the inline snapshot',
+);
+
 console.log('MCP export redaction checks OK');

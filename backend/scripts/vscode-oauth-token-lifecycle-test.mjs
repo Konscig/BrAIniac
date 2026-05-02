@@ -102,6 +102,7 @@ async function exchangeBrowserSession(accessToken) {
 
 async function assertStaticContract() {
   const authRoutes = await readFile(new URL('../src/routes/resources/auth/auth.routes.ts', import.meta.url), 'utf8');
+  const indexSource = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8');
   const oauthRoutes = await readFile(new URL('../src/routes/resources/auth/oauth.routes.ts', import.meta.url), 'utf8');
   const oauthService = await readFile(
     new URL('../src/services/application/auth/oauth-token.application.service.ts', import.meta.url),
@@ -115,6 +116,9 @@ async function assertStaticContract() {
   assert.match(oauthRoutes, /refresh_token/, 'OAuth token route must support refresh_token grant');
   assert.match(oauthRoutes, /revoke/, 'OAuth route must expose revoke behavior');
   assert.doesNotMatch(oauthRoutes, /jsonwebtoken|jwt\.sign|signAccessToken/, 'routes must not mint tokens directly');
+  assert.doesNotMatch(indexSource, /\.well-known/, 'local app must not mount standard OAuth discovery endpoints');
+  assert.doesNotMatch(authRoutes, /\.well-known/, 'auth router must not mount standard OAuth discovery endpoints');
+  assert.doesNotMatch(oauthRoutes, /\.well-known/, 'OAuth routes must stay off standard discovery paths unless DCR exists');
   assert.match(oauthService, /issueVscodeOAuthSession/, 'OAuth service must issue VS Code OAuth sessions');
   assert.match(oauthService, /refreshVscodeOAuthSession/, 'OAuth service must refresh VS Code OAuth sessions');
   assert.match(oauthService, /revokeVscodeOAuthSession/, 'OAuth service must revoke VS Code OAuth sessions');
@@ -122,6 +126,12 @@ async function assertStaticContract() {
 
 async function run() {
   await assertStaticContract();
+
+  const standardAuthMetadata = await req('/.well-known/oauth-authorization-server');
+  assert.equal(standardAuthMetadata.status, 404, 'local flow must not expose standard OAuth authorization discovery');
+
+  const standardResourceMetadata = await req('/.well-known/oauth-protected-resource');
+  assert.equal(standardResourceMetadata.status, 404, 'local flow must not expose standard OAuth protected-resource discovery');
 
   const authMetadata = await req('/auth/oauth/authorization-server');
   if (authMetadata.status !== 200) {

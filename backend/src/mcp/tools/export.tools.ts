@@ -7,8 +7,8 @@ import {
   buildNodeExportSnapshot,
   buildPipelineExportSnapshot,
   buildProjectExportSnapshot,
-  redactionReportForSnapshot,
 } from '../resources/export.resources.js';
+import { redactMcpSecrets } from '../serializers/mcp-redaction.js';
 
 function jsonToolResult(structuredContent: Record<string, unknown>) {
   return {
@@ -20,6 +20,22 @@ function jsonToolResult(structuredContent: Record<string, unknown>) {
       },
     ],
   };
+}
+
+function exportSnapshotToolResult(
+  exportResourceUri: string,
+  snapshot: Record<string, unknown>,
+  resourceLinks: Array<{ uri: string; name: string; description?: string }>,
+) {
+  const redacted = redactMcpSecrets(snapshot);
+  return jsonToolResult({
+    inline: true,
+    export_resource_uri: exportResourceUri,
+    snapshot: redacted.value,
+    redaction_report: redacted.redactions,
+    resource_links: resourceLinks,
+    diagnostics: [],
+  });
 }
 
 export function registerExportTools(server: McpServer): void {
@@ -43,12 +59,9 @@ export function registerExportTools(server: McpServer): void {
       requireMcpScope(extra, 'mcp:export');
       const userId = requireMcpUserId(extra);
       const snapshot = await buildProjectExportSnapshot(projectId, userId);
-      return jsonToolResult({
-        export_resource_uri: projectExportUri(projectId),
-        redactions: redactionReportForSnapshot(snapshot),
-        resource_links: [{ uri: projectExportUri(projectId), name: `Project ${projectId} export` }],
-        diagnostics: [],
-      });
+      return exportSnapshotToolResult(projectExportUri(projectId), snapshot, [
+        { uri: projectExportUri(projectId), name: `Project ${projectId} export` },
+      ]);
     },
   );
 
@@ -71,12 +84,9 @@ export function registerExportTools(server: McpServer): void {
       requireMcpScope(extra, 'mcp:export');
       const userId = requireMcpUserId(extra);
       const snapshot = await buildPipelineExportSnapshot(pipelineId, userId);
-      return jsonToolResult({
-        export_resource_uri: pipelineExportUri(pipelineId),
-        redactions: redactionReportForSnapshot(snapshot),
-        resource_links: [{ uri: pipelineExportUri(pipelineId), name: `Pipeline ${pipelineId} export` }],
-        diagnostics: [],
-      });
+      return exportSnapshotToolResult(pipelineExportUri(pipelineId), snapshot, [
+        { uri: pipelineExportUri(pipelineId), name: `Pipeline ${pipelineId} export` },
+      ]);
     },
   );
 
@@ -99,12 +109,9 @@ export function registerExportTools(server: McpServer): void {
       requireMcpScope(extra, 'mcp:export');
       const userId = requireMcpUserId(extra);
       const snapshot = await buildNodeExportSnapshot(pipelineId, nodeId, userId);
-      return jsonToolResult({
-        export_resource_uri: pipelineNodeExportUri(pipelineId, nodeId),
-        redactions: redactionReportForSnapshot(snapshot),
-        resource_links: [{ uri: pipelineNodeExportUri(pipelineId, nodeId), name: `Node ${nodeId} export` }],
-        diagnostics: [],
-      });
+      return exportSnapshotToolResult(pipelineNodeExportUri(pipelineId, nodeId), snapshot, [
+        { uri: pipelineNodeExportUri(pipelineId, nodeId), name: `Node ${nodeId} export` },
+      ]);
     },
   );
 }
