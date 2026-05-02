@@ -26,6 +26,22 @@ store.
   `POST /auth/vscode/complete`, then the extension polls
   `POST /auth/vscode/exchange` and stores the returned session in VS Code
   SecretStorage.
+- OAuth/token lifecycle hardening keeps the local polling browser bridge as the
+  browser handoff but upgrades the exchanged session to an OAuth-compatible
+  token lifecycle. The implementation records the following local product
+  contract before route coding:
+  - authorization metadata: `GET /auth/oauth/authorization-server`;
+  - protected resource metadata: `GET /auth/oauth/protected-resource`;
+  - refresh token endpoint: `POST /auth/oauth/token` with
+    `grant_type=refresh_token`;
+  - revoke endpoint: `POST /auth/oauth/revoke`;
+  - redirect strategy: VS Code continues using the polling bridge state as the
+    local redirect substitute; hosted redirect URI registration remains
+    deferred;
+  - PKCE decision: public-client PKCE remains the target for hosted OAuth, while
+    this local bridge documents an equivalent single-use, high-entropy polling
+    state and refresh-token lifecycle until VS Code can drive OAuth directly;
+  - scopes: `mcp:read`, `mcp:execute`, `mcp:export`, and `mcp:dev-token`.
 
 ## Guardrails
 
@@ -43,6 +59,9 @@ store.
   settings.
 - The VS Code extension must not implement a second MCP server. It only
   registers the backend HTTP MCP server and manages setup/auth state.
+- Refresh and revoke behavior must reuse the backend auth application layer.
+  Access tokens used by MCP may carry MCP scopes, but MCP handlers still enforce
+  existing owner-scoped auth after token validation.
 
 ## Deferred Agent Authoring
 

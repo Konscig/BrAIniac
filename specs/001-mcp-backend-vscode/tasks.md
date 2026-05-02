@@ -145,15 +145,15 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T051 [US4] Implement token and backend URL resolution prompts in `vscode-extension/src/extension.ts`
 - [X] T052 [US4] Add extension README setup instructions and troubleshooting states in `vscode-extension/README.md`
 - [X] T053 [US4] Add and run VS Code extension build/test command in `vscode-extension/package.json`
-- [ ] T054 [US4] Manually verify the dev-token fallback connects VS Code to `http://localhost:8080/mcp`, lists resources, invokes `list_projects`, invokes `validate_pipeline`, invokes an export tool, and reports auth/backend errors using `specs/001-mcp-backend-vscode/quickstart.md`
+- [X] T054 [US4] Manually verify the dev-token fallback connects VS Code to `http://localhost:8080/mcp`, lists resources, invokes `list_projects`, invokes `validate_pipeline`, invokes an export tool, and reports auth/backend errors using `specs/001-mcp-backend-vscode/quickstart.md`
 
 **Checkpoint**: VS Code integration uses built-in MCP surfaces without custom UI.
 
 ---
 
-## Final Phase: Polish & Cross-Cutting Concerns
+## Phase 6.5: Completed Baseline Polish & Cross-Cutting Concerns
 
-**Purpose**: Stabilize docs, tests, and guardrails after desired stories are complete.
+**Purpose**: Stabilize docs, tests, and guardrails for the baseline MCP and VS Code extension work completed before product browser auth and OAuth/token lifecycle hardening.
 
 - [X] T055 [P] Document implemented MCP endpoint, auth requirements, and tool/resource list in `README.md`
 - [X] T056 [P] Update SDD notes for MCP adapter scope and deferred agent authoring in `docs/sdd/14-mcp-adapter-plan.md`
@@ -202,10 +202,65 @@ the MVP before operation tools, export, and VS Code integration.
 
 - [X] T080 [US4] Update `specs/001-mcp-backend-vscode/contracts/vscode-client.md` with final route names, command names, SecretStorage behavior, polling exchange semantics, and fallback limitations
 - [X] T081 [US4] Update `docs/sdd/14-mcp-adapter-plan.md` with the VS Code polling browser auth architecture and the rule that manual token paste is dev-only
-- [ ] T082 [US4] Manually verify VS Code browser sign-in connects to `http://localhost:8080/mcp`, lists resources, invokes `list_projects`, invokes `validate_pipeline`, invokes an export tool, signs out, checks dev-token fallback, confirms local sign-in/re-auth timing targets, checks narrow editor layout feedback, and reports auth/backend errors using `specs/001-mcp-backend-vscode/quickstart.md`
+- [X] T082 [US4] Manually verify VS Code browser sign-in connects to `http://localhost:8080/mcp`, lists resources, invokes `list_projects`, invokes `validate_pipeline`, invokes an export tool, signs out, checks dev-token fallback, confirms local sign-in/re-auth timing targets, checks narrow editor layout feedback, and reports auth/backend errors using `specs/001-mcp-backend-vscode/quickstart.md`
 - [X] T083 [US4] Run final validation: `npm --prefix backend run build`, `npm --prefix backend run test:vscode:mcp-auth`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:readonly`, `CI=true npm --prefix frontend test -- --watchAll=false`, `npm --prefix frontend run build`, and `npm --prefix vscode-extension run test`
 
 **Checkpoint**: VS Code integration no longer depends on pasted tokens for the normal user path; credentials are browser-acquired, stored in SecretStorage, and removable by sign-out.
+
+---
+
+## Phase 8: User Story 4 Continuation - OAuth 2.1 And Token Refresh Hardening (Priority: P4)
+
+**Goal**: Fix the VS Code token refresh problem and verify or migrate the auth flow to OAuth 2.1-compatible MCP authorization with PKCE, refresh, revoke, metadata discovery, and scoped authorization.
+
+**Independent Test**: From VS Code, sign in through the browser, force or simulate access-token expiry, confirm the extension refreshes the token without manual token paste, browse MCP resources, invoke `list_projects`, revoke/sign out, verify refresh no longer works, and confirm expired/revoked refresh credentials trigger visible browser re-authentication.
+
+### OAuth 2.1 Decision Gate
+
+- [X] T084 [US4] Audit current backend auth bridge against MCP/VS Code OAuth 2.1 requirements and record a blocking decision before T085 and T089-T093: verify-as-compatible or migrate, exact endpoint names, metadata documents, redirect strategy, PKCE decision, refresh/revoke contract, and MCP scope mapping in `docs/sdd/14-mcp-adapter-plan.md` and `specs/001-mcp-backend-vscode/contracts/vscode-client.md`
+
+### Tests for OAuth 2.1 And Token Lifecycle
+
+- [X] T085 [P] [US4] Add backend OAuth/token lifecycle contract tests for metadata discovery, PKCE verifier/challenge validation, authorization-code single-use behavior, refresh success, refresh expiry, refresh replay/reuse rejection, revoke/sign-out invalidation, and scope enforcement in `backend/scripts/vscode-oauth-token-lifecycle-test.mjs`
+- [X] T086 [P] [US4] Extend VS Code extension smoke tests for near-expiry access-token refresh, expired refresh fallback to browser sign-in, revoked refresh handling, no token-in-settings/logs behavior, and MCP provider refresh before returning server definitions in `vscode-extension/scripts/smoke-test.mjs`
+- [X] T087 [P] [US4] Update auth documentation and manual verification steps for OAuth 2.1 compatibility, refresh, revoke, forced expiry, and failure recovery in `specs/001-mcp-backend-vscode/quickstart.md` and `vscode-extension/README.md`
+- [X] T088 [US4] Add contract/static assertions that OAuth/token lifecycle code reuses existing BrAIniac auth services and ownership checks instead of directly minting ad hoc MCP-only credentials in `backend/scripts/vscode-oauth-token-lifecycle-test.mjs`
+
+### Backend OAuth/Authorization Implementation
+
+- [X] T089 [US4] Implement or adapt OAuth 2.1-compatible authorization metadata and protected resource metadata for the MCP backend in `backend/src/routes/resources/auth/oauth.routes.ts` and route wiring under `backend/src/routes/resources/auth/auth.routes.ts`
+- [X] T090 [US4] Implement PKCE-bound authorization-code issuance/exchange or a documented MCP/VS Code-compatible equivalent in `backend/src/services/application/auth/oauth-token.application.service.ts`
+- [X] T091 [US4] Implement refresh-token issuance, secure storage/validation, rotation where supported, expiry handling, and explicit errors for invalid/revoked/replayed refresh credentials in `backend/src/services/application/auth/oauth-token.application.service.ts`
+- [X] T092 [US4] Implement token revocation/sign-out invalidation for VS Code sessions in `backend/src/routes/resources/auth/oauth.routes.ts` and the auth application service layer
+- [X] T093 [US4] Add MCP scope mapping for read-only resources, execution tools, export tools, and developer fallback limits in `backend/src/mcp/mcp.auth.ts` and `backend/src/mcp/mcp.server.ts`
+- [X] T094 [US4] Add `test:vscode:oauth` script to `backend/package.json` for `backend/scripts/vscode-oauth-token-lifecycle-test.mjs`
+- [X] T095 [US4] Run `npm --prefix backend run build`, `npm --prefix backend run test:vscode:oauth`, `npm --prefix backend run test:vscode:mcp-auth`, `npm --prefix backend run test:auth`, and `npm --prefix backend run test:mcp:auth`
+
+### VS Code Extension Token Lifecycle Implementation
+
+- [X] T096 [P] [US4] Extend `vscode-extension/src/auth.ts` session model to store access token, refresh token, expiry, scope, backend URL, and auth mode only in SecretStorage
+- [X] T097 [US4] Implement access-token freshness checks and refresh-before-use behavior before `vscode-extension/src/mcpProvider.ts` returns MCP server definitions
+- [X] T098 [US4] Implement refresh failure handling that clears unsafe session state, shows an actionable re-auth prompt, and starts browser sign-in without falling back to silent manual token prompts in `vscode-extension/src/auth.ts`
+- [X] T099 [US4] Update `BrAIniac: Sign out` to call backend revoke when refresh material exists, clear SecretStorage, and refresh MCP definitions in `vscode-extension/src/extension.ts` and `vscode-extension/src/auth.ts`
+- [X] T100 [US4] Keep `BrAIniac: Use Dev Token` dev-only and ensure dev-token sessions cannot be treated as refreshable OAuth sessions in `vscode-extension/src/auth.ts`
+- [X] T101 [US4] Run `npm --prefix vscode-extension run test`
+
+### OAuth/Refresh Verification
+
+- [ ] T102 [US4] Manually verify browser sign-in, forced access-token expiry, automatic refresh, resource browsing, `list_projects`, `validate_pipeline`, export invocation, revoked refresh failure, sign-out/revoke, dev-token fallback isolation, visible re-auth prompts, and narrow editor layout feedback for refresh success, refresh failure, revoke/sign-out, and re-auth states using `specs/001-mcp-backend-vscode/quickstart.md`
+- [X] T103 [US4] Run final OAuth/token lifecycle validation: `npm --prefix backend run build`, `npm --prefix backend run test:vscode:oauth`, `npm --prefix backend run test:vscode:mcp-auth`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:readonly`, `npm --prefix backend run test:contracts:freeze`, `CI=true npm --prefix frontend test -- --watchAll=false`, `npm --prefix frontend run build`, and `npm --prefix vscode-extension run test`
+
+**Checkpoint**: VS Code auth survives access-token expiry through refresh, rejects revoked/invalid refresh credentials, clears credentials on sign-out, and satisfies the documented OAuth 2.1/MCP authorization contract or records any remaining hosted-SaaS hardening as deferred.
+
+---
+
+## Final Phase: OAuth-Inclusive Polish & Cross-Cutting Concerns
+
+**Purpose**: Stabilize docs, tests, and guardrails after Phase 8 token lifecycle work is complete.
+
+- [X] T104 [P] Reconcile OAuth/token lifecycle implementation notes across `README.md`, `vscode-extension/README.md`, `docs/sdd/14-mcp-adapter-plan.md`, and `specs/001-mcp-backend-vscode/contracts/vscode-client.md`
+- [X] T105 [P] Validate `specs/001-mcp-backend-vscode/quickstart.md` end-to-end after OAuth/refresh implementation and record any remaining manual VS Code gaps in that file
+- [X] T106 Run final cross-slice validation after T103 and documentation reconciliation: `npm --prefix backend run build`, `npm --prefix backend run test`, `npm --prefix backend run test:contracts:freeze`, `npm --prefix backend run test:vscode:oauth`, `npm --prefix backend run test:vscode:mcp-auth`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:readonly`, `CI=true npm --prefix frontend test -- --watchAll=false`, `npm --prefix frontend run build`, and `npm --prefix vscode-extension run test`
 
 ---
 
@@ -220,7 +275,9 @@ the MVP before operation tools, export, and VS Code integration.
 - **US3 Export (Phase 5)**: Depends on US1 and can proceed before or after US2 if export excludes execution start behavior.
 - **US4 VS Code integration (Phase 6)**: Depends on a stable backend MCP endpoint from US1; validation/export checks depend on US2/US3.
 - **US4 Product Browser Auth (Phase 7)**: Depends on Phase 6 scaffold plus stable backend MCP/auth behavior. It replaces manual token prompt as the primary user path.
-- **Final Polish**: Depends on all selected stories.
+- **US4 OAuth/token lifecycle hardening (Phase 8)**: Depends on Phase 7 browser auth and manual extension verification. It fixes refresh behavior and upgrades or verifies OAuth 2.1 compatibility.
+- **Baseline Polish (Phase 6.5)**: Depends on Phase 6 and captures completed pre-browser-auth stabilization.
+- **Final OAuth-inclusive Polish**: Depends on all selected stories, including Phase 8 OAuth/token lifecycle hardening.
 
 ### User Story Dependencies
 
@@ -229,6 +286,7 @@ the MVP before operation tools, export, and VS Code integration.
 - **US3 (P3)**: Requires US1 resource serializers/redaction foundation; execution metadata benefits from US2.
 - **US4 (P4)**: Requires US1 backend endpoint; full validation/export demo requires US2 and US3.
 - **US4 continuation (P4)**: Requires the existing VS Code extension scaffold and backend auth routes.
+- **US4 OAuth/token lifecycle continuation (P4)**: Requires the existing browser sign-in flow and SecretStorage session model.
 
 ### Within Each User Story
 
@@ -238,6 +296,7 @@ the MVP before operation tools, export, and VS Code integration.
 - Existing services are reused before introducing any new facade.
 - Agent authoring stays deferred until a later separate plan/task set.
 - Browser auth tasks must preserve existing token issuance and must not store tokens in repository/workspace files.
+- OAuth/token lifecycle tasks must preserve existing BrAIniac auth/ownership rules and must not mint MCP-only credentials outside the auth service layer.
 
 ### Parallel Opportunities
 
@@ -253,6 +312,9 @@ the MVP before operation tools, export, and VS Code integration.
 - Frontend completion and verification tasks T066-T067 can run after T060 and before manual product
   auth verification.
 - Extension split tasks T072 and T073 can run in parallel after T061.
+- T084 blocks T085 and T089-T093 because it records the exact OAuth compatibility or migration contract before coding auth routes or contract tests.
+- OAuth/token lifecycle tests and docs T085-T087 can run in parallel after T084 is complete; T088 follows T085 because both edit `backend/scripts/vscode-oauth-token-lifecycle-test.mjs`.
+- Extension session-model task T096 can run in parallel with backend audit task T084, but T089-T093 wait for T084 and provider refresh behavior T097 depends on the session model and backend refresh contract.
 
 ---
 
@@ -278,6 +340,21 @@ Task: "T072 [P] [US4] Split MCP server definition provider in vscode-extension/s
 Task: "T073 [P] [US4] Implement VS Code auth session manager in vscode-extension/src/auth.ts"
 ```
 
+## Parallel Example: OAuth 2.1 And Token Refresh
+
+```bash
+Task: "T084 [US4] Record OAuth 2.1 compatibility/migration decision in docs/sdd/14-mcp-adapter-plan.md and specs/001-mcp-backend-vscode/contracts/vscode-client.md"
+```
+
+After T084 is complete:
+
+```bash
+Task: "T085 [P] [US4] Add backend OAuth/token lifecycle contract tests in backend/scripts/vscode-oauth-token-lifecycle-test.mjs"
+Task: "T086 [P] [US4] Extend VS Code extension smoke tests in vscode-extension/scripts/smoke-test.mjs"
+Task: "T087 [P] [US4] Update OAuth/refresh documentation in specs/001-mcp-backend-vscode/quickstart.md and vscode-extension/README.md"
+Task: "T096 [P] [US4] Extend VS Code auth session model in vscode-extension/src/auth.ts"
+```
+
 ---
 
 ## Implementation Strategy
@@ -296,7 +373,8 @@ Task: "T073 [P] [US4] Implement VS Code auth session manager in vscode-extension
 3. US3 redacted export snapshots.
 4. US4 VS Code extension/provider.
 5. US4 product browser auth and SecretStorage.
-6. A future separate feature for agent authoring tools.
+6. US4 OAuth/token lifecycle hardening and refresh/revoke verification.
+7. A future separate feature for agent authoring tools.
 
 ### Scope Guard
 

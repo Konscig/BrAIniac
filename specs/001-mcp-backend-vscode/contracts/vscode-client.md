@@ -45,8 +45,10 @@ User installs BrAIniac VS Code extension
   -> MCP HTTP requests include Authorization: Bearer <token>
 ```
 
-Implementation uses a transitional local browser polling flow before full OAuth
-metadata/DCR support:
+Implementation currently uses a transitional local browser polling flow. The
+next auth slice must verify whether this behavior is compatible with MCP/VS
+Code OAuth 2.1 expectations. Any missing OAuth behavior must be implemented
+before the VS Code auth flow is considered complete:
 
 - extension command `BrAIniac: Sign in` starts a short-lived auth request;
 - extension opens the BrAIniac web login in the external browser;
@@ -60,11 +62,52 @@ metadata/DCR support:
 Manual access-token prompt remains available only as `BrAIniac: Use Dev Token`
 or equivalent dev fallback.
 
+## OAuth 2.1 Target Contract
+
+The product auth target is OAuth 2.1-compatible browser authorization for a
+public VS Code client:
+
+- authorization code with PKCE (`S256`) or documented MCP/VS Code-compatible
+  equivalent;
+- protected resource and authorization metadata where required by MCP clients;
+- token endpoint returning access token, token type, expiry, scope, and refresh
+  token when refresh is supported;
+- refresh flow that obtains a new access token before the old token blocks MCP
+  usage;
+- revoke/sign-out flow that invalidates refresh material and clears
+  SecretStorage;
+- scoped authorization for MCP resource browsing and tool invocation;
+- replay protection for auth codes, polling states, and refresh credentials.
+
+If the current polling bridge remains during migration, it MUST be documented as
+temporary and MUST NOT bypass the refresh/revoke/scope rules above.
+
+### Local OAuth Compatibility Decision
+
+For the local VS Code product slice, BrAIniac keeps the existing polling browser
+handoff and upgrades the exchanged credential to an OAuth-compatible token
+lifecycle:
+
+- authorization metadata endpoint: `GET /auth/oauth/authorization-server`;
+- protected resource metadata endpoint: `GET /auth/oauth/protected-resource`;
+- token endpoint: `POST /auth/oauth/token`;
+- revoke endpoint: `POST /auth/oauth/revoke`;
+- redirect strategy: VS Code continues using the polling `state` bridge as the
+  local redirect substitute;
+- PKCE decision: hosted OAuth remains authorization-code with PKCE (`S256`), but
+  the local bridge uses an equivalent single-use high-entropy polling state
+  until VS Code can drive OAuth directly;
+- refresh/revoke contract: browser exchange returns access token, refresh token,
+  expiry, scope, and session id; refresh uses `grant_type=refresh_token`; revoke
+  invalidates refresh material;
+- MCP scopes: `mcp:read`, `mcp:execute`, `mcp:export`, and `mcp:dev-token`.
+
 ## Browser Auth Bridge Contract
 
-Full OAuth metadata, Dynamic Client Registration, refresh/revoke, and hosted
-SaaS OAuth hardening are deferred. The local bridge MUST keep state/route
-semantics narrow enough to replace with OAuth later.
+Hosted SaaS hardening and marketplace packaging are deferred. OAuth metadata,
+PKCE compatibility, refresh, revoke, and scoped MCP authorization are no longer
+deferred because the VS Code token refresh problem blocks a reliable product
+auth flow.
 
 ### `POST /auth/vscode/start`
 
@@ -205,6 +248,53 @@ Rules:
 - `expiresAt` in the authorized response MAY be omitted when the existing token
   issuer does not expose a reliable expiry timestamp to the bridge.
 
+### Token Refresh
+
+Purpose: replace an expired or near-expired access token without asking the user
+to paste a token or repeat browser login while refresh is still valid.
+
+Input:
+
+```json
+{
+  "grant_type": "refresh_token",
+  "refresh_token": "stored-refresh-token"
+}
+```
+
+Output:
+
+```json
+{
+  "access_token": "...",
+  "refresh_token": "...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "mcp:read mcp:execute mcp:export"
+}
+```
+
+Rules:
+
+- Refresh credentials are stored only in VS Code SecretStorage.
+- Expired, revoked, malformed, replayed, or cross-user refresh credentials
+  return explicit errors and trigger browser re-authentication.
+- Refresh should rotate refresh credentials when supported by the backend auth
+  model.
+- The extension should refresh before returning an expired MCP server
+  definition.
+
+### Token Revocation / Sign-Out
+
+Purpose: invalidate refresh material and clear the VS Code session.
+
+Rules:
+
+- `BrAIniac: Sign out` deletes SecretStorage entries and calls the backend
+  revoke/invalidate path when refresh material exists.
+- Revoked tokens must not refresh successfully.
+- MCP requests after sign-out must require sign-in again.
+
 ## Extension Provider
 
 When implemented, the extension contributes an MCP server definition provider
@@ -224,7 +314,8 @@ with:
   stores an authorized session in SecretStorage, and refreshes MCP server
   definitions.
 - `brainiacMcp.signOut` / `BrAIniac: Sign out`: deletes stored credentials from
-  SecretStorage and refreshes MCP server definitions.
+  SecretStorage, revokes refresh material when available, and refreshes MCP
+  server definitions.
 - `brainiacMcp.reconnect` / `BrAIniac: Reconnect MCP`: refreshes MCP server
   definitions after backend URL or auth state changes.
 - `brainiacMcp.useDevToken` / `BrAIniac: Use Dev Token`: optional fallback for
@@ -243,6 +334,8 @@ with:
 - Sign-in timed out
 - Signed out
 - Token expired; sign in again
+- Token refreshed
+- Refresh failed; sign in again
 
 ## UX Rules
 

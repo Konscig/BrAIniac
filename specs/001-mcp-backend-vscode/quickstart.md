@@ -96,12 +96,18 @@ The intended flow is:
    `/auth/login` or reuses an already authenticated browser session, then calls
    `POST /auth/vscode/complete` with
    `Authorization: Bearer <accessToken>` and `{ "state": "<vscode_state>" }`.
-5. After completion, exchange returns an access token and the extension stores
-   the credential in VS Code SecretStorage.
+5. After completion, exchange returns an access token, refresh token, expiry,
+   scope, and session id. The extension stores the credential in VS Code
+   SecretStorage.
 6. VS Code connects to `http://localhost:8080/mcp` with
    `Authorization: Bearer <stored token>`.
 7. Use VS Code's built-in MCP tools/resources UI to browse BrAIniac context and
    invoke tools.
+8. Before returning an expired MCP server definition, the extension refreshes
+   the access token through `POST /auth/oauth/token` with
+   `grant_type=refresh_token`.
+9. `BrAIniac: Sign out` calls `POST /auth/oauth/revoke` when refresh material
+   exists, clears SecretStorage, and refreshes MCP server definitions.
 
 Manual `.vscode/mcp.json` token configuration remains useful for local
 debugging, but it is not the target user experience.
@@ -130,30 +136,71 @@ endpoint without the product auth bridge.
 
 ### Manual Smoke Checklist
 
-- [ ] `BrAIniac: Sign in` opens `/auth?vscode_state=...` in the external browser.
-- [ ] Browser login completes `POST /auth/vscode/complete`; VS Code polling
+- [X] `BrAIniac: Sign in` opens `/auth?vscode_state=...` in the external browser.
+- [X] Browser login completes `POST /auth/vscode/complete`; VS Code polling
   receives an authorized exchange result.
-- [ ] The extension stores the returned credential in VS Code SecretStorage,
+- [X] The extension stores the returned credential in VS Code SecretStorage,
   not in `.vscode/mcp.json`, workspace files, or VS Code settings.
-- [ ] The BrAIniac VS Code extension provider `brainiacMcp` offers
+- [X] The BrAIniac VS Code extension provider `brainiacMcp` offers
   `http://localhost:8080/mcp` using the stored session.
-- [ ] Resource browsing shows projects, pipelines, graph, validation, nodes,
+- [X] Resource browsing shows projects, pipelines, graph, validation, nodes,
   tools, agents, and export resources for the authenticated user only.
-- [ ] `list_projects` runs as a read-only tool without unnecessary confirmation.
-- [ ] `validate_pipeline` returns the existing graph validation result shape.
-- [ ] Export tools return resource links and the opened export resources include
+- [X] `list_projects` runs as a read-only tool without unnecessary confirmation.
+- [X] `validate_pipeline` returns the existing graph validation result shape.
+- [X] Export tools return resource links and the opened export resources include
   a redaction report.
-- [ ] Invalid token, missing token, backend unavailable, forbidden resource, and
+- [X] Invalid token, missing token, backend unavailable, forbidden resource, and
   tool runtime errors are visible to the user.
-- [ ] Browser sign-in completes within 30 seconds after credentials are
+- [X] Browser sign-in completes within 30 seconds after credentials are
   submitted in local dev.
-- [ ] Expired or rejected credentials produce an actionable re-auth prompt
+- [X] Expired or rejected credentials produce an actionable re-auth prompt
   within 5 seconds.
-- [ ] The VS Code command/status flow remains usable in a narrow editor layout
+- [X] The VS Code command/status flow remains usable in a narrow editor layout
   without hidden primary actions.
-- [ ] `BrAIniac: Sign out` deletes the session and requires re-authentication.
-- [ ] `BrAIniac: Use Dev Token` remains available as an explicit developer
+- [X] `BrAIniac: Sign out` deletes the session and requires re-authentication.
+- [X] `BrAIniac: Use Dev Token` remains available as an explicit developer
   fallback and is not presented as the default setup path.
+
+### OAuth/Refresh Follow-Up Checklist
+
+- [X] Verify or migrate the VS Code auth flow to OAuth 2.1-compatible browser
+  authorization with PKCE or documented MCP/VS Code-compatible behavior.
+- [X] Automated smoke coverage simulates near-expiry access-token refresh before
+  MCP server definitions return an expired token.
+- [X] Automated smoke coverage verifies refresh failure clears unsafe state and
+  starts the browser sign-in path instead of falling back to silent manual token
+  prompts.
+- [X] Automated smoke coverage confirms refresh/revoke credentials are stored
+  only in SecretStorage and never written to workspace files, settings, or logs.
+- [X] Backend OAuth contract coverage confirms MCP scopes restrict read,
+  execute, export, and developer fallback behavior as documented in
+  `contracts/vscode-client.md`.
+- [ ] Confirm refresh success, refresh failure, revoke/sign-out, and re-auth
+  prompts remain usable in a real VS Code narrow editor layout without hidden
+  primary actions.
+- [X] Run `npm --prefix backend run test:contracts:freeze` and OAuth lifecycle
+  validation before marking automated OAuth validation complete.
+
+### OAuth/Refresh Command Checks
+
+1. Start backend and run:
+
+   ```bash
+   npm --prefix backend run test:vscode:oauth
+   ```
+
+2. Confirm the script checks:
+   - `GET /auth/oauth/authorization-server`
+   - `GET /auth/oauth/protected-resource`
+   - `POST /auth/oauth/token`
+   - `POST /auth/oauth/revoke`
+   - refresh-token rotation and replay rejection
+   - revoked refresh failure
+   - MCP scope output
+
+3. In VS Code, confirm `BrAIniac: Use Dev Token` remains isolated: dev-token
+   sessions do not include refresh material and must not be treated as
+   refreshable OAuth sessions.
 
 ### Validation Notes
 
@@ -164,10 +211,17 @@ endpoint without the product auth bridge.
   `http://localhost:8080` and running `npm --prefix backend run test`.
 - VS Code extension scaffold smoke passed with `npm --prefix vscode-extension
   run test`.
-- Manual VS Code UI verification is still required outside this headless
-  environment: connect to `http://localhost:8080/mcp`, browse resources, invoke
-  `list_projects`, `validate_pipeline`, one export tool, and confirm auth and
-  backend error feedback.
+- Manual VS Code UI verification passed for dev-token fallback and browser
+  sign-in against `http://localhost:8080/mcp`: resource browsing,
+  `list_projects`, `validate_pipeline`, one export tool, sign-out, and
+  auth/backend error feedback were checked.
+- OAuth/token lifecycle automated validation passed for metadata discovery,
+  refresh-token rotation, replay rejection, revoke invalidation, scoped MCP
+  authorization, VS Code SecretStorage-only session behavior, provider
+  refresh-before-use, and re-auth fallback on refresh failure.
+- Remaining manual gap: verify the full OAuth refresh/revoke UX inside a real VS
+  Code window, including forced access-token expiry, automatic refresh,
+  revoked-refresh recovery, re-auth prompts, and narrow editor layout feedback.
 
 ## Out Of MVP
 

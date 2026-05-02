@@ -242,3 +242,53 @@ Validation:
 - The backend must issue credentials only after normal BrAIniac login succeeds.
 - The extension must exchange only the active sign-in request `state`.
 - Authorized exchange consumes the state and replay returns an explicit error.
+
+## OAuth Authorization Grant
+
+Backend-side authorization grant used when the VS Code auth path is verified or
+migrated to OAuth 2.1-compatible behavior.
+
+Fields:
+
+- `authorization_code`: short-lived, single-use code issued after browser login.
+- `code_challenge`: PKCE challenge supplied by the VS Code public client.
+- `code_challenge_method`: `S256`.
+- `redirect_uri`: registered/allowed VS Code redirect target or local bridge
+  exchange target.
+- `client_id`: VS Code extension/client identifier.
+- `user_id`: authenticated BrAIniac user id.
+- `scope`: MCP scopes granted for resources/tools.
+- `expires_at`
+- `consumed_at`
+
+Validation:
+
+- Authorization codes must be unguessable, short-lived, and single-use.
+- Token exchange must verify the PKCE verifier before issuing tokens.
+- Grants must bind to the authenticated user, client id, redirect URI, and
+  approved scope.
+
+## OAuth Token Lifecycle
+
+Backend-issued token state used by VS Code MCP authorization.
+
+Fields:
+
+- `access_token`: short-lived bearer credential.
+- `refresh_token`: longer-lived refresh credential, rotated when practical.
+- `token_type`: `Bearer`.
+- `scope`: granted MCP scopes.
+- `expires_at`: access token expiry.
+- `refresh_expires_at`: refresh credential expiry when supported.
+- `revoked_at`: set on sign-out or explicit revoke.
+- `session_id`: auth session correlation id for audit and revocation.
+
+Validation:
+
+- Refresh must reject expired, revoked, malformed, replayed, or cross-user
+  credentials.
+- Refresh should rotate refresh tokens where existing backend auth design
+  supports it; otherwise the limitation must be documented and tested.
+- Sign-out must revoke or invalidate refresh material and clear VS Code
+  SecretStorage.
+- MCP auth must enforce scopes and ownership after token validation.

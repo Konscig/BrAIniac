@@ -130,6 +130,14 @@ Agent authoring tools such as `create_agent_node`, `update_agent_config`, and
 `bind_tool_to_agent` are intentionally deferred to a later mutation-focused
 plan.
 
+The VS Code extension uses browser sign-in as the product path. The local
+browser bridge exchanges the completed sign-in for an OAuth-compatible session:
+access token, refresh token, expiry, scope, and session id are stored only in VS
+Code SecretStorage. The extension refreshes expired access tokens through
+`POST /auth/oauth/token` and revokes refresh material on sign-out through
+`POST /auth/oauth/revoke`. Manual token paste remains an explicit development
+fallback only.
+
 ## Contributing
 
 We welcome contributions and ideas!

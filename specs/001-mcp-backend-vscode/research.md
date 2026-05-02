@@ -174,3 +174,37 @@ References:
 
 - https://code.visualstudio.com/api/extension-guides/ai/mcp
 - https://modelcontextprotocol.io/docs/learn
+
+## Decision: Harden VS Code Auth To OAuth 2.1 Token Lifecycle Semantics
+
+Treat the current polling browser-auth bridge as a transitional local flow and
+add an explicit implementation slice to verify or migrate it to OAuth
+2.1-compatible behavior for MCP/VS Code. The target behavior is authorization
+code with PKCE for the VS Code public client, protected resource/authorization
+metadata discovery where applicable, scoped access for MCP resources/tools,
+access-token refresh before expiry, revocation on sign-out, replay protection,
+and visible re-authentication when refresh fails.
+
+**Rationale**: The current access-token exchange solves first sign-in but leaves
+the extension brittle when the token expires. MCP authorization guidance is
+based on OAuth-style authorization for HTTP transports, and VS Code documents
+OAuth 2.1/2.0 support for MCP authorization. Token refresh and revoke behavior
+must be contract-tested before the extension can be considered product-grade.
+
+**Alternatives considered**:
+
+- Keep the current polling flow and ask users to sign in again on every access
+  token expiry: rejected because it fails the product requirement for a usable
+  VS Code integration and does not fix the observed refresh problem.
+- Store longer-lived access tokens in SecretStorage without refresh: rejected
+  because it increases blast radius and still lacks revoke/session lifecycle
+  semantics.
+- Build a separate auth service: rejected because the existing backend auth
+  services and Express routes are the correct source of truth for BrAIniac
+  users and ownership.
+
+References:
+
+- https://modelcontextprotocol.io/docs/tutorials/security/authorization
+- https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization
+- https://code.visualstudio.com/api/extension-guides/mcp
