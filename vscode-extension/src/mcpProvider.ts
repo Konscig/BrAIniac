@@ -8,10 +8,16 @@ export type BrainiacAuthSession = {
   accessToken: string;
   backendUrl?: string;
   expiresAt?: string;
+  refreshToken?: string;
+  refreshExpiresAt?: string;
+  scope?: string;
+  sessionId?: string;
+  authMode?: 'oauth' | 'dev-token';
 };
 
 export type BrainiacAuthSessionStore = {
   readSession(): Promise<BrainiacAuthSession | null>;
+  getValidSession?(backendUrl: string): Promise<BrainiacAuthSession | null>;
 };
 
 const providerChangeEmitter = new vscode.EventEmitter<void>();
@@ -58,7 +64,9 @@ export function createBrainiacMcpProvider(sessionStore: BrainiacAuthSessionStore
     onDidChangeMcpServerDefinitions: providerChangeEmitter.event,
     async provideMcpServerDefinitions() {
       const configuredBackendUrl = readConfiguredBackendUrl();
-      const session = await sessionStore.readSession();
+      const session = sessionStore.getValidSession
+        ? await sessionStore.getValidSession(configuredBackendUrl)
+        : await sessionStore.readSession();
       const hasValidSession = session ? Boolean(session.accessToken) && !isExpired(session) : false;
 
       output.appendLine(
@@ -78,10 +86,12 @@ export function createBrainiacMcpProvider(sessionStore: BrainiacAuthSessionStore
       }
 
       const configuredBackendUrl = readConfiguredBackendUrl();
-      const session = await sessionStore.readSession();
+      const session = sessionStore.getValidSession
+        ? await sessionStore.getValidSession(configuredBackendUrl)
+        : await sessionStore.readSession();
 
       output.appendLine(
-        `[provider] resolve definition label=${definition.label} hasSession=${Boolean(session?.accessToken)} expired=${session ? isExpired(session) : false}`,
+        `[provider] resolve definition label=${definition.label} hasSession=${Boolean(session?.accessToken)} expired=${session ? isExpired(session) : false} refresh-before-use=${Boolean(sessionStore.getValidSession)}`,
       );
 
       if (!session?.accessToken) {

@@ -48,9 +48,23 @@ assert.doesNotMatch(extensionSource, /showInputBox\(\{[\s\S]*access token/i);
 assert.match(authSource, /SecretStorage|secretStorage/);
 assert.match(authSource, /\/auth\/vscode\/start/);
 assert.match(authSource, /\/auth\/vscode\/exchange/);
+assert.match(authSource, /\/auth\/oauth\/token/);
+assert.match(authSource, /\/auth\/oauth\/revoke/);
 assert.match(authSource, /openExternal/);
 assert.match(authSource, /delete\(/);
+assert.match(authSource, /refreshToken/);
+assert.match(authSource, /refreshSession/);
+assert.match(authSource, /revokeSession/);
+assert.match(authSource, /authMode/);
+assert.match(authSource, /oauth/);
+assert.match(authSource, /dev-token/);
 assert.doesNotMatch(authSource, /workspace\.getConfiguration\(['"]brainiacMcp['"]\)\.get<string>\(['"]accessToken['"]\)/);
+assert.doesNotMatch(authSource, /console\.log\([^)]*accessToken/);
+assert.doesNotMatch(authSource, /console\.log\([^)]*refreshToken/);
+
+assert.match(mcpProviderSource, /getValidSession/);
+assert.match(mcpProviderSource, /refresh-before-use|refresh before use|refreshSession/);
+assert.match(mcpProviderSource, /Refresh failed|sign in again|authentication required/i);
 
 assert.match(readme, /Authentication required/);
 assert.match(readme, /Backend unavailable/);
@@ -58,6 +72,8 @@ assert.match(readme, /BrAIniac: Sign in/);
 assert.match(readme, /BrAIniac: Sign out/);
 assert.match(readme, /SecretStorage/);
 assert.match(readme, /BrAIniac: Use Dev Token/);
+assert.match(readme, /refresh/i);
+assert.match(readme, /revoke/i);
 assert.doesNotMatch(readme, /brainiacMcp\.accessToken/);
 
 assert.match(quickstart, /BrAIniac: Sign in/);

@@ -53,7 +53,7 @@ function activate(context) {
             vscode.window.showErrorMessage(`BrAIniac sign-in failed: ${getErrorMessage(error)}`);
         }
     }), vscode.commands.registerCommand('brainiacMcp.signOut', async () => {
-        await authManager.deleteSession();
+        await authManager.revokeSession();
         (0, mcpProvider_js_1.refreshBrainiacMcpDefinitions)();
         vscode.window.showInformationMessage('BrAIniac MCP signed out.');
     }), vscode.commands.registerCommand('brainiacMcp.reconnect', async () => {

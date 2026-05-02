@@ -75,7 +75,9 @@ function createBrainiacMcpProvider(sessionStore) {
         onDidChangeMcpServerDefinitions: providerChangeEmitter.event,
         async provideMcpServerDefinitions() {
             const configuredBackendUrl = readConfiguredBackendUrl();
-            const session = await sessionStore.readSession();
+            const session = sessionStore.getValidSession
+                ? await sessionStore.getValidSession(configuredBackendUrl)
+                : await sessionStore.readSession();
             const hasValidSession = session ? Boolean(session.accessToken) && !isExpired(session) : false;
             output.appendLine(`[provider] provide definitions url=${normalizeBackendUrl(session?.backendUrl ?? configuredBackendUrl)} hasSession=${Boolean(session?.accessToken)} valid=${hasValidSession}`);
             return [
@@ -87,8 +89,10 @@ function createBrainiacMcpProvider(sessionStore) {
                 return definition;
             }
             const configuredBackendUrl = readConfiguredBackendUrl();
-            const session = await sessionStore.readSession();
-            output.appendLine(`[provider] resolve definition label=${definition.label} hasSession=${Boolean(session?.accessToken)} expired=${session ? isExpired(session) : false}`);
+            const session = sessionStore.getValidSession
+                ? await sessionStore.getValidSession(configuredBackendUrl)
+                : await sessionStore.readSession();
+            output.appendLine(`[provider] resolve definition label=${definition.label} hasSession=${Boolean(session?.accessToken)} expired=${session ? isExpired(session) : false} refresh-before-use=${Boolean(sessionStore.getValidSession)}`);
             if (!session?.accessToken) {
                 output.appendLine('[provider] resolve failed: no stored session');
                 vscode.window.showWarningMessage('BrAIniac MCP authentication required. Run BrAIniac: Sign in.');

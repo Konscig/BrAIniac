@@ -3,6 +3,7 @@ import type { BrainiacAuthSession, BrainiacAuthSessionStore } from './mcpProvide
 
 const SESSION_SECRET_KEY = 'brainiacMcp.session';
 const DEFAULT_SIGN_IN_TIMEOUT_MS = 30_000;
+const REFRESH_SKEW_MS = 60_000;
 
 function normalizeSession(input: unknown): BrainiacAuthSession | null {
   if (!input || typeof input !== 'object') {
@@ -18,6 +19,11 @@ function normalizeSession(input: unknown): BrainiacAuthSession | null {
     accessToken: candidate.accessToken.trim(),
     backendUrl: typeof candidate.backendUrl === 'string' ? candidate.backendUrl.trim() : undefined,
     expiresAt: typeof candidate.expiresAt === 'string' ? candidate.expiresAt : undefined,
+    refreshToken: typeof candidate.refreshToken === 'string' ? candidate.refreshToken.trim() : undefined,
+    refreshExpiresAt: typeof candidate.refreshExpiresAt === 'string' ? candidate.refreshExpiresAt : undefined,
+    scope: typeof candidate.scope === 'string' ? candidate.scope : undefined,
+    sessionId: typeof candidate.sessionId === 'string' ? candidate.sessionId : undefined,
+    authMode: candidate.authMode === 'dev-token' ? 'dev-token' : 'oauth',
   };
 }
 
@@ -28,6 +34,15 @@ export function isSessionExpired(session: BrainiacAuthSession | null): boolean {
 
   const expiresAt = Date.parse(session.expiresAt);
   return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+
+function shouldRefreshSession(session: BrainiacAuthSession): boolean {
+  if (!session.expiresAt) {
+    return false;
+  }
+
+  const expiresAt = Date.parse(session.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now() + REFRESH_SKEW_MS;
 }
 
 export class BrainiacAuthManager implements BrainiacAuthSessionStore {
@@ -55,8 +70,75 @@ export class BrainiacAuthManager implements BrainiacAuthSessionStore {
   }
 
   async hasValidSession(): Promise<boolean> {
+    const session = await this.getValidSession();
+    return Boolean(session?.accessToken);
+  }
+
+  async getValidSession(backendUrl?: string): Promise<BrainiacAuthSession | null> {
     const session = await this.readSession();
-    return Boolean(session?.accessToken) && !isSessionExpired(session);
+    if (!session?.accessToken) {
+      return null;
+    }
+
+    if (!shouldRefreshSession(session)) {
+      return session;
+    }
+
+    if (session.authMode !== 'oauth' || !session.refreshToken) {
+      return isSessionExpired(session) ? null : session;
+    }
+
+    try {
+      return await this.refreshSession(session, backendUrl ?? session.backendUrl);
+    } catch (error) {
+      await this.deleteSession();
+      vscode.window.showWarningMessage('BrAIniac MCP refresh failed; sign in again.');
+      return null;
+    }
+  }
+
+  async refreshSession(session: BrainiacAuthSession, backendUrl?: string): Promise<BrainiacAuthSession> {
+    if (session.authMode !== 'oauth' || !session.refreshToken) {
+      throw new Error('BrAIniac dev-token sessions are not refreshable.');
+    }
+
+    const resolvedBackendUrl = backendUrl ?? session.backendUrl;
+    if (!resolvedBackendUrl) {
+      throw new Error('Missing BrAIniac backend URL for refresh.');
+    }
+
+    const authBaseUrl = getAuthBaseUrl(resolvedBackendUrl);
+    const refreshed = await postJson<OAuthRefreshResponse>(`${authBaseUrl}/auth/oauth/token`, {
+      grant_type: 'refresh_token',
+      refresh_token: session.refreshToken,
+    });
+
+    const nextSession: BrainiacAuthSession = {
+      accessToken: refreshed.access_token,
+      refreshToken: refreshed.refresh_token,
+      backendUrl: resolvedBackendUrl,
+      expiresAt: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+      refreshExpiresAt: refreshed.refresh_expires_at,
+      scope: refreshed.scope,
+      sessionId: refreshed.session_id,
+      authMode: 'oauth',
+    };
+
+    await this.writeSession(nextSession);
+    vscode.window.showInformationMessage('BrAIniac MCP token refreshed.');
+    return nextSession;
+  }
+
+  async revokeSession(): Promise<void> {
+    const session = await this.readSession();
+    if (session?.authMode === 'oauth' && session.refreshToken && session.backendUrl) {
+      const authBaseUrl = getAuthBaseUrl(session.backendUrl);
+      await postJson(`${authBaseUrl}/auth/oauth/revoke`, {
+        token: session.refreshToken,
+      }).catch(() => undefined);
+    }
+
+    await this.deleteSession();
   }
 
   async signInWithBrowser(backendUrl: string): Promise<BrainiacAuthSession> {
@@ -80,8 +162,13 @@ export class BrainiacAuthManager implements BrainiacAuthSessionStore {
       if (exchanged.status === 'authorized') {
         const session: BrainiacAuthSession = {
           accessToken: exchanged.accessToken,
+          refreshToken: exchanged.refreshToken,
           backendUrl,
           expiresAt: exchanged.expiresAt,
+          refreshExpiresAt: exchanged.refreshExpiresAt,
+          scope: exchanged.scope,
+          sessionId: exchanged.sessionId,
+          authMode: 'oauth',
         };
         await this.writeSession(session);
         vscode.window.showInformationMessage('BrAIniac MCP signed in.');
@@ -109,6 +196,7 @@ export class BrainiacAuthManager implements BrainiacAuthSessionStore {
     const session: BrainiacAuthSession = {
       accessToken: token.trim(),
       backendUrl,
+      authMode: 'dev-token',
     };
     await this.writeSession(session);
     vscode.window.showInformationMessage('BrAIniac MCP dev token stored in SecretStorage.');
@@ -135,9 +223,23 @@ type VscodeAuthExchangeResponse =
   | {
       status: 'authorized';
       accessToken: string;
+      refreshToken: string;
       tokenType: 'Bearer';
       expiresAt?: string;
+      refreshExpiresAt: string;
+      scope: string;
+      sessionId: string;
     };
+
+type OAuthRefreshResponse = {
+  access_token: string;
+  refresh_token: string;
+  token_type: 'Bearer';
+  expires_in: number;
+  scope: string;
+  session_id: string;
+  refresh_expires_at: string;
+};
 
 function getAuthBaseUrl(backendUrl: string): string {
   const parsed = new URL(backendUrl);

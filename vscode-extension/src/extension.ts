@@ -24,7 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }),
     vscode.commands.registerCommand('brainiacMcp.signOut', async () => {
-      await authManager.deleteSession();
+      await authManager.revokeSession();
       refreshBrainiacMcpDefinitions();
       vscode.window.showInformationMessage('BrAIniac MCP signed out.');
     }),
