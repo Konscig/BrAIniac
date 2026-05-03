@@ -7,6 +7,7 @@ import { registerPipelineResources } from './resources/pipeline.resources.js';
 import { registerProjectResources } from './resources/project.resources.js';
 import { registerToolResources } from './resources/tool.resources.js';
 import { registerExportTools } from './tools/export.tools.js';
+import { registerAuthoringTools } from './tools/authoring.tools.js';
 import { registerPipelineOperationTools } from './tools/pipeline.tools.js';
 import { registerReadOnlyContextTools, registerReadOnlyProjectTools } from './tools/readonly.tools.js';
 
@@ -114,6 +115,7 @@ export function createBrainiacMcpServer(): McpServer {
   registerReadOnlyContextTools(server);
   registerPipelineOperationTools(server);
   registerExportTools(server);
+  registerAuthoringTools(server);
 
   return server;
 }

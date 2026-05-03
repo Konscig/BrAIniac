@@ -96,3 +96,7 @@ model Edge {
   @@index([fk_from_node])
   @@index([fk_to_node])
 }
+
+// Browser web refresh sessions are intentionally dev-only in-memory state for
+// the local MCP/browser workflow. Add a Prisma model here before enabling
+// durable hosted browser sessions.

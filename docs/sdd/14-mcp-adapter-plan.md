@@ -21,6 +21,11 @@ store.
   export tools return the redacted JSON snapshot inline with
   `redaction_report`, while `brainiac://.../export` URIs remain secondary
   stable resource links.
+- Pipeline authoring tools expose explicit mutating operations:
+  `create_project`, `create_pipeline`, `create_pipeline_node`, and
+  `connect_pipeline_nodes`. They reuse owner-scoped project/pipeline/node/edge
+  services and graph validation, and they store readable node positions in
+  existing `ui_json`.
 - VS Code integration starts as a server definition provider and relies on
   VS Code built-in MCP browsing, tool confirmation, logging, and auth prompts.
 - Product VS Code auth uses a local polling browser bridge: the extension calls
@@ -70,12 +75,20 @@ store.
   Access tokens used by MCP may carry MCP scopes, but MCP handlers still enforce
   existing owner-scoped auth after token validation.
 - Browser frontend protected API calls that receive invalid/expired-token
-  `401` responses must clear stale `brainiac.tokens` and move the user to
-  re-authentication instead of repeating failed requests.
+  `401` responses must either refresh through the dedicated web-session endpoint
+  backed by an HttpOnly, Secure, SameSite cookie, retry the original request
+  once, or clear stale `brainiac.tokens` and move the user to re-authentication
+  instead of repeating failed requests.
+- Browser refresh credentials must never be stored in localStorage,
+  sessionStorage, app state, URL parameters, logs, or any JavaScript-readable
+  storage.
 
-## Deferred Agent Authoring
+## Pipeline Authoring
 
-Agent mutation tools are not part of this adapter slice. `create_agent_node`,
-`update_agent_config`, `bind_tool_to_agent`, and related graph mutation helpers
-require a separate plan that defines confirmation semantics, rollback/error
-behavior, graph validation after mutation, and UI expectations.
+Authoring tools are non-read-only, confirmation-appropriate, owner-scoped thin
+adapters over existing project, pipeline, node, edge, and graph-validation
+services. They must not create hidden tool bindings, unsupported node types,
+duplicate edges, or cross-pipeline edges. Node authoring stores readable canvas
+positions in existing `ui_json`; tool descriptions tell agents to avoid stacked
+nodes and use clear horizontal or vertical spacing suitable for the ReactFlow
+canvas.

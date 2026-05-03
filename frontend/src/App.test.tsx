@@ -1,6 +1,7 @@
 import {
   apiRequest,
   AUTH_EXPIRED_MESSAGE,
+  AUTH_REFRESHED_EVENT,
   buildQuestionInput,
   completeVscodeAuth,
   isExecutionTerminal,
@@ -81,10 +82,12 @@ test("allows web login to continue when VS Code completion fails", async () => {
 });
 
 function AuthStateProbe() {
-  const { authNotice, isAuthenticated } = useAuth();
+  const { authNotice, authStatus, isAuthenticated, tokens } = useAuth();
   return (
     <div>
       <span data-testid="auth-state">{isAuthenticated ? "authenticated" : "guest"}</span>
+      <span data-testid="auth-status">{authStatus}</span>
+      <span data-testid="refresh-token-state">{tokens && "refreshToken" in tokens ? "has-refresh" : "no-refresh"}</span>
       {authNotice && <span>{authNotice}</span>}
     </div>
   );
@@ -116,6 +119,27 @@ test("clears stale browser tokens and exposes session-expired state on invalid p
   await waitFor(() => expect(localStorage.getItem("brainiac.tokens")).toBeNull());
   expect(screen.getByTestId("auth-state")).toHaveTextContent("guest");
   expect(await screen.findByText(AUTH_EXPIRED_MESSAGE)).toBeInTheDocument();
+});
+
+test("updates browser auth state after web refresh without storing refresh token", async () => {
+  localStorage.setItem("brainiac.tokens", JSON.stringify({ accessToken: "stale-token", refreshToken: "old-refresh" }));
+
+  render(
+    <AuthProvider>
+      <AuthStateProbe />
+    </AuthProvider>
+  );
+
+  expect(screen.getByTestId("auth-state")).toHaveTextContent("authenticated");
+  expect(screen.getByTestId("refresh-token-state")).toHaveTextContent("no-refresh");
+
+  act(() => {
+    window.dispatchEvent(new CustomEvent(AUTH_REFRESHED_EVENT, { detail: { accessToken: "fresh-token", refreshToken: "ignored" } }));
+  });
+
+  await waitFor(() => expect(localStorage.getItem("brainiac.tokens")).toBe(JSON.stringify({ accessToken: "fresh-token" })));
+  expect(screen.getByTestId("auth-status")).toHaveTextContent("signed_in");
+  expect(screen.getByTestId("refresh-token-state")).toHaveTextContent("no-refresh");
 });
 
 test("builds canonical question input for pipeline execution", () => {

@@ -18,6 +18,7 @@ import {
   listNodeTypes,
   listPipelines,
   listProjects,
+  revokeBrowserWebSession,
   updatePipeline,
   updateProject,
   type EdgeRecord,
@@ -157,6 +158,9 @@ function MainPage(): React.ReactElement {
   }, [activePipelineId, activeProjectId, pipelinesByProject]);
 
   const handleLogout = React.useCallback(() => {
+    void revokeBrowserWebSession().catch((error) => {
+      console.warn("Failed to revoke browser web session", error);
+    });
     clearSession();
     navigate("/auth", { replace: true });
   }, [clearSession, navigate]);

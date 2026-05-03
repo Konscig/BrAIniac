@@ -124,14 +124,18 @@ Implemented MCP tools include `list_projects`, `list_pipelines`,
 `get_pipeline_context`, `list_pipeline_nodes`, `get_node_context`,
 `list_tool_catalog`, `validate_pipeline`, `start_pipeline_execution`,
 `get_pipeline_execution`, `export_project_snapshot`,
-`export_pipeline_snapshot`, and `export_node_snapshot`.
+`export_pipeline_snapshot`, `export_node_snapshot`, `create_project`,
+`create_pipeline`, `create_pipeline_node`, and `connect_pipeline_nodes`.
 The export tools return the redacted JSON snapshot inline with
 `redaction_report`; `brainiac://.../export` URIs are retained only as secondary
 links for reopening the same snapshot resource.
 
-Agent authoring tools such as `create_agent_node`, `update_agent_config`, and
-`bind_tool_to_agent` are intentionally deferred to a later mutation-focused
-plan.
+Pipeline authoring tools are explicit mutating MCP operations. Agents should use
+them as primitive steps: create the project, create the pipeline, create
+supported nodes with explicit canvas positions or layout hints, then connect
+nodes with edges. Node placement should keep at least normal canvas spacing and
+avoid stacked coordinates; duplicate/cross-pipeline edges and hidden
+`tool_ref`/`tool_refs` bindings are rejected.
 
 The VS Code extension uses browser sign-in as the product path. The local
 browser bridge exchanges the completed sign-in for an OAuth-compatible session:
@@ -143,6 +147,11 @@ fallback only.
 The local backend intentionally does not expose standard `.well-known` OAuth
 discovery endpoints unless full Dynamic Client Registration support is added,
 so VS Code should not show a client-registration prompt during BrAIniac sign-in.
+
+The browser frontend uses a separate web-session refresh contract:
+`POST /auth/web/refresh` rotates an HttpOnly SameSite refresh cookie and returns
+only a new access token. Local Docker disables the cookie `Secure` flag only for
+plain `http://localhost`; HTTPS/hosted environments must keep it enabled.
 
 ## Contributing
 

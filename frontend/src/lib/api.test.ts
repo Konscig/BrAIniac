@@ -27,9 +27,9 @@ test("classifies invalid and expired token 401 responses", () => {
 
 test("clears stale stored tokens and emits auth-expired event for invalid token responses", async () => {
   localStorage.setItem("brainiac.tokens", JSON.stringify({ accessToken: "stale-token" }));
-  jest.spyOn(global, "fetch").mockResolvedValue(
-    jsonResponse({ ok: false, code: "UNAUTHORIZED", message: "invalid token" }, 401)
-  );
+  jest.spyOn(global, "fetch")
+    .mockResolvedValueOnce(jsonResponse({ ok: false, code: "UNAUTHORIZED", message: "invalid token" }, 401))
+    .mockResolvedValueOnce(jsonResponse({ ok: false, code: "WEB_REFRESH_INVALID", message: "web refresh session expired" }, 401));
   const onAuthExpired = jest.fn();
   window.addEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
 
@@ -40,6 +40,26 @@ test("clears stale stored tokens and emits auth-expired event for invalid token 
 
   expect(localStorage.getItem("brainiac.tokens")).toBeNull();
   expect(onAuthExpired).toHaveBeenCalledTimes(1);
+  window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
+});
+
+test("refreshes browser session once and retries original protected request", async () => {
+  localStorage.setItem("brainiac.tokens", JSON.stringify({ accessToken: "stale-token", refreshToken: "must-not-survive" }));
+  const fetchMock = jest.spyOn(global, "fetch")
+    .mockResolvedValueOnce(jsonResponse({ ok: false, code: "UNAUTHORIZED", message: "invalid token" }, 401))
+    .mockResolvedValueOnce(jsonResponse({ accessToken: "fresh-token" }))
+    .mockResolvedValueOnce(jsonResponse([{ project_id: 1, fk_user_id: 1, name: "Demo" }]));
+  const onAuthExpired = jest.fn();
+  window.addEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
+
+  await expect(apiRequest("/projects")).resolves.toEqual([{ project_id: 1, fk_user_id: 1, name: "Demo" }]);
+
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+  expect(new URL(String(fetchMock.mock.calls[1][0])).pathname).toBe("/auth/web/refresh");
+  expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "POST", credentials: "include" });
+  expect(fetchMock.mock.calls[2][1]?.headers).toMatchObject({ Authorization: "Bearer fresh-token" });
+  expect(localStorage.getItem("brainiac.tokens")).toBe(JSON.stringify({ accessToken: "fresh-token" }));
+  expect(onAuthExpired).not.toHaveBeenCalled();
   window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
 });
 
