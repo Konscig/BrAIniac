@@ -212,6 +212,59 @@ endpoint without the product auth bridge.
    sessions do not include refresh material and must not be treated as
    refreshable OAuth sessions.
 
+### Browser Web Refresh Cookie Checks
+
+Local Docker note: the production cookie contract is `HttpOnly; Secure;
+SameSite=Lax; Path=/auth/web`. Because the local frontend/backend run on
+plain `http://localhost`, `.env.docker` sets `WEB_REFRESH_COOKIE_SECURE=false`
+for local development only. Hosted or HTTPS development environments must leave
+the refresh cookie secure.
+
+1. Start backend and frontend, then log in through the normal browser `/auth`
+   flow.
+2. Confirm login sets a refresh cookie with `HttpOnly`, `Secure`, and
+   `SameSite` attributes. The refresh credential must not appear in
+   localStorage, sessionStorage, app state snapshots, URL parameters, or logs.
+3. Force access-token expiry or replace the stored access token with an expired
+   token while keeping the refresh cookie valid.
+4. Open a protected workspace route. The first protected API failure should call
+   the web refresh endpoint with `credentials: include`, store only the new
+   access token in frontend auth state, and retry the original request once.
+5. Revoke or expire the refresh session, then repeat the protected route check.
+   The app should clear access-token state, redirect to `/auth`, and avoid a
+   loop of repeated `401 invalid token` requests.
+6. Sign out and confirm the backend revokes the refresh session and clears the
+   cookie.
+
+Automated coverage target:
+
+```bash
+npm --prefix backend run test:web-session-refresh
+npm --prefix frontend test -- --watchAll=false
+```
+
+### MCP Authoring Tool Checks
+
+1. Connect an authenticated MCP client to `http://localhost:8080/mcp`.
+2. Invoke `create_project` for a new test project.
+3. Invoke `create_pipeline` inside that project.
+4. Invoke `create_pipeline_node` at least three times with explicit positions
+   or layout hints that keep nodes separated on the canvas.
+5. Invoke `connect_pipeline_nodes` to connect those nodes into a simple
+   sequential workflow.
+6. Read `brainiac://pipelines/<id>/graph` and `validate_pipeline`; confirm
+   ownership is enforced, resource links are returned, graph validation uses the
+   existing result shape, and duplicate/cross-pipeline edges are rejected.
+7. Open the pipeline in the web canvas and confirm the nodes are not stacked or
+   overlapping. If a tool omitted positions, confirm the backend derived
+   readable left-to-right or top-to-bottom spacing.
+
+Automated coverage target:
+
+```bash
+npm --prefix backend run test:mcp:authoring
+```
+
 ### Validation Notes
 
 - Backend build and automated MCP checks passed with `npm --prefix backend run
@@ -242,8 +295,8 @@ endpoint without the product auth bridge.
 
 ## Out Of MVP
 
-- Creating or editing agent nodes.
-- Binding tools to agents.
 - Starting executions automatically from model suggestions.
+- Composite one-shot prompt-to-pipeline generation before primitive authoring
+  tools are tested.
 - Raw dataset content export.
 - Custom VS Code webviews.

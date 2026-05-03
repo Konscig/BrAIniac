@@ -47,6 +47,19 @@
   the session on protected API `401` responses. Add a web-session lifecycle
   plan so expired access tokens trigger refresh or visible re-authentication.
 
+### Session 2026-05-03
+
+- Q: How should the browser frontend refresh sessions safely? -> A: add a web
+  refresh-token contract using an HttpOnly, Secure, SameSite cookie; the
+  frontend must not store refresh tokens in localStorage or expose them to
+  JavaScript.
+- Q: Which MCP write tools should be planned next? -> A: add authoring tools
+  that let an agent create a project, create a pipeline, place nodes on the
+  canvas, and connect nodes with edges from a user's request.
+- Q: How should MCP-created nodes be positioned? -> A: authoring tools must
+  accept or derive canvas positions with minimum spacing so nodes do not stack
+  on top of each other; tool descriptions must state the layout expectation.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Inspect BrAIniac From An AI Client (Priority: P1)
@@ -160,6 +173,37 @@ states.
    the VS Code integration tries to connect, **Then** the user receives a clear
    actionable status without repeated hidden retries.
 
+---
+
+### User Story 5 - Build BrAIniac Pipelines Through MCP Authoring Tools (Priority: P5)
+
+An AI agent receives a user's natural-language pipeline request and uses MCP
+authoring tools to create a BrAIniac project, create a pipeline, place runtime
+supported nodes on the canvas, and connect them with graph edges.
+
+**Why this priority**: Once read-only, execution, export, and auth flows are
+stable, AI-assisted pipeline construction becomes the next high-value MCP
+workflow. It must be explicit and confirmation-friendly because it mutates user
+projects.
+
+**Independent Test**: From an MCP client, create a project and pipeline, add at
+least three nodes with non-overlapping canvas positions, connect them with
+edges, then read the pipeline graph and verify ownership, validation output,
+resource links, and visible node spacing.
+
+**Acceptance Scenarios**:
+
+1. **Given** a user asks an agent to build a simple RAG pipeline, **When** the
+   agent invokes MCP authoring tools, **Then** BrAIniac contains a new project,
+   a new pipeline, supported runtime nodes, and explicit edges matching the
+   requested workflow.
+2. **Given** the agent creates multiple nodes, **When** the pipeline is opened
+   in the web canvas, **Then** nodes have distinct `ui_json` positions with
+   enough horizontal/vertical spacing to avoid stacked or overlapping nodes.
+3. **Given** a requested node/tool type is unsupported or missing, **When** the
+   authoring tool is invoked, **Then** the tool returns a clear diagnostic and
+   does not create hidden unsupported graph behavior.
+
 ### Edge Cases
 
 - The connected user has no projects or no accessible pipelines.
@@ -190,6 +234,16 @@ states.
 - A refresh token is expired, revoked, malformed, replayed, or belongs to a
   different user/session; the extension should clear unsafe state and prompt
   for browser re-authentication.
+- A browser web refresh cookie is absent, expired, revoked, malformed, replayed,
+  or blocked by SameSite/Secure policy; the frontend should clear access-token
+  state and redirect to `/auth` with a session-expired message.
+- An MCP authoring request omits node positions or gives overlapping positions;
+  the backend/tool layer must derive safe spaced positions or reject the request
+  with actionable layout diagnostics.
+- An MCP authoring request would create duplicate edges, cross-pipeline edges,
+  cycles without explicit loop policy, hidden tool injection, or unsupported
+  node/tool bindings; the mutation must fail or be rolled back and return graph
+  validation diagnostics.
 - OAuth metadata, PKCE verifier/challenge, redirect URI, token endpoint, or
   revoke endpoint behavior is missing or incompatible with VS Code/MCP OAuth
   expectations; implementation must not start until the exact endpoint names,
@@ -273,6 +327,12 @@ states.
   session endpoint or by clearing stored auth state and redirecting to `/auth`
   with an actionable session-expired message. It MUST NOT leave the user on the
   workspace with repeated `401 invalid token` console errors.
+- **FR-012g**: The browser frontend MUST refresh expired access tokens through
+  a dedicated web session refresh endpoint backed by an HttpOnly, Secure,
+  SameSite refresh cookie. Browser refresh credentials MUST NOT be stored in
+  localStorage, sessionStorage, Redux-like state, or any JavaScript-readable
+  storage. Refresh replay, revoke, expiry, and sign-out MUST be covered by
+  backend contract tests and frontend auth-flow tests.
 - **FR-013**: The VS Code integration MUST remain usable in normal editor
   layouts, including narrow sidebars, without clipped critical actions or
   overlapping controls. OAuth refresh success, refresh failure,
@@ -285,6 +345,20 @@ states.
 - **FR-015**: Required automated or documented manual checks MUST demonstrate
   the feature works across discovery, pipeline operation, export, permissions,
   diagnostics, and VS Code user flows.
+- **FR-016**: MCP MUST expose explicit non-read-only authoring tools for
+  creating projects, creating pipelines, creating canvas-positioned nodes, and
+  connecting nodes with edges. These tools MUST reuse existing BrAIniac
+  mutation services where available, enforce ownership, return resource links,
+  and run graph validation after mutations.
+- **FR-017**: MCP authoring tools that create or place nodes MUST require
+  explicit canvas positions or derive deterministic positions with documented
+  minimum spacing. Tool descriptions MUST tell agents not to stack nodes and
+  SHOULD recommend left-to-right or top-to-bottom spacing suitable for the
+  existing ReactFlow canvas.
+- **FR-018**: MCP authoring tools MUST NOT create hidden tool bindings, legacy
+  `tool_ref`/`tool_refs` paths, unsupported node types, duplicate edges, or
+  cross-pipeline edges. If a requested graph cannot be represented safely, the
+  tool MUST return diagnostics and avoid partial unsafe mutation.
 
 ### Key Entities
 
@@ -310,6 +384,13 @@ states.
 - **OAuth Token Lifecycle**: The backend-issued access/refresh/revoke state
   used by VS Code to keep MCP authorization valid without storing tokens outside
   SecretStorage.
+- **Browser Web Session**: A browser auth lifecycle using a JavaScript-readable
+  access token plus an HttpOnly refresh cookie that can rotate or revoke the web
+  session without exposing refresh material to frontend code.
+- **MCP Authoring Tool**: A non-read-only MCP tool that mutates BrAIniac project,
+  pipeline, node, or edge state on behalf of the authenticated user.
+- **Canvas Layout Hint**: Positioning metadata stored in node `ui_json` that
+  keeps MCP-created nodes visible and separated in the existing web canvas.
 
 ## Success Criteria *(mandatory)*
 
@@ -351,6 +432,13 @@ states.
   session-expired state.
 - **SC-012**: VS Code does not show a Dynamic Client Registration prompt during
   the local BrAIniac extension-managed sign-in flow.
+- **SC-013**: A browser user can remain idle until access-token expiry and then
+  continue after one refresh request without re-entering credentials when the
+  HttpOnly refresh cookie is valid; revoked or expired refresh cookies redirect
+  to `/auth` without repeated `401 invalid token` requests.
+- **SC-014**: An MCP client can create a project, create a pipeline, add at
+  least three supported nodes, and connect them with edges; reopening the
+  pipeline graph shows non-overlapping node positions and validation diagnostics.
 
 ## Assumptions
 

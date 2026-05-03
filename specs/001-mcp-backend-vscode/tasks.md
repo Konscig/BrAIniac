@@ -325,6 +325,70 @@ the MVP before operation tools, export, and VS Code integration.
 
 ---
 
+## Phase 11: User Story 4 Continuation - Browser Web Refresh Cookie (Priority: P4)
+
+**Goal**: Move browser frontend session recovery from access-token-only cleanup to a safe refresh-token lifecycle backed by an HttpOnly, Secure, SameSite cookie.
+
+**Independent Test**: Log in through the browser frontend, force access-token expiry while the refresh cookie remains valid, confirm one refresh request with `credentials: include` returns a new access token and retries the original protected request, then revoke/expire the refresh session and confirm the app redirects to `/auth` without repeated `401 invalid token` requests.
+
+### Tests for Browser Web Refresh Cookie
+
+- [X] T130 [P] [US4] Add browser web-session endpoint contract with exact method/path, response shape, cookie name/options, refresh failure codes, and sign-out behavior in `specs/001-mcp-backend-vscode/contracts/web-session.md`
+- [X] T131 [P] [US4] Record the local Docker/browser strategy for `Secure` refresh cookies on `http://localhost` or HTTPS dev origin in `specs/001-mcp-backend-vscode/quickstart.md`, `.env.example`, and local `.env.docker`
+- [X] T132 [US4] Decide and encode browser refresh-session storage as Prisma-backed persistence or explicitly documented dev-only in-memory state in `backend/src/services/application/auth/web-session.application.service.ts` and `backend/prisma/schema.prisma`
+- [X] T133 [P] [US4] Add backend web-session refresh cookie contract tests for login cookie issue, refresh success, rotation/replay rejection, revoke/sign-out clearing, cookie attributes, and no JavaScript-readable refresh material in `backend/scripts/web-session-refresh-test.mjs`
+- [X] T134 [P] [US4] Add frontend API-layer tests for one protected API `401 invalid token` triggering refresh with `credentials: include`, one retry of the original request, and fallback on refresh failure in `frontend/src/lib/api.test.ts`
+- [X] T135 [P] [US4] Add frontend auth-provider/user-flow tests for refresh success, refresh failure redirect to `/auth`, and no refresh token in browser auth state in `frontend/src/App.test.tsx`
+- [X] T136 [US4] Add `test:web-session-refresh` script for `backend/scripts/web-session-refresh-test.mjs` in `backend/package.json`
+
+### Implementation for Browser Web Refresh Cookie
+
+- [X] T137 [US4] Implement server-side browser refresh-session lifecycle helpers for issue, rotate, replay reject, revoke, expiry, storage choice, and cookie options in `backend/src/services/application/auth/web-session.application.service.ts`
+- [X] T138 [US4] Implement web session refresh and revoke routes that match `contracts/web-session.md` and use HttpOnly, Secure, SameSite cookies in `backend/src/routes/resources/auth/web-session.routes.ts`
+- [X] T139 [US4] Mount web session routes and update normal browser login/sign-out wiring to set and clear refresh cookies in `backend/src/routes/resources/auth/auth.routes.ts` and `backend/src/services/application/auth/auth.application.service.ts`
+- [X] T140 [US4] Update protected API request handling to call the web refresh endpoint with `credentials: include`, update only access-token state, retry the original request once, and preserve unrelated backend errors in `frontend/src/lib/api.ts`
+- [X] T141 [US4] Update browser auth state handling to avoid any refresh-token storage, represent `refreshing`/`expired` states, and redirect to `/auth` on refresh failure in `frontend/src/providers/AuthProvider.tsx`, `frontend/src/App.tsx`, and `frontend/src/pages/auth-page.tsx`
+
+### Verification for Browser Web Refresh Cookie
+
+- [X] T142 [US4] Run `npm --prefix backend run build`, `npm --prefix backend run test:web-session-refresh`, `$env:CI='true'; npm --prefix frontend test -- --watchAll=false`, and `npm --prefix frontend run build`
+- [ ] T143 [US4] Manually verify the browser web refresh cookie checklist in `specs/001-mcp-backend-vscode/quickstart.md` and record the result in the quickstart validation notes
+
+**Checkpoint**: Browser frontend refreshes expired access tokens through cookie-backed web sessions without exposing refresh material to JavaScript or looping on stale-token `401` responses.
+
+---
+
+## Phase 12: User Story 5 - Build BrAIniac Pipelines Through MCP Authoring Tools (Priority: P5)
+
+**Goal**: Let an authenticated MCP agent create a project, create a pipeline, place supported nodes on the canvas with readable spacing, and connect nodes with graph edges.
+
+**Independent Test**: From an MCP client, create a project and pipeline, add at least three supported nodes with non-overlapping positions, connect them with edges, then read the pipeline graph and verify ownership, validation output, resource links, and visible node spacing.
+
+### Tests for MCP Authoring Tools
+
+- [X] T144 [P] [US5] Add MCP authoring contract tests for `create_project`, `create_pipeline`, `create_pipeline_node`, and `connect_pipeline_nodes` happy paths in `backend/scripts/mcp-authoring-contract-test.mjs`
+- [X] T145 [US5] Extend MCP authoring contract tests for unsupported node type rejection, hidden `tool_ref`/`tool_refs` rejection, duplicate edge rejection, cross-pipeline edge rejection, ownership enforcement, validation diagnostics, non-read-only annotations, and non-overlapping layout assertions in `backend/scripts/mcp-authoring-contract-test.mjs`
+- [X] T146 [US5] Add `test:mcp:authoring` script for `backend/scripts/mcp-authoring-contract-test.mjs` in `backend/package.json`
+
+### Implementation for MCP Authoring Tools
+
+- [X] T147 [P] [US5] Implement deterministic MCP canvas layout helper with minimum spacing and overlap diagnostics in `backend/src/mcp/tools/authoring-layout.ts`
+- [X] T148 [US5] Add or expose owner-scoped service methods needed for MCP project, pipeline, node, and edge creation in `backend/src/services/application/project/project.application.service.ts`, `backend/src/services/data/pipeline.service.ts`, `backend/src/services/application/node/node.application.service.ts`, and `backend/src/services/application/edge/edge.application.service.ts`
+- [X] T149 [US5] Implement `create_project` and `create_pipeline` MCP authoring handlers with ownership checks, resource links, validation output, and confirmation-appropriate annotations in `backend/src/mcp/tools/authoring.tools.ts`
+- [X] T150 [US5] Implement `create_pipeline_node` and `connect_pipeline_nodes` MCP authoring handlers with supported node-type validation, `ui_json.position` placement, duplicate/cross-pipeline edge rejection, graph validation, and diagnostics in `backend/src/mcp/tools/authoring.tools.ts`
+- [X] T151 [US5] Register MCP authoring tools in `backend/src/mcp/mcp.server.ts` without changing read-only, export, validation, execution, or auth tool behavior
+
+### Documentation And Verification For MCP Authoring Tools
+
+- [X] T152 [P] [US5] Update `README.md`, `docs/sdd/14-mcp-adapter-plan.md`, and `specs/001-mcp-backend-vscode/quickstart.md` with MCP authoring usage, confirmation semantics, and canvas spacing guidance
+- [X] T153 [US5] Reconcile implemented MCP authoring input/output schemas, annotations, diagnostics, and layout guidance with `specs/001-mcp-backend-vscode/contracts/mcp-tools.md`
+- [X] T154 [US5] Run `npm --prefix backend run build`, `npm --prefix backend run test:mcp:authoring`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:readonly`, and `npm --prefix backend run test:contracts:freeze`
+- [ ] T155 [US5] Manually verify the MCP authoring checklist in `specs/001-mcp-backend-vscode/quickstart.md` by opening the created pipeline in the web canvas and confirming nodes are readable, spaced, connected, owner-scoped, and validation diagnostics are visible
+
+**Checkpoint**: MCP can build a basic BrAIniac pipeline from explicit agent tool calls, and the created canvas is readable instead of stacked.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -341,6 +405,8 @@ the MVP before operation tools, export, and VS Code integration.
 - **Final OAuth-inclusive Polish**: Depends on all selected stories, including Phase 8 OAuth/token lifecycle hardening.
 - **US3 Inline JSON export continuation (Phase 9)**: Depends on completed US3 export resources/tools and can be implemented after T106 without changing auth or VS Code sign-in behavior.
 - **Auth UX hardening (Phase 10)**: Depends on Phase 7/8 auth infrastructure and can run after T106; it may be implemented before or after Phase 9 because it touches different files.
+- **US4 Browser web refresh cookie (Phase 11)**: Depends on Phase 10 stale-token cleanup and existing backend browser auth. It replaces the browser fallback-only behavior with safe cookie-backed refresh.
+- **US5 MCP authoring tools (Phase 12)**: Depends on US1 MCP adapter foundation, US2 validation, US3 resources/links, and stable auth/ownership behavior. It can run after Phase 9/10 and does not depend on browser web refresh cookies.
 
 ### User Story Dependencies
 
@@ -352,6 +418,8 @@ the MVP before operation tools, export, and VS Code integration.
 - **US4 OAuth/token lifecycle continuation (P4)**: Requires the existing browser sign-in flow and SecretStorage session model.
 - **US3 inline export continuation (P3)**: Requires existing export snapshot builders and redaction helpers from US3; independently testable through export contract scripts.
 - **US4 auth UX hardening (P4)**: Requires existing browser auth provider, frontend API layer, and VS Code auth routes; independently testable through frontend auth tests and VS Code manual sign-in.
+- **US4 browser web refresh cookie (P4)**: Requires existing browser auth provider, frontend API layer, and backend auth service; independently testable through web-session refresh tests and browser idle/expiry manual checks.
+- **US5 MCP authoring (P5)**: Requires existing MCP auth, resource URI helpers, project/pipeline/node/edge services, and graph validation; independently testable through MCP authoring contract tests and canvas manual verification.
 
 ### Within Each User Story
 
@@ -359,11 +427,12 @@ the MVP before operation tools, export, and VS Code integration.
 - Resource serializers/auth helpers before resource registrations.
 - Resource registrations before tools that return resource links.
 - Existing services are reused before introducing any new facade.
-- Agent authoring stays deferred until a later separate plan/task set.
 - Browser auth tasks must preserve existing token issuance and must not store tokens in repository/workspace files.
 - OAuth/token lifecycle tasks must preserve existing BrAIniac auth/ownership rules and must not mint MCP-only credentials outside the auth service layer.
 - Inline export UX tasks must preserve existing export ownership/redaction rules and must not make `brainiac://.../export` links the only normal export payload.
 - Auth UX hardening tasks must not enable standard OAuth discovery endpoints without implementing DCR/client registration, and browser token recovery must not store VS Code refresh material in browser localStorage.
+- Browser web refresh cookie tasks must never store refresh credentials in localStorage, sessionStorage, app state, URL parameters, logs, or any JavaScript-readable location.
+- MCP authoring tasks must use explicit mutating tool annotations, preserve ownership checks, validate the graph after mutation, avoid hidden tool bindings, and keep created nodes non-overlapping on the canvas.
 
 ### Parallel Opportunities
 
@@ -384,6 +453,8 @@ the MVP before operation tools, export, and VS Code integration.
 - Extension session-model task T096 can run in parallel with backend audit task T084, but T089-T093 wait for T084 and provider refresh behavior T097 depends on the session model and backend refresh contract.
 - Inline export tests T107-T109 should run before implementation but are sequential because they edit the same contract script. Documentation tasks T113-T115 can run in parallel with implementation after T110-T112 behavior is clear. T116 and T118 are sequential validation gates.
 - Auth UX tests T119-T121 can run before implementation. Backend DCR guard T122 can run independently from frontend stale-token handling T123-T125. T128 and T129 are sequential validation gates.
+- Browser web refresh contract tasks T130-T131 can run in parallel. T132 must land before T137-T139 if storage changes are needed. Tests T133-T135 can run in parallel after T130-T132. T137-T139 are sequential backend auth work; T140-T141 are frontend integration work after the refresh contract is stable. T142-T143 are sequential validation gates.
+- MCP authoring test T144 can start before implementation, then T145 extends the same script. T147 can run in parallel with T144. T148 must land before T149-T150 if existing services do not already expose the required mutations. T152 can run in parallel after the tool behavior is clear; T153-T155 are sequential contract reconciliation and validation gates.
 
 ---
 
@@ -441,6 +512,24 @@ Task: "T126 [P] [US4] Update vscode-client contract with DCR prompt avoidance"
 Task: "T127 [P] [US4] Update quickstart and vscode-extension README troubleshooting"
 ```
 
+## Parallel Example: Browser Web Refresh Cookie
+
+```bash
+Task: "T130 [P] [US4] Add browser web-session endpoint contract in specs/001-mcp-backend-vscode/contracts/web-session.md"
+Task: "T131 [P] [US4] Record local Docker/browser strategy for Secure refresh cookies in quickstart.md, .env.example, and local .env.docker"
+Task: "T133 [P] [US4] Add backend web-session refresh cookie contract tests in backend/scripts/web-session-refresh-test.mjs"
+Task: "T134 [P] [US4] Add frontend API-layer refresh/retry tests in frontend/src/lib/api.test.ts"
+Task: "T135 [P] [US4] Add frontend auth-provider/user-flow tests in frontend/src/App.test.tsx"
+```
+
+## Parallel Example: MCP Authoring Tools
+
+```bash
+Task: "T144 [P] [US5] Add MCP authoring happy-path contract tests in backend/scripts/mcp-authoring-contract-test.mjs"
+Task: "T147 [P] [US5] Implement deterministic MCP canvas layout helper in backend/src/mcp/tools/authoring-layout.ts"
+Task: "T152 [P] [US5] Update README.md, docs/sdd/14-mcp-adapter-plan.md, and quickstart.md with authoring usage"
+```
+
 ---
 
 ## Implementation Strategy
@@ -462,14 +551,16 @@ Task: "T127 [P] [US4] Update quickstart and vscode-extension README troubleshoot
 6. US4 OAuth/token lifecycle hardening and refresh/revoke verification.
 7. US3 inline JSON export tool UX correction.
 8. US4 auth UX hardening for DCR prompt avoidance and browser stale-token recovery.
-9. A future separate feature for agent authoring tools.
+9. US4 browser web refresh cookie lifecycle.
+10. US5 MCP authoring tools for project, pipeline, node placement, and edge creation.
 
 ### Scope Guard
 
-Do not implement `create_agent_node`, `update_agent_config`, or
-`bind_tool_to_agent` in this task set. Those tools are intentionally deferred so
-the MCP adapter can prove read-only, validation, execution, export, auth, and
-VS Code behavior first.
+Do not implement composite one-shot prompt-to-pipeline generation,
+`update_agent_config`, or `bind_tool_to_agent` in this task set. The planned
+authoring slice is limited to explicit primitive tools for project creation,
+pipeline creation, supported node creation with canvas placement, and edge
+creation.
 
 ## Notes
 

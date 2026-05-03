@@ -263,11 +263,11 @@ id. That is not the intended local product UX.
 ## Decision: Browser Frontend Must Handle Expired Access Tokens
 
 Add a frontend session lifecycle fix so protected API calls that receive
-`401 invalid token` either refresh through a supported backend session endpoint
-or clear `brainiac.tokens`, redirect to `/auth`, and show a session-expired
-message. Until a durable web refresh-token contract exists, clearing and
-visible re-authentication is preferable to repeatedly calling protected APIs
-with a stale token.
+`401 invalid token` refresh through the supported backend web-session endpoint
+when a valid refresh cookie exists. If refresh fails, clear `brainiac.tokens`,
+redirect to `/auth`, and show a session-expired message. Clearing and visible
+re-authentication remains the fallback and is preferable to repeatedly calling
+protected APIs with a stale token.
 
 **Rationale**: The current browser app stores access tokens in localStorage and
 blindly attaches them to every protected API request. After token expiry or
@@ -284,3 +284,64 @@ random breakage after inactivity.
 - Reuse VS Code refresh tokens for the web app: rejected because VS Code
   SecretStorage sessions are editor-side and should not become browser
   localStorage refresh material without a separate web-session design.
+
+## Decision: Browser Web Refresh Uses HttpOnly Secure SameSite Cookie
+
+Add a dedicated browser web-session refresh contract. Normal login and refresh
+set a backend-owned refresh cookie with `HttpOnly`, `Secure`, and `SameSite`
+attributes. The frontend calls the refresh endpoint with `credentials: include`
+after the first protected API `401 invalid token`, receives a new short-lived
+access token, updates in-memory/auth state, and retries the original request
+once. The frontend never reads or stores the refresh credential.
+
+**Rationale**: A browser refresh token in localStorage would fix the immediate
+401 loop but would create a larger XSS blast radius. HttpOnly cookie refresh
+keeps the long-lived credential outside JavaScript while still giving the web
+app a normal session recovery path after inactivity. Rotation, replay rejection,
+revocation, cookie clearing on sign-out, and fallback to `/auth` become backend
+contract behavior instead of ad hoc frontend retries.
+
+**Alternatives considered**:
+
+- Store refresh tokens in localStorage/sessionStorage: rejected because
+  JavaScript-readable refresh material is the main thing this slice is avoiding.
+- Reuse VS Code SecretStorage refresh credentials in the browser: rejected
+  because editor and browser sessions have different storage and threat models.
+- Only increase access-token TTL: rejected because it delays the stale-token UX
+  and weakens expiry/revoke behavior.
+- Refresh silently on every 401 without cookie/session semantics: rejected
+  because replay, revoke, expiry, and sign-out remain undefined.
+
+## Decision: MCP Authoring Tools Are Explicit Mutating Tools With Layout Hints
+
+Add MCP tools that let an authenticated agent create a project, create a
+pipeline, create canvas-positioned nodes, and connect nodes with edges. The
+tools should be explicit operations such as `create_project`,
+`create_pipeline`, `create_pipeline_node`, and `connect_pipeline_nodes`, marked
+non-read-only and confirmation-appropriate. They reuse existing backend
+mutation, ownership, and validation services rather than inventing a second
+graph model.
+
+Node creation tools accept explicit positions or deterministic layout hints.
+Tool descriptions must tell agents to avoid stacking nodes and to place related
+nodes with clear spacing, preferably left-to-right for sequential flows or
+top-to-bottom for branching groups. A default layout gap such as 260-320 px
+horizontally and 140-180 px vertically is enough for planning; implementation
+should tune it to the existing ReactFlow node dimensions.
+
+**Rationale**: The read-only MCP surface is useful for inspection, but users now
+want agents to build real BrAIniac pipelines from requests. Mutating tools need
+clear boundaries because they affect persistent project state. Explicit node
+positions are part of the contract because a technically valid graph is still a
+bad UX if every node appears stacked at the same canvas coordinate.
+
+**Alternatives considered**:
+
+- Add one giant `build_pipeline_from_prompt` tool first: rejected because it
+  hides intermediate mutations, validation failures, and user confirmations.
+- Rely on the frontend to auto-layout everything later: rejected because MCP
+  clients need the created graph to be readable immediately when opened.
+- Let agents omit positions entirely: rejected because that recreates stacked
+  canvas nodes and makes the tool output feel broken.
+- Allow unsupported node/tool bindings as placeholders: rejected because hidden
+  runtime behavior is unsafe and hard to debug.

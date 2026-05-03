@@ -375,29 +375,187 @@ Input:
 
 Output: existing execution snapshot shape.
 
-## Deferred Agent Authoring Tools
+## Planned MCP Authoring Tools
 
-Do not implement until a separate plan/task slice approves mutation semantics.
-This is an explicit guardrail for the current MCP adapter: validation,
-execution, export, and read-only inspection may ship, but agent creation/editing
-must remain absent from `backend/src/mcp/tools/` and server registration until a
-future feature defines write contracts.
+These tools mutate persistent BrAIniac state and must be marked non-read-only
+and confirmation-appropriate in MCP annotations. They reuse existing backend
+project, pipeline, node, edge, ownership, and graph-validation services.
+Implementation lives in `backend/src/mcp/tools/authoring.tools.ts`; layout
+derivation and overlap avoidance live in
+`backend/src/mcp/tools/authoring-layout.ts`.
 
-Candidate tools:
+### `create_project`
 
-- `create_agent_node`
-- `update_agent_config`
-- `bind_tool_to_agent`
-- `validate_agent_pipeline`
+Purpose: Create an owner-scoped BrAIniac project for the authenticated user.
+
+Input:
+
+```json
+{
+  "name": "Customer Support RAG",
+  "description": "Optional short description"
+}
+```
+
+Output:
+
+```json
+{
+  "project": {
+    "project_id": 25,
+    "name": "Customer Support RAG",
+    "resource_uri": "brainiac://projects/25"
+  },
+  "resource_links": []
+}
+```
 
 Rules:
 
-- Must reuse existing node/edge/pipeline mutation services.
-- Must validate graph after mutation.
-- Must not create hidden tool bindings.
-- Must return resource links to changed nodes/pipelines.
-- Must be marked non-read-only and confirmation-appropriate in MCP annotations.
-- Must include ownership checks and graph validation after every mutation.
+- Requires authenticated user ownership context.
+- Must reject empty or duplicate-unsafe names according to existing project
+  service behavior.
+
+### `create_pipeline`
+
+Purpose: Create a pipeline inside an owned project.
+
+Input:
+
+```json
+{
+  "projectId": 25,
+  "name": "Answer Questions From Documents",
+  "maxTime": 120,
+  "maxCost": 1.5,
+  "maxReject": 3
+}
+```
+
+Output:
+
+```json
+{
+  "pipeline": {
+    "pipeline_id": 44,
+    "project_id": 25,
+    "name": "Answer Questions From Documents",
+    "resource_uri": "brainiac://pipelines/44"
+  },
+  "graph_resource_uri": "brainiac://pipelines/44/graph",
+  "validation": {}
+}
+```
+
+Rules:
+
+- Verifies the project belongs to the authenticated user.
+- Runs or returns graph validation in the existing validation result shape.
+
+### `create_pipeline_node`
+
+Purpose: Create a supported node on a pipeline canvas with readable placement.
+
+Input:
+
+```json
+{
+  "pipelineId": 44,
+  "nodeTypeId": 7,
+  "label": "Retrieve Documents",
+  "position": { "x": 320, "y": 160 },
+  "layout": {
+    "direction": "left_to_right",
+    "column": 1,
+    "row": 0,
+    "xGap": 300,
+    "yGap": 160
+  },
+  "uiJson": {}
+}
+```
+
+Output:
+
+```json
+{
+  "node": {
+    "node_id": 101,
+    "pipeline_id": 44,
+    "label": "Retrieve Documents",
+    "resource_uri": "brainiac://pipelines/44/nodes/101",
+    "ui_json": {
+      "x": 320,
+      "y": 160,
+      "position": { "x": 320, "y": 160 }
+    }
+  },
+  "graph_resource_uri": "brainiac://pipelines/44/graph",
+  "validation": {},
+  "diagnostics": []
+}
+```
+
+Rules:
+
+- Tool description must tell agents: place nodes with explicit spacing; do not
+  stack multiple nodes at the same or near-identical coordinates.
+- Requires `position` or enough `layout` data to derive a deterministic
+  non-overlapping position.
+- Recommended default spacing is at least 260 px horizontally and 140 px
+  vertically unless existing canvas dimensions require a larger gap.
+- Stores both top-level `x`/`y` and nested `position` in `ui_json` so the
+  existing web canvas and MCP clients can read the same placement.
+- Must reject unsupported node types and hidden `tool_ref`/`tool_refs`
+  behavior.
+- Must return layout diagnostics if requested placement overlaps existing or
+  same-request nodes and cannot be adjusted safely.
+
+### `connect_pipeline_nodes`
+
+Purpose: Connect two nodes in the same owned pipeline with a graph edge.
+
+Input:
+
+```json
+{
+  "pipelineId": 44,
+  "sourceNodeId": 101,
+  "targetNodeId": 102
+}
+```
+
+Output:
+
+```json
+{
+  "edge": {
+    "pipeline_id": 44,
+    "source_node_id": 101,
+    "target_node_id": 102
+  },
+  "graph_resource_uri": "brainiac://pipelines/44/graph",
+  "validation": {},
+  "diagnostics": []
+}
+```
+
+Rules:
+
+- Both nodes must belong to the target pipeline and authenticated user.
+- Duplicate edges, cross-pipeline edges, missing endpoints, and unsafe graph
+  states must fail with structured diagnostics.
+- Graph validation must run after mutation and return the existing validation
+  result shape.
+
+### Shared Authoring Rules
+
+- Return resource links to changed project, pipeline, graph, and node resources.
+- Avoid partial unsafe mutation; use service-level rollback or preflight
+  validation where existing service boundaries allow it.
+- Do not start executions automatically from model suggestions.
+- Composite "build pipeline from plan" helpers may be considered later only
+  after the explicit primitive tools are tested.
 
 ## Error Shape
 

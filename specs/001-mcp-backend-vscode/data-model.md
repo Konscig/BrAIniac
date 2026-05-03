@@ -64,7 +64,9 @@ Validation:
 
 - Read-only tools must not mutate BrAIniac state.
 - Operation tools require explicit target ids and user input.
-- Authoring tools are disabled until the authoring slice is planned and tested.
+- Authoring tools are explicit mutating tools and must be registered only after
+  contract tests cover ownership, validation, rollback/error behavior, and MCP
+  annotations.
 - Tool-level business errors return structured MCP tool errors.
 
 ## Project Context
@@ -224,28 +226,95 @@ Validation:
 
 ## Browser Auth Session
 
-Browser-side authentication state for the BrAIniac web app.
+Browser-side authentication state for the BrAIniac web app. The browser may keep
+the short-lived access token in current auth state, but the refresh credential is
+server-issued cookie material and must not be readable by JavaScript.
 
 Fields:
 
 - `access_token`: bearer credential stored in browser auth state.
 - `expires_at`: optional access token expiry timestamp if available to the
   frontend.
-- `refresh_token`: optional only if a future web-session refresh contract is
-  explicitly added.
+- `refresh_cookie`: HttpOnly, Secure, SameSite cookie set by the backend during
+  login and refresh; not readable from frontend code.
+- `refresh_session_id`: server-side refresh-session correlation id for rotation,
+  revoke, audit, and replay detection.
+- `refresh_expires_at`: server-side expiry timestamp for the refresh session.
 - `status`: `signed_in`, `expired`, `refreshing`, `signed_out`, or `error`.
 - `last_error`: user-visible session-expired or auth failure message.
 
 Validation:
 
-- Protected API `401` responses with invalid/expired-token semantics must clear
-  unsafe browser auth state or refresh through an explicitly supported web
-  session endpoint.
+- Protected API `401` responses with invalid/expired-token semantics must call
+  the supported web session refresh endpoint once with `credentials: include`,
+  then retry the original protected request once if refresh succeeds.
 - The app must redirect to `/auth` after clearing expired auth state rather than
   continuing to load projects, tools, node types, or graph data with the stale
   token.
-- Browser session refresh, if added, must not reuse VS Code SecretStorage-only
-  refresh material.
+- Browser refresh credentials must not be written to localStorage,
+  sessionStorage, Redux-like stores, logs, URL parameters, or any
+  JavaScript-readable storage.
+- Refresh must reject expired, revoked, malformed, replayed, blocked, or
+  cross-user cookies and must clear browser access-token state.
+- Sign-out must revoke server-side refresh-session state and clear the cookie.
+
+## MCP Authoring Request
+
+Mutating MCP request that creates or edits BrAIniac project, pipeline, node, or
+edge state for the authenticated user.
+
+Fields:
+
+- `operation`: `create_project`, `create_pipeline`, `create_pipeline_node`, or
+  `connect_pipeline_nodes`.
+- `project_id`: required for pipeline creation when not creating the project in
+  the same request sequence.
+- `pipeline_id`: required for node and edge creation.
+- `node_type_id` or `node_type_name`: supported runtime node type reference for
+  node creation.
+- `label`: optional user-facing node label.
+- `position`: optional explicit canvas position `{ "x": number, "y": number }`.
+- `layout`: optional deterministic layout hint such as `{ "column": 0,
+  "row": 0, "x_gap": 280, "y_gap": 160 }` when exact position is not supplied.
+- `source_node_id` and `target_node_id`: required for edge creation.
+- `idempotency_key`: optional client-provided key for retry-safe mutation where
+  supported by existing services.
+
+Validation:
+
+- Every mutation must enforce the authenticated user's ownership before reading
+  or writing project, pipeline, node, or edge state.
+- Node creation must resolve to a supported node type and must not invent hidden
+  tool bindings or legacy `tool_ref`/`tool_refs` behavior.
+- Edge creation must reject duplicate edges, cross-pipeline endpoints, missing
+  nodes, and unsafe graph states; validation diagnostics must be returned.
+- Mutations must return resource links to changed project, pipeline, graph, and
+  node resources.
+
+## Canvas Layout Hint
+
+Positioning metadata for MCP-created canvas nodes, stored in existing node
+`ui_json` so the ReactFlow canvas can render the graph without extra client
+logic.
+
+Fields:
+
+- `x`: finite canvas x-coordinate.
+- `y`: finite canvas y-coordinate.
+- `x_gap`: minimum horizontal spacing used when deriving positions; default
+  should be large enough for BrAIniac node cards, such as 260-320 pixels.
+- `y_gap`: minimum vertical spacing used when deriving positions; default should
+  avoid vertical overlap, such as 140-180 pixels.
+- `layout_direction`: `left_to_right` or `top_to_bottom`.
+
+Validation:
+
+- Authoring tools must accept explicit non-overlapping positions or derive
+  deterministic positions from layout hints.
+- If requested coordinates overlap existing or same-request nodes, the tool must
+  either adjust to the next safe slot or reject with layout diagnostics.
+- Tool descriptions must tell agents to avoid stacking nodes and prefer
+  left-to-right or top-to-bottom spacing.
 
 ## Browser Auth Request
 
