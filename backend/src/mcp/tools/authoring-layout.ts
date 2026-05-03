@@ -17,10 +17,10 @@ export type ExistingCanvasNode = {
   ui_json?: unknown;
 };
 
-const DEFAULT_X_GAP = 300;
-const DEFAULT_Y_GAP = 160;
-const MIN_X_GAP = 260;
-const MIN_Y_GAP = 140;
+const DEFAULT_X_GAP = 380;
+const DEFAULT_Y_GAP = 220;
+const MIN_X_GAP = 340;
+const MIN_Y_GAP = 200;
 
 function finiteNumber(value: unknown): number | undefined {
   const parsed = Number(value);

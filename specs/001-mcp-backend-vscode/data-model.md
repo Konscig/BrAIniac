@@ -275,7 +275,7 @@ Fields:
 - `label`: optional user-facing node label.
 - `position`: optional explicit canvas position `{ "x": number, "y": number }`.
 - `layout`: optional deterministic layout hint such as `{ "column": 0,
-  "row": 0, "x_gap": 280, "y_gap": 160 }` when exact position is not supplied.
+  "row": 0, "x_gap": 380, "y_gap": 220 }` when exact position is not supplied.
 - `source_node_id` and `target_node_id`: required for edge creation.
 - `idempotency_key`: optional client-provided key for retry-safe mutation where
   supported by existing services.
@@ -302,9 +302,9 @@ Fields:
 - `x`: finite canvas x-coordinate.
 - `y`: finite canvas y-coordinate.
 - `x_gap`: minimum horizontal spacing used when deriving positions; default
-  should be large enough for BrAIniac node cards, such as 260-320 pixels.
+  should be large enough for BrAIniac node cards plus margin, about 380 pixels.
 - `y_gap`: minimum vertical spacing used when deriving positions; default should
-  avoid vertical overlap, such as 140-180 pixels.
+  avoid vertical overlap and leave room for expanded cards, about 220 pixels.
 - `layout_direction`: `left_to_right` or `top_to_bottom`.
 
 Validation:

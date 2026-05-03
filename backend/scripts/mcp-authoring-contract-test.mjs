@@ -21,22 +21,24 @@ assert.match(authoringSource, /validatePipelineGraph/, 'authoring tools must run
 assert.match(authoringSource, /tool_ref/, 'authoring tools must reject hidden tool_ref/tool_refs bindings');
 assert.match(authoringSource, /MCP_DUPLICATE_EDGE/, 'authoring tools must reject duplicate edges');
 assert.match(authoringSource, /MCP_CROSS_PIPELINE_EDGE/, 'authoring tools must reject cross-pipeline edges');
-assert.match(layoutSource, /MIN_X_GAP = 260/, 'layout helper must enforce minimum horizontal spacing');
-assert.match(layoutSource, /MIN_Y_GAP = 140/, 'layout helper must enforce minimum vertical spacing');
+assert.match(layoutSource, /DEFAULT_X_GAP = 380/, 'layout helper must use readable default horizontal spacing');
+assert.match(layoutSource, /DEFAULT_Y_GAP = 220/, 'layout helper must use readable default vertical spacing');
+assert.match(layoutSource, /MIN_X_GAP = 340/, 'layout helper must enforce minimum horizontal spacing');
+assert.match(layoutSource, /MIN_Y_GAP = 200/, 'layout helper must enforce minimum vertical spacing');
 
 const derived = resolveCanvasPosition({
-  layout: { direction: 'left_to_right', column: 1, row: 0, xGap: 280, yGap: 160 },
+  layout: { direction: 'left_to_right', column: 1, row: 0, xGap: 360, yGap: 220 },
   existingNodes: [{ ui_json: { x: 0, y: 0 } }],
 });
-assert.deepEqual(derived.position, { x: 280, y: 0 });
+assert.deepEqual(derived.position, { x: 360, y: 0 });
 assert.ok(derived.diagnostics.some((item) => item.code === 'MCP_LAYOUT_DERIVED'));
 
 const adjusted = resolveCanvasPosition({
   position: { x: 0, y: 0 },
-  layout: { xGap: 280, yGap: 160 },
+  layout: { xGap: 360, yGap: 220 },
   existingNodes: [{ ui_json: { x: 0, y: 0 } }],
 });
-assert.equal(adjusted.position.x >= 280, true, 'overlapping explicit position must be adjusted');
+assert.equal(adjusted.position.x >= 360, true, 'overlapping explicit position must be adjusted');
 assert.ok(adjusted.diagnostics.some((item) => item.code === 'MCP_LAYOUT_ADJUSTED'));
 
 console.log('MCP authoring contract checks OK');

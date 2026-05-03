@@ -325,9 +325,10 @@ graph model.
 Node creation tools accept explicit positions or deterministic layout hints.
 Tool descriptions must tell agents to avoid stacking nodes and to place related
 nodes with clear spacing, preferably left-to-right for sequential flows or
-top-to-bottom for branching groups. A default layout gap such as 260-320 px
-horizontally and 140-180 px vertically is enough for planning; implementation
-should tune it to the existing ReactFlow node dimensions.
+top-to-bottom for branching groups. A default layout gap around 380 px
+horizontally and 220 px vertically is the preferred recommendation because it
+accounts for the existing ReactFlow node card dimensions, not just the abstract
+coordinate point.
 
 **Rationale**: The read-only MCP surface is useful for inspection, but users now
 want agents to build real BrAIniac pipelines from requests. Mutating tools need

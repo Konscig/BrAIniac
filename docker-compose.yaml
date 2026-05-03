@@ -93,7 +93,7 @@ services:
     profiles: ["app"]
     restart: unless-stopped
     ports:
-      - 3000:80
+      - "${FRONTEND_PORT:-3270}:80"
     networks:
       - brainiac-network
 

@@ -463,13 +463,13 @@ Input:
   "pipelineId": 44,
   "nodeTypeId": 7,
   "label": "Retrieve Documents",
-  "position": { "x": 320, "y": 160 },
+  "position": { "x": 380, "y": 220 },
   "layout": {
     "direction": "left_to_right",
     "column": 1,
     "row": 0,
-    "xGap": 300,
-    "yGap": 160
+    "xGap": 380,
+    "yGap": 220
   },
   "uiJson": {}
 }
@@ -485,9 +485,9 @@ Output:
     "label": "Retrieve Documents",
     "resource_uri": "brainiac://pipelines/44/nodes/101",
     "ui_json": {
-      "x": 320,
-      "y": 160,
-      "position": { "x": 320, "y": 160 }
+      "x": 380,
+      "y": 220,
+      "position": { "x": 380, "y": 220 }
     }
   },
   "graph_resource_uri": "brainiac://pipelines/44/graph",
@@ -502,8 +502,11 @@ Rules:
   stack multiple nodes at the same or near-identical coordinates.
 - Requires `position` or enough `layout` data to derive a deterministic
   non-overlapping position.
-- Recommended default spacing is at least 260 px horizontally and 140 px
-  vertically unless existing canvas dimensions require a larger gap.
+- Recommended default spacing is about 380 px horizontally and 220 px
+  vertically. The gap is intended to account for the visible node card
+  width/height plus breathing room, not only the abstract coordinate point.
+- Values below 340 px horizontally or 200 px vertically are treated as too
+  tight for MCP-generated layouts and are raised to the minimum safe gap.
 - Stores both top-level `x`/`y` and nested `position` in `ui_json` so the
   existing web canvas and MCP clients can read the same placement.
 - Must reject unsupported node types and hidden `tool_ref`/`tool_refs`

@@ -182,7 +182,7 @@ export function registerAuthoringTools(server: McpServer): void {
     {
       title: 'Create BrAIniac Pipeline Node',
       description:
-        'Create a supported node on an owned pipeline canvas. Provide explicit spaced positions or layout hints; do not stack nodes at the same coordinates.',
+        'Create a supported node on an owned pipeline canvas. Use readable spacing that accounts for node card width/height, not only coordinate points. Prefer layout gaps around 380px horizontally and 220px vertically; do not stack nodes at the same or near-identical coordinates.',
       inputSchema: {
         pipelineId: z.number().int().positive(),
         nodeTypeId: z.number().int().positive().optional(),
