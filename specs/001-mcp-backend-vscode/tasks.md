@@ -402,7 +402,7 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T158 [US5] Add MCP node config preflight tests for `validate_node_config` valid config, invalid config, unsupported node type, read-only annotations, and no database mutation in `backend/scripts/mcp-domain-tools-contract-test.mjs`
 - [X] T159 [US5] Add MCP graph edit tests for `update_pipeline_node`, `delete_pipeline_node`, `delete_pipeline_edge`, ownership enforcement, affected-edge diagnostics, non-read-only annotations, and graph validation after mutation in `backend/scripts/mcp-domain-tools-contract-test.mjs`
 - [X] T160 [US5] Add MCP catalog search and agent binding tests for `search_node_types`, `search_tools`, and `get_agent_tool_bindings` bounded results, explicit `ToolNode -> AgentCall` bindings, unresolved tools, and diagnostics in `backend/scripts/mcp-domain-tools-contract-test.mjs`
-- [ ] T161 [US5] Add MCP layout tests for `auto_layout_pipeline` dry-run no-mutation behavior, apply-mode `ui_json` updates, graph-structure preservation, ownership, non-read-only annotations, and spacing diagnostics in `backend/scripts/mcp-domain-tools-contract-test.mjs`
+- [X] T161 [US5] Add MCP layout tests for `auto_layout_pipeline` dry-run no-mutation behavior, apply-mode `ui_json` updates, graph-structure preservation, ownership, non-read-only annotations, and spacing diagnostics in `backend/scripts/mcp-domain-tools-contract-test.mjs`
 - [ ] T162 [US5] Add `test:mcp:domain-tools` script for `backend/scripts/mcp-domain-tools-contract-test.mjs` in `backend/package.json`
 
 ### Implementation for BrAIniac Domain Discovery Tools

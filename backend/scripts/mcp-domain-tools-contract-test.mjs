@@ -26,6 +26,8 @@ for (const toolName of ['search_node_types', 'search_tools', 'get_agent_tool_bin
   assert.match(toolContract, new RegExp(`### \`${toolName}\``), `${toolName} must be documented in MCP tool contract`);
 }
 
+assert.match(toolContract, /### `auto_layout_pipeline`/, 'auto_layout_pipeline must be documented in MCP tool contract');
+
 for (const resourceUri of ['brainiac://node-types', 'brainiac://node-types/{nodeTypeId}']) {
   assert.match(resourceContract, new RegExp(resourceUri.replace(/[{}]/g, '\\$&')), `${resourceUri} must be documented`);
 }
@@ -48,5 +50,9 @@ assert.match(toolContract, /Search runtime-backed node types by query/, 'node ty
 assert.match(toolContract, /Search BrAIniac tool catalog entries by query/, 'tool search must be documented');
 assert.match(toolContract, /ToolNode -> AgentCall/, 'agent binding tool must expose explicit tool capability edges');
 assert.match(toolContract, /unresolved tools/, 'agent binding tool must expose unresolved tool diagnostics');
+assert.match(toolContract, /`dryRun: true` returns proposed `ui_json` position changes without mutation/, 'auto layout dry-run must not mutate');
+assert.match(toolContract, /`dryRun: false` is mutating and confirmation-appropriate/, 'auto layout apply mode must require confirmation');
+assert.match(toolContract, /preserve graph structure/, 'auto layout must preserve graph structure');
+assert.match(toolContract, /bounded layout helper/, 'auto layout must not introduce expensive global layout');
 
 console.log('MCP domain tool contract checks OK');
