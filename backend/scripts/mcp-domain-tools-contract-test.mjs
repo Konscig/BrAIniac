@@ -22,6 +22,10 @@ for (const toolName of ['update_pipeline_node', 'delete_pipeline_node', 'delete_
   assert.match(toolContract, new RegExp(`### \`${toolName}\``), `${toolName} must be documented in MCP tool contract`);
 }
 
+for (const toolName of ['search_node_types', 'search_tools', 'get_agent_tool_bindings']) {
+  assert.match(toolContract, new RegExp(`### \`${toolName}\``), `${toolName} must be documented in MCP tool contract`);
+}
+
 for (const resourceUri of ['brainiac://node-types', 'brainiac://node-types/{nodeTypeId}']) {
   assert.match(resourceContract, new RegExp(resourceUri.replace(/[{}]/g, '\\$&')), `${resourceUri} must be documented`);
 }
@@ -40,5 +44,9 @@ assert.match(toolContract, /Mutating and confirmation-appropriate/, 'graph edit 
 assert.match(toolContract, /graph validation after mutation/, 'graph edit tools must run validation after mutation');
 assert.match(toolContract, /Must not delete nodes outside the target owned pipeline/, 'node delete must enforce pipeline ownership');
 assert.match(toolContract, /cross-pipeline endpoints/, 'edge delete must reject cross-pipeline endpoints');
+assert.match(toolContract, /Search runtime-backed node types by query/, 'node type search must be documented');
+assert.match(toolContract, /Search BrAIniac tool catalog entries by query/, 'tool search must be documented');
+assert.match(toolContract, /ToolNode -> AgentCall/, 'agent binding tool must expose explicit tool capability edges');
+assert.match(toolContract, /unresolved tools/, 'agent binding tool must expose unresolved tool diagnostics');
 
 console.log('MCP domain tool contract checks OK');
