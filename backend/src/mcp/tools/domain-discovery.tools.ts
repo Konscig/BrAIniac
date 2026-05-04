@@ -13,6 +13,8 @@ import { parseGraphValidationPreset, validatePipelineGraph } from '../../service
 import { validateNodeConfigForType } from '../../services/application/node/node-config-validation.service.js';
 import { deletePipelineEdgeForUser } from '../../services/application/edge/edge.application.service.js';
 import { deletePipelineNodeForUser, updatePipelineNodeForUser } from '../../services/application/node/node.application.service.js';
+import { searchNodeTypeCatalog } from '../../services/application/node_type/node-type-search.application.service.js';
+import { searchToolCatalog } from '../../services/application/tool/tool-search.application.service.js';
 import { listEdgesByPipeline } from '../../services/data/edge.service.js';
 import { listNodesByPipeline } from '../../services/data/node.service.js';
 import { getNodeTypeById } from '../../services/data/node_type.service.js';
@@ -50,6 +52,12 @@ function rejectHiddenToolBindings(value: unknown): void {
     }
     rejectHiddenToolBindings(nested);
   }
+}
+
+function readObjectSection(value: unknown, key: string): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const section = (value as Record<string, unknown>)[key];
+  return section && typeof section === 'object' && !Array.isArray(section) ? (section as Record<string, unknown>) : null;
 }
 
 async function getPipelineGraphSummary(pipelineId: number) {
@@ -381,6 +389,160 @@ export function registerDomainDiscoveryTools(server: McpServer): void {
         validation,
         resource_links: [{ uri: pipelineGraphUri(pipelineId), name: `Pipeline ${pipelineId} graph` }],
         diagnostics: validation.valid ? [] : validation.errors,
+      });
+    },
+  );
+
+  server.registerTool(
+    'search_node_types',
+    {
+      title: 'Search BrAIniac Node Types',
+      description: 'Search runtime-backed BrAIniac node types by query, category, capability, or related tool.',
+      inputSchema: {
+        query: z.string().optional(),
+        capability: z.string().optional(),
+        category: z.string().optional(),
+        limit: z.number().int().positive().max(50).optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+    },
+    async ({ query, capability, category, limit }, extra) => {
+      requireMcpScope(extra, 'mcp:read');
+      const nodeTypes = await searchNodeTypeCatalog({ query, capability, category, limit });
+      return jsonToolResult({
+        node_types: nodeTypes.map(nodeTypeSummary),
+        resource_links: nodeTypes.map((nodeType) => ({
+          uri: nodeTypeUri(nodeType.node_type_id),
+          name: `Node Type ${nodeType.node_type_id}: ${nodeType.name}`,
+        })),
+        diagnostics: [],
+      });
+    },
+  );
+
+  server.registerTool(
+    'search_tools',
+    {
+      title: 'Search BrAIniac Tools',
+      description: 'Search BrAIniac tool catalog entries by query or capability and return linked node types where known.',
+      inputSchema: {
+        query: z.string().optional(),
+        capability: z.string().optional(),
+        limit: z.number().int().positive().max(50).optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+    },
+    async ({ query, capability, limit }, extra) => {
+      requireMcpScope(extra, 'mcp:read');
+      const results = await searchToolCatalog({ query, capability, limit });
+      return jsonToolResult({
+        tools: results.map(({ tool, linked_node_types }) => ({
+          tool_id: tool.tool_id,
+          name: normalizeName(tool.name),
+          config_json: tool.config_json,
+          resource_uri: toolUri(tool.tool_id),
+          linked_node_types: linked_node_types.map(nodeTypeSummary),
+        })),
+        resource_links: results.map(({ tool }) => ({
+          uri: toolUri(tool.tool_id),
+          name: `Tool ${tool.tool_id}: ${normalizeName(tool.name)}`,
+        })),
+        diagnostics: [],
+      });
+    },
+  );
+
+  server.registerTool(
+    'get_agent_tool_bindings',
+    {
+      title: 'Get BrAIniac Agent Tool Bindings',
+      description: 'Return tools available to a specific AgentCall node through explicit ToolNode -> AgentCall capability edges.',
+      inputSchema: {
+        pipelineId: z.number().int().positive(),
+        agentNodeId: z.number().int().positive(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+    },
+    async ({ pipelineId, agentNodeId }, extra) => {
+      requireMcpScope(extra, 'mcp:read');
+      const userId = requireMcpUserId(extra);
+      await ensurePipelineOwnedByUser(pipelineId, userId);
+      const [nodes, edges] = await Promise.all([listNodesByPipeline(pipelineId), listEdgesByPipeline(pipelineId)]);
+      const nodeById = new Map(nodes.map((node) => [node.node_id, node]));
+      const agentNode = nodeById.get(agentNodeId);
+      if (!agentNode) {
+        throw new Error('agent node not found');
+      }
+
+      const nodeTypeIds = [...new Set(nodes.map((node) => node.fk_type_id))];
+      const nodeTypes = await Promise.all(nodeTypeIds.map((nodeTypeId) => getNodeTypeById(nodeTypeId)));
+      const nodeTypeById = new Map(nodeTypes.filter(Boolean).map((nodeType) => [nodeType!.type_id, nodeType!]));
+      const agentType = nodeTypeById.get(agentNode.fk_type_id);
+      if (normalizeName(agentType?.name ?? '') !== 'AgentCall') {
+        throw new Error('node is not an AgentCall');
+      }
+
+      const incomingToolEdges = edges.filter((edge) => edge.fk_to_node === agentNodeId).filter((edge) => {
+        const fromNode = nodeById.get(edge.fk_from_node);
+        return normalizeName(nodeTypeById.get(fromNode?.fk_type_id ?? 0)?.name ?? '') === 'ToolNode';
+      });
+      const availableTools = [];
+      const unresolvedTools = [];
+
+      for (const edge of incomingToolEdges) {
+        const toolNode = nodeById.get(edge.fk_from_node);
+        const toolNodeType = toolNode ? nodeTypeById.get(toolNode.fk_type_id) : undefined;
+        const tool = toolNodeType ? await getToolById(toolNodeType.fk_tool_id) : null;
+        if (toolNode && tool) {
+          availableTools.push({
+            node_id: toolNode.node_id,
+            tool_id: tool.tool_id,
+            name: normalizeName(tool.name),
+            node_resource_uri: pipelineNodeUri(pipelineId, toolNode.node_id),
+            tool_resource_uri: toolUri(tool.tool_id),
+          });
+        } else {
+          unresolvedTools.push({
+            edge_id: edge.edge_id,
+            from_tool_node_id: edge.fk_from_node,
+            to_agent_node_id: edge.fk_to_node,
+          });
+        }
+      }
+
+      return jsonToolResult({
+        agent: {
+          node_id: agentNode.node_id,
+          node_resource_uri: pipelineNodeUri(pipelineId, agentNode.node_id),
+          agent_config: readObjectSection(agentNode.ui_json, 'agent'),
+        },
+        available_tools: availableTools,
+        unresolved_tools: unresolvedTools,
+        tool_edges: incomingToolEdges.map((edge) => ({
+          edge_id: edge.edge_id,
+          from_tool_node_id: edge.fk_from_node,
+          to_agent_node_id: edge.fk_to_node,
+        })),
+        resource_links: [
+          { uri: pipelineNodeUri(pipelineId, agentNode.node_id), name: `Agent Node ${agentNode.node_id}` },
+          { uri: pipelineAgentsUri(pipelineId), name: `Pipeline ${pipelineId} agents` },
+        ],
+        diagnostics:
+          availableTools.length === 0
+            ? [{ code: 'AGENT_NO_TOOLNODE_CAPABILITIES', message: 'AgentCall has no incoming ToolNode capabilities' }]
+            : [],
       });
     },
   );
