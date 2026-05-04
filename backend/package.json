@@ -37,6 +37,7 @@
     "test:mcp:perf": "node --loader ts-node/esm ./scripts/mcp-performance-smoke-test.mjs",
     "test:mcp:export": "node --loader ts-node/esm ./scripts/mcp-export-redaction-test.mjs",
     "test:mcp:authoring": "node --loader ts-node/esm ./scripts/mcp-authoring-contract-test.mjs",
+    "test:mcp:domain-tools": "node --loader ts-node/esm ./scripts/mcp-domain-tools-contract-test.mjs",
     "test:vscode:mcp-auth": "node ./scripts/vscode-mcp-auth-flow-test.mjs",
     "test:vscode:oauth": "node ./scripts/vscode-oauth-token-lifecycle-test.mjs",
     "test:web-session-refresh": "node ./scripts/web-session-refresh-test.mjs",
