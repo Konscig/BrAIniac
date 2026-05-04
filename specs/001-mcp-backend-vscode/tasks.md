@@ -397,7 +397,7 @@ the MVP before operation tools, export, and VS Code integration.
 
 ### Tests for BrAIniac Domain Discovery And Editing Tools
 
-- [ ] T156 [US5] Add MCP domain tool contract tests for `list_node_types`, `get_node_type`, node-type resource links, unsupported visibility rules, and no hidden `tool_ref`/`tool_refs` exposure in `backend/scripts/mcp-domain-tools-contract-test.mjs`
+- [X] T156 [US5] Add MCP domain tool contract tests for `list_node_types`, `get_node_type`, node-type resource links, unsupported visibility rules, and no hidden `tool_ref`/`tool_refs` exposure in `backend/scripts/mcp-domain-tools-contract-test.mjs`
 - [ ] T157 [US5] Add MCP graph inspection tests for `get_pipeline_graph`, `list_pipeline_edges`, ownership enforcement, graph resource parity, duplicate-edge visibility, and validation summary output in `backend/scripts/mcp-domain-tools-contract-test.mjs`
 - [ ] T158 [US5] Add MCP node config preflight tests for `validate_node_config` valid config, invalid config, unsupported node type, read-only annotations, and no database mutation in `backend/scripts/mcp-domain-tools-contract-test.mjs`
 - [ ] T159 [US5] Add MCP graph edit tests for `update_pipeline_node`, `delete_pipeline_node`, `delete_pipeline_edge`, ownership enforcement, affected-edge diagnostics, non-read-only annotations, and graph validation after mutation in `backend/scripts/mcp-domain-tools-contract-test.mjs`
