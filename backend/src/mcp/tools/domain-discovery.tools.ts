@@ -127,7 +127,9 @@ export function registerDomainDiscoveryTools(server: McpServer): void {
     },
     async ({ includeUnsupported }, extra) => {
       requireMcpScope(extra, 'mcp:read');
-      const nodeTypes = await listNodeTypeCatalogEntries({ includeUnsupported });
+      const nodeTypes = await listNodeTypeCatalogEntries({
+        ...(includeUnsupported !== undefined ? { includeUnsupported } : {}),
+      });
       return jsonToolResult({
         node_types: nodeTypes.map(nodeTypeSummary),
         resource_links: nodeTypes.map((nodeType) => ({
@@ -413,7 +415,12 @@ export function registerDomainDiscoveryTools(server: McpServer): void {
     },
     async ({ query, capability, category, limit }, extra) => {
       requireMcpScope(extra, 'mcp:read');
-      const nodeTypes = await searchNodeTypeCatalog({ query, capability, category, limit });
+      const nodeTypes = await searchNodeTypeCatalog({
+        ...(query !== undefined ? { query } : {}),
+        ...(capability !== undefined ? { capability } : {}),
+        ...(category !== undefined ? { category } : {}),
+        ...(limit !== undefined ? { limit } : {}),
+      });
       return jsonToolResult({
         node_types: nodeTypes.map(nodeTypeSummary),
         resource_links: nodeTypes.map((nodeType) => ({
@@ -443,7 +450,11 @@ export function registerDomainDiscoveryTools(server: McpServer): void {
     },
     async ({ query, capability, limit }, extra) => {
       requireMcpScope(extra, 'mcp:read');
-      const results = await searchToolCatalog({ query, capability, limit });
+      const results = await searchToolCatalog({
+        ...(query !== undefined ? { query } : {}),
+        ...(capability !== undefined ? { capability } : {}),
+        ...(limit !== undefined ? { limit } : {}),
+      });
       return jsonToolResult({
         tools: results.map(({ tool, linked_node_types }) => ({
           tool_id: tool.tool_id,
@@ -572,7 +583,7 @@ export function registerDomainDiscoveryTools(server: McpServer): void {
       const nodes = await listNodesByPipeline(pipelineId);
       const proposal = proposePipelineLayout({
         nodes: nodes.map((node) => ({ node_id: node.node_id, ui_json: node.ui_json })),
-        direction,
+        ...(direction !== undefined ? { direction } : {}),
       });
 
       if (shouldApply) {
