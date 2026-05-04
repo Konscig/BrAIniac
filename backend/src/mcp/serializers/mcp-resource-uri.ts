@@ -13,6 +13,8 @@ export type BrainiacResourceKind =
   | 'pipeline-node'
   | 'pipeline-export'
   | 'pipeline-node-export'
+  | 'node-types'
+  | 'node-type'
   | 'tools'
   | 'tool';
 
@@ -22,6 +24,7 @@ export type BrainiacResourceUriParts = {
   pipelineId?: number;
   nodeId?: number;
   executionId?: string;
+  nodeTypeId?: number;
   toolId?: number;
 };
 
@@ -113,6 +116,15 @@ export function toolListUri(): string {
   return 'brainiac://tools';
 }
 
+export function nodeTypeListUri(): string {
+  return 'brainiac://node-types';
+}
+
+export function nodeTypeUri(nodeTypeId: number): string {
+  assertPositiveInteger(nodeTypeId, 'nodeTypeId');
+  return `brainiac://node-types/${nodeTypeId}`;
+}
+
 export function toolUri(toolId: number): string {
   assertPositiveInteger(toolId, 'toolId');
   return `brainiac://tools/${toolId}`;
@@ -136,6 +148,10 @@ export function parseBrainiacResourceUri(uri: string): BrainiacResourceUriParts 
 
   if (segments.length === 1 && segments[0] === 'tools') {
     return { kind: 'tools' };
+  }
+
+  if (segments.length === 1 && segments[0] === 'node-types') {
+    return { kind: 'node-types' };
   }
 
   if (segments[0] === 'projects') {
@@ -197,6 +213,13 @@ export function parseBrainiacResourceUri(uri: string): BrainiacResourceUriParts 
     return {
       kind: 'tool',
       toolId: parsePositiveInteger(segments[1], 'toolId'),
+    };
+  }
+
+  if (segments[0] === 'node-types' && segments.length === 2) {
+    return {
+      kind: 'node-type',
+      nodeTypeId: parsePositiveInteger(segments[1], 'nodeTypeId'),
     };
   }
 
