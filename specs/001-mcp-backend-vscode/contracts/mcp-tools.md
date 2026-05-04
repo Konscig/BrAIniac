@@ -560,6 +560,128 @@ Rules:
 - Composite "build pipeline from plan" helpers may be considered later only
   after the explicit primitive tools are tested.
 
+## Planned BrAIniac Domain Discovery And Editing Tools
+
+These tools fill the practical gaps an agent has after the primitive authoring
+slice: discovering creatable node types, reading the current graph as structured
+tool output, validating config before mutation, and repairing mistakes.
+
+### `list_node_types`
+
+Purpose: Return runtime-backed BrAIniac node types that can be inspected or
+created through MCP.
+
+Input:
+
+```json
+{
+  "includeUnsupported": false
+}
+```
+
+Output includes `node_type_id`, `name`, `category`, `fk_tool_id`,
+`runtime_support_state`, `resource_uri`, and safe summaries of required config
+and defaults when available.
+
+### `get_node_type`
+
+Purpose: Return one node type's config expectations, defaults, related tool,
+input/output handle metadata where available, and MCP authoring support state.
+
+### `get_pipeline_graph`
+
+Purpose: Return the owner-scoped pipeline graph directly as structured tool
+output: nodes, edges, node types, tool bindings, validation summary, and graph
+resource links.
+
+### `list_pipeline_edges`
+
+Purpose: Return edges for one owner-scoped pipeline so agents can check existing
+connections before calling `connect_pipeline_nodes`.
+
+### `validate_node_config`
+
+Purpose: Dry-run validation for a node type and proposed `configJson` before
+creating or updating a node.
+
+Rules:
+
+- Must not mutate state.
+- Must return clear field-level diagnostics where existing validators can
+  provide them.
+- Must distinguish unsupported node types from invalid config.
+
+### `update_pipeline_node`
+
+Purpose: Update an existing pipeline node's label, `config_json`, or
+`ui_json.position`.
+
+Rules:
+
+- Mutating and confirmation-appropriate.
+- Must enforce pipeline ownership and reject hidden `tool_ref`/`tool_refs`
+  behavior.
+- Must run graph validation after mutation and return diagnostics.
+
+### `delete_pipeline_node`
+
+Purpose: Delete an owned pipeline node, with explicit diagnostics for affected
+edges and validation state.
+
+Rules:
+
+- Mutating and confirmation-appropriate.
+- Must not delete nodes outside the target owned pipeline.
+- Must either remove dependent edges through existing service behavior or reject
+  with actionable diagnostics if safe deletion cannot be guaranteed.
+
+### `delete_pipeline_edge`
+
+Purpose: Delete one edge from an owned pipeline.
+
+Rules:
+
+- Mutating and confirmation-appropriate.
+- Must reject missing, duplicate-ambiguous, or cross-pipeline endpoints.
+- Must run graph validation after deletion.
+
+### `search_node_types`
+
+Purpose: Search runtime-backed node types by query, category, capability, or
+related tool so agents do not need to scan a large catalog.
+
+### `search_tools`
+
+Purpose: Search BrAIniac tool catalog entries by query or capability, returning
+tool ids and linked node types where known.
+
+### `get_agent_tool_bindings`
+
+Purpose: Return tools available to a specific agent node, explicit
+`ToolNode -> AgentCall` capability edges, unresolved tools, and diagnostics.
+
+### `auto_layout_pipeline`
+
+Purpose: Derive non-overlapping canvas positions for an owned pipeline.
+
+Input:
+
+```json
+{
+  "pipelineId": 44,
+  "direction": "left_to_right",
+  "dryRun": true
+}
+```
+
+Rules:
+
+- `dryRun: true` returns proposed `ui_json` position changes without mutation.
+- `dryRun: false` is mutating and confirmation-appropriate.
+- Must preserve graph structure and update only canvas placement metadata.
+- Must use the existing bounded layout helper strategy; do not add an expensive
+  global graph layout engine for this slice.
+
 ## Error Shape
 
 Tool-level errors return MCP tool errors with user-visible text and structured

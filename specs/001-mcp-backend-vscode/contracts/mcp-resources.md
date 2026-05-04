@@ -18,6 +18,8 @@ Resource templates:
 - `brainiac://pipelines/{pipelineId}/nodes/{nodeId}`
 - `brainiac://pipelines/{pipelineId}/export`
 - `brainiac://pipelines/{pipelineId}/nodes/{nodeId}/export`
+- `brainiac://node-types`
+- `brainiac://node-types/{nodeTypeId}`
 - `brainiac://tools`
 - `brainiac://tools/{toolId}`
 
@@ -132,6 +134,25 @@ tool capability relationships:
 
 Tool relationships must be derived from the existing graph and `ToolNode ->
 AgentCall` semantics.
+
+## Node Type Resources
+
+`brainiac://node-types` returns runtime-backed node types that can be inspected
+by MCP clients.
+
+Each node type summary includes:
+
+- `node_type_id`
+- `name`
+- `category`
+- `fk_tool_id`
+- `runtime_support_state`
+- `resource_uri`
+
+`brainiac://node-types/{nodeTypeId}` returns one node type with safe config
+expectations, defaults, related tool links, and MCP authoring support state.
+Unsupported node types must be marked explicitly and must not be represented as
+creatable unless runtime support exists.
 
 ## Export Resources
 

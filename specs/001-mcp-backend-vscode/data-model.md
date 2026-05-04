@@ -266,7 +266,9 @@ edge state for the authenticated user.
 Fields:
 
 - `operation`: `create_project`, `create_pipeline`, `create_pipeline_node`, or
-  `connect_pipeline_nodes`.
+  `connect_pipeline_nodes`; follow-up operations add `update_pipeline_node`,
+  `delete_pipeline_node`, `delete_pipeline_edge`, and `auto_layout_pipeline`
+  when applying layout changes.
 - `project_id`: required for pipeline creation when not creating the project in
   the same request sequence.
 - `pipeline_id`: required for node and edge creation.
@@ -290,6 +292,69 @@ Validation:
   nodes, and unsafe graph states; validation diagnostics must be returned.
 - Mutations must return resource links to changed project, pipeline, graph, and
   node resources.
+
+## Node Type Catalog Entry
+
+Runtime-backed BrAIniac node type information exposed through MCP so agents can
+choose valid node ids and config before creating nodes.
+
+Fields:
+
+- `node_type_id`: database id used by node creation.
+- `name`: user-facing node type name.
+- `category`: grouping or capability label when available.
+- `fk_tool_id`: related BrAIniac tool id when the node type binds a tool.
+- `runtime_support_state`: `supported` or `unsupported`.
+- `config_schema`: safe config expectations where available.
+- `default_config`: safe defaults where available.
+- `resource_uri`: node type or related tool resource link.
+
+Validation:
+
+- Unsupported node types must be visible only when explicitly requested and
+  must not be presented as creatable.
+- Secrets, provider keys, and hidden tool binding paths must not be exposed.
+
+## Node Config Validation
+
+Read-only preflight result for proposed node configuration.
+
+Fields:
+
+- `node_type_id`
+- `config_json`
+- `valid`
+- `errors`
+- `warnings`
+- `normalized_config`: optional safe normalized preview if existing services
+  can produce it.
+
+Validation:
+
+- Validation must not create or update nodes.
+- Unsupported node types and invalid config must be distinguishable.
+
+## Pipeline Graph Edit
+
+Follow-up MCP mutation that updates or deletes existing graph elements.
+
+Fields:
+
+- `pipeline_id`
+- `node_id`: required for node update/delete.
+- `source_node_id` and `target_node_id`: required for edge delete.
+- `label`: optional node label update.
+- `config_json`: optional node configuration update.
+- `ui_json`: optional canvas metadata update.
+- `dry_run`: optional flag for layout proposals.
+
+Validation:
+
+- Edits must enforce ownership before reading or writing.
+- Node updates must reject hidden `tool_ref`/`tool_refs` paths and unsupported
+  node type behavior.
+- Node and edge deletes must avoid unsafe partial graph state and return graph
+  validation diagnostics after mutation.
 
 ## Canvas Layout Hint
 

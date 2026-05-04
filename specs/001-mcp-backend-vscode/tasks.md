@@ -389,6 +389,55 @@ the MVP before operation tools, export, and VS Code integration.
 
 ---
 
+## Phase 13: User Story 5 Continuation - BrAIniac Domain Discovery And Editing Tools (Priority: P5)
+
+**Goal**: Let an authenticated MCP agent discover creatable node types, inspect graph edges and agent tool bindings, validate node configuration before mutation, update or delete mistaken graph elements, search catalogs, and optionally apply readable backend-derived layout.
+
+**Independent Test**: Satisfy SC-015 from an MCP client: list and inspect node types, read graph and edge state for an owned pipeline, validate both valid and invalid node config without mutation, update a test node, delete a test edge and node, search node types/tools, inspect an agent node's tool bindings, run auto-layout in dry-run and apply mode, and verify ownership, annotations, graph validation, and resource links.
+
+### Tests for BrAIniac Domain Discovery And Editing Tools
+
+- [ ] T156 [US5] Add MCP domain tool contract tests for `list_node_types`, `get_node_type`, node-type resource links, unsupported visibility rules, and no hidden `tool_ref`/`tool_refs` exposure in `backend/scripts/mcp-domain-tools-contract-test.mjs`
+- [ ] T157 [US5] Add MCP graph inspection tests for `get_pipeline_graph`, `list_pipeline_edges`, ownership enforcement, graph resource parity, duplicate-edge visibility, and validation summary output in `backend/scripts/mcp-domain-tools-contract-test.mjs`
+- [ ] T158 [US5] Add MCP node config preflight tests for `validate_node_config` valid config, invalid config, unsupported node type, read-only annotations, and no database mutation in `backend/scripts/mcp-domain-tools-contract-test.mjs`
+- [ ] T159 [US5] Add MCP graph edit tests for `update_pipeline_node`, `delete_pipeline_node`, `delete_pipeline_edge`, ownership enforcement, affected-edge diagnostics, non-read-only annotations, and graph validation after mutation in `backend/scripts/mcp-domain-tools-contract-test.mjs`
+- [ ] T160 [US5] Add MCP catalog search and agent binding tests for `search_node_types`, `search_tools`, and `get_agent_tool_bindings` bounded results, explicit `ToolNode -> AgentCall` bindings, unresolved tools, and diagnostics in `backend/scripts/mcp-domain-tools-contract-test.mjs`
+- [ ] T161 [US5] Add MCP layout tests for `auto_layout_pipeline` dry-run no-mutation behavior, apply-mode `ui_json` updates, graph-structure preservation, ownership, non-read-only annotations, and spacing diagnostics in `backend/scripts/mcp-domain-tools-contract-test.mjs`
+- [ ] T162 [US5] Add `test:mcp:domain-tools` script for `backend/scripts/mcp-domain-tools-contract-test.mjs` in `backend/package.json`
+
+### Implementation for BrAIniac Domain Discovery Tools
+
+- [ ] T163 [P] [US5] Add MCP node type URI helpers for `brainiac://node-types` and `brainiac://node-types/{nodeTypeId}` in `backend/src/mcp/serializers/mcp-resource-uri.ts`
+- [ ] T164 [P] [US5] Add or expose node type catalog service helpers for supported creatable node types, safe config summaries, defaults, related tool ids, and unsupported-state filtering in `backend/src/services/data/node_type.service.ts` and `backend/src/services/application/node/node-type.application.service.ts`
+- [ ] T165 [US5] Implement node type resources for `brainiac://node-types` and `brainiac://node-types/{nodeTypeId}` with ownership-safe public catalog data in `backend/src/mcp/resources/node-type.resources.ts`
+- [ ] T166 [US5] Implement `list_node_types` and `get_node_type` MCP handlers with read-only annotations, safe config/default output, related tool links, and unsupported-state diagnostics in `backend/src/mcp/tools/domain-discovery.tools.ts`
+- [ ] T167 [US5] Implement `get_pipeline_graph` and `list_pipeline_edges` MCP handlers by reusing existing pipeline graph, edge, ownership, resource-link, and validation services in `backend/src/mcp/tools/domain-discovery.tools.ts`
+
+### Implementation for BrAIniac Domain Editing Tools
+
+- [ ] T168 [P] [US5] Add or expose node config validation helpers that can preflight supported node type config without creating or updating nodes in `backend/src/services/application/node/node-config-validation.service.ts`
+- [ ] T169 [US5] Implement `validate_node_config` MCP handler with read-only annotations, field-level diagnostics where available, unsupported node type errors, and no mutation in `backend/src/mcp/tools/domain-discovery.tools.ts`
+- [ ] T170 [P] [US5] Add or expose owner-scoped node update and delete service methods that preserve graph validation semantics and affected-edge behavior in `backend/src/services/application/node/node.application.service.ts`
+- [ ] T171 [P] [US5] Add or expose owner-scoped edge delete service methods with duplicate/missing/cross-pipeline diagnostics in `backend/src/services/application/edge/edge.application.service.ts`
+- [ ] T172 [US5] Implement `update_pipeline_node`, `delete_pipeline_node`, and `delete_pipeline_edge` MCP handlers with confirmation-appropriate annotations, hidden binding rejection, resource links, and graph validation output in `backend/src/mcp/tools/domain-discovery.tools.ts`
+- [ ] T173 [P] [US5] Implement bounded node type and BrAIniac tool catalog search helpers in `backend/src/services/application/tool/tool-search.application.service.ts` and `backend/src/services/application/node/node-type-search.application.service.ts`
+- [ ] T174 [US5] Implement `search_node_types`, `search_tools`, and `get_agent_tool_bindings` MCP handlers with bounded read-only results, explicit agent tool capability edges, unresolved-tool diagnostics, and resource links in `backend/src/mcp/tools/domain-discovery.tools.ts`
+- [ ] T175 [US5] Extend the existing MCP authoring layout helper to produce full-pipeline dry-run proposals and apply-mode `ui_json` updates without changing graph structure in `backend/src/mcp/tools/authoring-layout.ts`
+- [ ] T176 [US5] Implement `auto_layout_pipeline` MCP handler with dry-run default, apply-mode confirmation annotations, ownership checks, spacing diagnostics, and validation output in `backend/src/mcp/tools/domain-discovery.tools.ts`
+- [ ] T177 [US5] Register node type resources and BrAIniac domain discovery/editing tools in `backend/src/mcp/mcp.server.ts` without changing existing read-only, export, validation, execution, auth, or primitive authoring behavior
+
+### Documentation And Verification For BrAIniac Domain Discovery And Editing Tools
+
+- [ ] T178 [P] [US5] Update `README.md` and `docs/sdd/14-mcp-adapter-plan.md` with node type discovery, graph repair, catalog search, agent binding, delete/update confirmation, and auto-layout guidance
+- [ ] T179 [P] [US5] Reconcile implemented schemas, annotations, resource links, diagnostics, and resource templates with `specs/001-mcp-backend-vscode/contracts/mcp-tools.md` and `specs/001-mcp-backend-vscode/contracts/mcp-resources.md`
+- [ ] T180 [P] [US5] Update `specs/001-mcp-backend-vscode/quickstart.md` with final manual checks and expected outputs for BrAIniac domain discovery/editing tools
+- [ ] T181 [US5] Run the SC-015 automated gate with `npm --prefix backend run build`, `npm --prefix backend run test:mcp:domain-tools`, `npm --prefix backend run test:mcp:authoring`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:readonly`, and `npm --prefix backend run test:contracts:freeze`
+- [ ] T182 [US5] Manually verify the SC-015 follow-up MCP domain tool checklist in `specs/001-mcp-backend-vscode/quickstart.md` against a seeded local pipeline and record remaining gaps in the quickstart validation notes
+
+**Checkpoint**: MCP agents can discover valid BrAIniac node types and tools, inspect and repair graph state, validate config before mutation, and clean up or lay out generated pipelines without hidden database-id assumptions.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -407,6 +456,7 @@ the MVP before operation tools, export, and VS Code integration.
 - **Auth UX hardening (Phase 10)**: Depends on Phase 7/8 auth infrastructure and can run after T106; it may be implemented before or after Phase 9 because it touches different files.
 - **US4 Browser web refresh cookie (Phase 11)**: Depends on Phase 10 stale-token cleanup and existing backend browser auth. It replaces the browser fallback-only behavior with safe cookie-backed refresh.
 - **US5 MCP authoring tools (Phase 12)**: Depends on US1 MCP adapter foundation, US2 validation, US3 resources/links, and stable auth/ownership behavior. It can run after Phase 9/10 and does not depend on browser web refresh cookies.
+- **US5 BrAIniac domain discovery/editing tools (Phase 13)**: Depends on US1 read-only graph/resource foundations and US5 primitive authoring behavior. It can run after Phase 12 because update/delete/layout tools build on the same ownership, resource URI, validation, and canvas placement contracts.
 
 ### User Story Dependencies
 
@@ -420,6 +470,7 @@ the MVP before operation tools, export, and VS Code integration.
 - **US4 auth UX hardening (P4)**: Requires existing browser auth provider, frontend API layer, and VS Code auth routes; independently testable through frontend auth tests and VS Code manual sign-in.
 - **US4 browser web refresh cookie (P4)**: Requires existing browser auth provider, frontend API layer, and backend auth service; independently testable through web-session refresh tests and browser idle/expiry manual checks.
 - **US5 MCP authoring (P5)**: Requires existing MCP auth, resource URI helpers, project/pipeline/node/edge services, and graph validation; independently testable through MCP authoring contract tests and canvas manual verification.
+- **US5 domain discovery/editing continuation (P5)**: Requires existing MCP auth, node type/tool catalog services, graph resources, primitive authoring tools, and graph validation; independently testable through MCP domain tool contract tests and seeded pipeline manual checks.
 
 ### Within Each User Story
 
@@ -433,6 +484,7 @@ the MVP before operation tools, export, and VS Code integration.
 - Auth UX hardening tasks must not enable standard OAuth discovery endpoints without implementing DCR/client registration, and browser token recovery must not store VS Code refresh material in browser localStorage.
 - Browser web refresh cookie tasks must never store refresh credentials in localStorage, sessionStorage, app state, URL parameters, logs, or any JavaScript-readable location.
 - MCP authoring tasks must use explicit mutating tool annotations, preserve ownership checks, validate the graph after mutation, avoid hidden tool bindings, and keep created nodes non-overlapping on the canvas.
+- MCP domain discovery/editing tasks must expose supported node type ids and config expectations before mutation, keep graph/search/binding tools read-only, require confirmation for update/delete/layout apply mode, and run graph validation after every graph mutation.
 
 ### Parallel Opportunities
 
@@ -455,6 +507,7 @@ the MVP before operation tools, export, and VS Code integration.
 - Auth UX tests T119-T121 can run before implementation. Backend DCR guard T122 can run independently from frontend stale-token handling T123-T125. T128 and T129 are sequential validation gates.
 - Browser web refresh contract tasks T130-T131 can run in parallel. T132 must land before T137-T139 if storage changes are needed. Tests T133-T135 can run in parallel after T130-T132. T137-T139 are sequential backend auth work; T140-T141 are frontend integration work after the refresh contract is stable. T142-T143 are sequential validation gates.
 - MCP authoring test T144 can start before implementation, then T145 extends the same script. T147 can run in parallel with T144. T148 must land before T149-T150 if existing services do not already expose the required mutations. T152 can run in parallel after the tool behavior is clear; T153-T155 are sequential contract reconciliation and validation gates.
+- MCP domain tool tests T156-T161 are sequential because they share `backend/scripts/mcp-domain-tools-contract-test.mjs`. T163, T164, T168, T170, T171, and T173 can run in parallel after contract tests are clear because they touch different helpers/services. T165-T167 depend on URI and node type service helpers. T169 depends on T168. T172 depends on T170-T171. T174 depends on T173. T176 depends on T175. T177 and T181-T182 are sequential integration and validation gates.
 
 ---
 
@@ -530,6 +583,15 @@ Task: "T147 [P] [US5] Implement deterministic MCP canvas layout helper in backen
 Task: "T152 [P] [US5] Update README.md, docs/sdd/14-mcp-adapter-plan.md, and quickstart.md with authoring usage"
 ```
 
+## Parallel Example: BrAIniac Domain Discovery And Editing Tools
+
+```bash
+Task: "T163 [P] [US5] Add MCP node type URI helpers in backend/src/mcp/serializers/mcp-resource-uri.ts"
+Task: "T164 [P] [US5] Add node type catalog service helpers in backend/src/services/application/node/node-type.application.service.ts"
+Task: "T168 [P] [US5] Add node config validation helpers in backend/src/services/application/node/node-config-validation.service.ts"
+Task: "T173 [P] [US5] Implement catalog search helpers in backend/src/services/application/tool/tool-search.application.service.ts and backend/src/services/application/node/node-type-search.application.service.ts"
+```
+
 ---
 
 ## Implementation Strategy
@@ -553,6 +615,7 @@ Task: "T152 [P] [US5] Update README.md, docs/sdd/14-mcp-adapter-plan.md, and qui
 8. US4 auth UX hardening for DCR prompt avoidance and browser stale-token recovery.
 9. US4 browser web refresh cookie lifecycle.
 10. US5 MCP authoring tools for project, pipeline, node placement, and edge creation.
+11. US5 BrAIniac domain discovery/editing tools for node type discovery, graph repair, config validation, search, agent bindings, and auto-layout.
 
 ### Scope Guard
 
@@ -560,7 +623,10 @@ Do not implement composite one-shot prompt-to-pipeline generation,
 `update_agent_config`, or `bind_tool_to_agent` in this task set. The planned
 authoring slice is limited to explicit primitive tools for project creation,
 pipeline creation, supported node creation with canvas placement, and edge
-creation.
+creation plus explicit follow-up domain tools for discovery, update/delete
+repair, config preflight, search, agent binding inspection, and bounded
+auto-layout. Do not add hidden tool binding, automatic execution, or broad
+prompt-to-pipeline orchestration.
 
 ## Notes
 

@@ -60,6 +60,18 @@
   accept or derive canvas positions with minimum spacing so nodes do not stack
   on top of each other; tool descriptions must state the layout expectation.
 
+### Session 2026-05-04
+
+- Q: Which BrAIniac-domain MCP tools are still missing for practical agent
+  authoring? -> A: plan a small follow-up tool slice for node-type discovery,
+  graph/edge inspection, node config validation, node/edge updates and deletes,
+  search over node types/tools, agent tool-binding inspection, and optional
+  automatic pipeline layout.
+- Q: How should the follow-up BrAIniac-domain MCP tools be acceptance-tested? -> A:
+  require an MCP client to discover node types, inspect graph/edges, validate
+  config without mutation, update/delete test graph elements, search catalogs,
+  inspect agent tool bindings, and verify auto-layout dry-run/apply behavior.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Inspect BrAIniac From An AI Client (Priority: P1)
@@ -203,6 +215,12 @@ resource links, and visible node spacing.
 3. **Given** a requested node/tool type is unsupported or missing, **When** the
    authoring tool is invoked, **Then** the tool returns a clear diagnostic and
    does not create hidden unsupported graph behavior.
+4. **Given** an agent needs to refine or repair a generated pipeline, **When**
+   it invokes BrAIniac-domain MCP tools, **Then** it can discover supported node
+   types, inspect current graph edges and agent tool bindings, validate node
+   config without mutation, update or delete test graph elements with
+   confirmation, search node/tool catalogs, and use auto-layout dry-run/apply
+   behavior while preserving ownership and graph validation.
 
 ### Edge Cases
 
@@ -359,6 +377,15 @@ resource links, and visible node spacing.
   `tool_ref`/`tool_refs` paths, unsupported node types, duplicate edges, or
   cross-pipeline edges. If a requested graph cannot be represented safely, the
   tool MUST return diagnostics and avoid partial unsafe mutation.
+- **FR-019**: MCP MUST expose BrAIniac-domain discovery tools that let agents
+  list and inspect supported node types, retrieve full pipeline graphs and
+  edges, search node types/tools by capability, and inspect agent tool bindings
+  without relying on prior knowledge of internal database ids.
+- **FR-020**: MCP MUST expose explicit confirmation-appropriate authoring edit
+  tools for validating node configuration before mutation, updating existing
+  pipeline nodes, deleting nodes, deleting edges, and optionally applying a
+  backend-derived pipeline layout. These tools MUST enforce ownership, preserve
+  graph validation semantics, and reject unsafe partial graph states.
 
 ### Key Entities
 
@@ -391,6 +418,8 @@ resource links, and visible node spacing.
   pipeline, node, or edge state on behalf of the authenticated user.
 - **Canvas Layout Hint**: Positioning metadata stored in node `ui_json` that
   keeps MCP-created nodes visible and separated in the existing web canvas.
+- **Node Type Catalog**: The BrAIniac runtime-backed catalog of creatable node
+  types, their ids, config expectations, defaults, and tool relationships.
 
 ## Success Criteria *(mandatory)*
 
@@ -439,6 +468,11 @@ resource links, and visible node spacing.
 - **SC-014**: An MCP client can create a project, create a pipeline, add at
   least three supported nodes, and connect them with edges; reopening the
   pipeline graph shows non-overlapping node positions and validation diagnostics.
+- **SC-015**: An MCP client can complete the follow-up BrAIniac-domain tool
+  checklist against a seeded pipeline: node type discovery, graph/edge
+  inspection, node config preflight with no mutation, node/edge update/delete,
+  catalog search, agent tool-binding inspection, and auto-layout dry-run/apply
+  behavior all pass `test:mcp:domain-tools` and documented manual verification.
 
 ## Assumptions
 

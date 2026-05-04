@@ -346,3 +346,29 @@ bad UX if every node appears stacked at the same canvas coordinate.
   canvas nodes and makes the tool output feel broken.
 - Allow unsupported node/tool bindings as placeholders: rejected because hidden
   runtime behavior is unsafe and hard to debug.
+
+## Decision: Add BrAIniac-Domain MCP Discovery And Repair Tools After Primitive Authoring
+
+Agents need more than primitive create/connect tools to build useful pipelines
+without hidden assumptions. The next tool slice should add read-only discovery
+for node types, direct graph/edge inspection, search over node types/tools, and
+agent tool-binding inspection, plus confirmation-appropriate edit/delete tools
+for node config, node placement, node deletion, edge deletion, and optional
+backend-derived layout.
+
+**Rationale**: `list_tool_catalog` exposes BrAIniac tools, but node creation
+requires valid node type ids and config expectations. Agents also need the
+current graph and edges as structured tool output before repair operations, and
+they need safe delete/update operations to correct mistakes instead of creating
+replacement nodes. Keeping these tools small preserves the current service
+boundaries and makes each mutation testable.
+
+**Alternatives considered**:
+
+- One composite "build or repair pipeline" tool: rejected for now because it
+  would hide multiple graph mutations behind one broad operation and make
+  confirmation, rollback, and diagnostics harder to reason about.
+- Only resources, no tool wrappers: rejected because MCP clients often handle
+  structured tool results more reliably during step-by-step agent planning.
+- Add a full graph layout engine: rejected for this slice; deterministic
+  `ui_json` placement helpers are enough and match the simplicity constraint.
