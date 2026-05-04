@@ -26,6 +26,12 @@ store.
   `connect_pipeline_nodes`. They reuse owner-scoped project/pipeline/node/edge
   services and graph validation, and they store readable node positions in
   existing `ui_json`.
+- Domain discovery/editing tools expose node type catalog resources
+  (`brainiac://node-types`), node type discovery, pipeline graph/edge
+  inspection, node config preflight, catalog search, agent tool-binding
+  inspection, node/edge repair operations, and bounded auto-layout. Read-only
+  discovery/search/binding tools use `mcp:read`; update/delete and auto-layout
+  apply mode use confirmation-appropriate mutating semantics.
 - VS Code integration starts as a server definition provider and relies on
   VS Code built-in MCP browsing, tool confirmation, logging, and auth prompts.
 - Product VS Code auth uses a local polling browser bridge: the extension calls
@@ -92,3 +98,12 @@ duplicate edges, or cross-pipeline edges. Node authoring stores readable canvas
 positions in existing `ui_json`; tool descriptions tell agents to avoid stacked
 nodes and use clear horizontal or vertical spacing suitable for the ReactFlow
 canvas.
+
+Follow-up domain tools are still thin adapters. Agents should discover node
+types before creating nodes, inspect graph edges before repairs, validate
+config before update/create, and use search only as a bounded catalog helper.
+`update_pipeline_node`, `delete_pipeline_node`, `delete_pipeline_edge`, and
+`auto_layout_pipeline` apply mode must preserve owner scope, reject hidden
+`tool_ref`/`tool_refs` behavior, run graph validation after mutation, and return
+resource links plus diagnostics. `auto_layout_pipeline` dry-run must not mutate
+state and must update only `ui_json` placement when applied.
