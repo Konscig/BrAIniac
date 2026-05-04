@@ -408,7 +408,7 @@ the MVP before operation tools, export, and VS Code integration.
 ### Implementation for BrAIniac Domain Discovery Tools
 
 - [X] T163 [P] [US5] Add MCP node type URI helpers for `brainiac://node-types` and `brainiac://node-types/{nodeTypeId}` in `backend/src/mcp/serializers/mcp-resource-uri.ts`
-- [ ] T164 [P] [US5] Add or expose node type catalog service helpers for supported creatable node types, safe config summaries, defaults, related tool ids, and unsupported-state filtering in `backend/src/services/data/node_type.service.ts` and `backend/src/services/application/node/node-type.application.service.ts`
+- [X] T164 [P] [US5] Add or expose node type catalog service helpers for supported creatable node types, safe config summaries, defaults, related tool ids, and unsupported-state filtering in `backend/src/services/data/node_type.service.ts` and `backend/src/services/application/node_type/node_type.application.service.ts`
 - [ ] T165 [US5] Implement node type resources for `brainiac://node-types` and `brainiac://node-types/{nodeTypeId}` with ownership-safe public catalog data in `backend/src/mcp/resources/node-type.resources.ts`
 - [ ] T166 [US5] Implement `list_node_types` and `get_node_type` MCP handlers with read-only annotations, safe config/default output, related tool links, and unsupported-state diagnostics in `backend/src/mcp/tools/domain-discovery.tools.ts`
 - [ ] T167 [US5] Implement `get_pipeline_graph` and `list_pipeline_edges` MCP handlers by reusing existing pipeline graph, edge, ownership, resource-link, and validation services in `backend/src/mcp/tools/domain-discovery.tools.ts`
