@@ -16,6 +16,8 @@ for (const toolName of ['get_pipeline_graph', 'list_pipeline_edges']) {
   assert.match(toolContract, new RegExp(`### \`${toolName}\``), `${toolName} must be documented in MCP tool contract`);
 }
 
+assert.match(toolContract, /### `validate_node_config`/, 'validate_node_config must be documented in MCP tool contract');
+
 for (const resourceUri of ['brainiac://node-types', 'brainiac://node-types/{nodeTypeId}']) {
   assert.match(resourceContract, new RegExp(resourceUri.replace(/[{}]/g, '\\$&')), `${resourceUri} must be documented`);
 }
@@ -27,5 +29,8 @@ assert.doesNotMatch(toolContract, /hidden `tool_ref`\/`tool_refs` exposure/, 'co
 assert.match(toolContract, /owner-scoped pipeline graph/, 'graph inspection must be owner scoped');
 assert.match(toolContract, /nodes, edges, node types, tool bindings, validation summary/, 'graph inspection must return graph and validation context');
 assert.match(toolContract, /check existing\s+connections before calling `connect_pipeline_nodes`/, 'edge listing must support duplicate-edge preflight');
+assert.match(toolContract, /Must not mutate state/, 'node config validation must be read-only');
+assert.match(toolContract, /field-level diagnostics/, 'node config validation must expose diagnostics when available');
+assert.match(toolContract, /distinguish unsupported node types from invalid config/, 'node config validation must distinguish unsupported type from invalid config');
 
 console.log('MCP domain tool contract checks OK');
