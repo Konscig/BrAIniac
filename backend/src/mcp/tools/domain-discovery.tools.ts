@@ -11,6 +11,8 @@ import {
 import { ensurePipelineOwnedByUser } from '../../services/core/ownership.service.js';
 import { parseGraphValidationPreset, validatePipelineGraph } from '../../services/core/graph_validation.service.js';
 import { validateNodeConfigForType } from '../../services/application/node/node-config-validation.service.js';
+import { deletePipelineEdgeForUser } from '../../services/application/edge/edge.application.service.js';
+import { deletePipelineNodeForUser, updatePipelineNodeForUser } from '../../services/application/node/node.application.service.js';
 import { listEdgesByPipeline } from '../../services/data/edge.service.js';
 import { listNodesByPipeline } from '../../services/data/node.service.js';
 import { getNodeTypeById } from '../../services/data/node_type.service.js';
@@ -38,6 +40,16 @@ function nodeTypeSummary(nodeType: NodeTypeCatalogEntry) {
 
 function normalizeName(value: string): string {
   return value.trim();
+}
+
+function rejectHiddenToolBindings(value: unknown): void {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (key === 'tool_ref' || key === 'tool_refs') {
+      throw new Error('hidden tool_ref/tool_refs bindings are not supported');
+    }
+    rejectHiddenToolBindings(nested);
+  }
 }
 
 async function getPipelineGraphSummary(pipelineId: number) {
@@ -246,6 +258,129 @@ export function registerDomainDiscoveryTools(server: McpServer): void {
         node_type_resource_uri: nodeTypeUri(nodeTypeId),
         resource_links: [{ uri: nodeTypeUri(nodeTypeId), name: `Node Type ${nodeTypeId}` }],
         diagnostics: [...validation.errors, ...validation.warnings],
+      });
+    },
+  );
+
+  server.registerTool(
+    'update_pipeline_node',
+    {
+      title: 'Update BrAIniac Pipeline Node',
+      description: 'Update an existing node label, config_json, or ui_json.position in an owned pipeline.',
+      inputSchema: {
+        pipelineId: z.number().int().positive(),
+        nodeId: z.number().int().positive(),
+        label: z.string().trim().min(1).optional(),
+        configJson: z.unknown().optional(),
+        uiJson: z.record(z.string(), z.unknown()).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+      },
+    },
+    async ({ pipelineId, nodeId, label, configJson, uiJson }, extra) => {
+      requireMcpScope(extra, 'mcp:execute');
+      const userId = requireMcpUserId(extra);
+      rejectHiddenToolBindings(configJson);
+      rejectHiddenToolBindings(uiJson);
+      const node = await updatePipelineNodeForUser(
+        pipelineId,
+        nodeId,
+        {
+          ...(label !== undefined ? { label } : {}),
+          ...(configJson !== undefined ? { config_json: configJson } : {}),
+          ...(uiJson !== undefined ? { ui_json: uiJson } : {}),
+        },
+        userId,
+      );
+      const validation = await validatePipelineGraph(pipelineId, 'default');
+
+      return jsonToolResult({
+        node: {
+          node_id: node.node_id,
+          pipeline_id: pipelineId,
+          resource_uri: pipelineNodeUri(pipelineId, node.node_id),
+          ui_json: node.ui_json,
+        },
+        graph_resource_uri: pipelineGraphUri(pipelineId),
+        validation,
+        resource_links: [
+          { uri: pipelineNodeUri(pipelineId, node.node_id), name: `Node ${node.node_id}` },
+          { uri: pipelineGraphUri(pipelineId), name: `Pipeline ${pipelineId} graph` },
+        ],
+        diagnostics: validation.valid ? [] : validation.errors,
+      });
+    },
+  );
+
+  server.registerTool(
+    'delete_pipeline_node',
+    {
+      title: 'Delete BrAIniac Pipeline Node',
+      description: 'Delete a node from an owned pipeline and return affected edge diagnostics plus graph validation.',
+      inputSchema: {
+        pipelineId: z.number().int().positive(),
+        nodeId: z.number().int().positive(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+      },
+    },
+    async ({ pipelineId, nodeId }, extra) => {
+      requireMcpScope(extra, 'mcp:execute');
+      const userId = requireMcpUserId(extra);
+      const deletion = await deletePipelineNodeForUser(pipelineId, nodeId, userId);
+      const validation = await validatePipelineGraph(pipelineId, 'default');
+
+      return jsonToolResult({
+        deleted_node: deletion,
+        graph_resource_uri: pipelineGraphUri(pipelineId),
+        validation,
+        resource_links: [{ uri: pipelineGraphUri(pipelineId), name: `Pipeline ${pipelineId} graph` }],
+        diagnostics: [
+          ...deletion.affected_edges.map((edge) => ({
+            code: 'MCP_AFFECTED_EDGE_DELETED',
+            message: 'edge was removed by node deletion',
+            edge,
+          })),
+          ...(validation.valid ? [] : validation.errors),
+        ],
+      });
+    },
+  );
+
+  server.registerTool(
+    'delete_pipeline_edge',
+    {
+      title: 'Delete BrAIniac Pipeline Edge',
+      description: 'Delete one edge from an owned pipeline by source and target node ids.',
+      inputSchema: {
+        pipelineId: z.number().int().positive(),
+        sourceNodeId: z.number().int().positive(),
+        targetNodeId: z.number().int().positive(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+      },
+    },
+    async ({ pipelineId, sourceNodeId, targetNodeId }, extra) => {
+      requireMcpScope(extra, 'mcp:execute');
+      const userId = requireMcpUserId(extra);
+      const edge = await deletePipelineEdgeForUser(pipelineId, sourceNodeId, targetNodeId, userId);
+      const validation = await validatePipelineGraph(pipelineId, 'default');
+
+      return jsonToolResult({
+        deleted_edge: edge,
+        graph_resource_uri: pipelineGraphUri(pipelineId),
+        validation,
+        resource_links: [{ uri: pipelineGraphUri(pipelineId), name: `Pipeline ${pipelineId} graph` }],
+        diagnostics: validation.valid ? [] : validation.errors,
       });
     },
   );
