@@ -430,7 +430,7 @@ the MVP before operation tools, export, and VS Code integration.
 
 - [X] T178 [P] [US5] Update `README.md` and `docs/sdd/14-mcp-adapter-plan.md` with node type discovery, graph repair, catalog search, agent binding, delete/update confirmation, and auto-layout guidance
 - [X] T179 [P] [US5] Reconcile implemented schemas, annotations, resource links, diagnostics, and resource templates with `specs/001-mcp-backend-vscode/contracts/mcp-tools.md` and `specs/001-mcp-backend-vscode/contracts/mcp-resources.md`
-- [ ] T180 [P] [US5] Update `specs/001-mcp-backend-vscode/quickstart.md` with final manual checks and expected outputs for BrAIniac domain discovery/editing tools
+- [X] T180 [P] [US5] Update `specs/001-mcp-backend-vscode/quickstart.md` with final manual checks and expected outputs for BrAIniac domain discovery/editing tools
 - [ ] T181 [US5] Run the SC-015 automated gate with `npm --prefix backend run build`, `npm --prefix backend run test:mcp:domain-tools`, `npm --prefix backend run test:mcp:authoring`, `npm --prefix backend run test:mcp:auth`, `npm --prefix backend run test:mcp:readonly`, and `npm --prefix backend run test:contracts:freeze`
 - [ ] T182 [US5] Manually verify the SC-015 follow-up MCP domain tool checklist in `specs/001-mcp-backend-vscode/quickstart.md` against a seeded local pipeline and record remaining gaps in the quickstart validation notes
 

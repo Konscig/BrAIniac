@@ -268,26 +268,31 @@ npm --prefix backend run test:mcp:authoring
 ### Follow-Up MCP Domain Tool Checks
 
 1. Invoke `list_node_types` and confirm supported runtime node types include
-   ids, names, related tool ids, and safe config summaries.
+   ids, names, related tool ids, `runtime_support_state`, resource URIs, and
+   safe config/default summaries.
 2. Invoke `get_node_type` for a creatable node type and confirm the response is
    enough to choose `nodeTypeId` and draft valid config without hidden ids.
 3. Invoke `get_pipeline_graph` and `list_pipeline_edges` for a seeded pipeline;
    confirm nodes, edges, tool bindings, resource links, and diagnostics match
-   the graph resource.
+   the graph resource. If validation is requested, confirm invalid graphs return
+   validation diagnostics instead of a successful-only response.
 4. Invoke `validate_node_config` with valid and invalid config; confirm it does
    not mutate state and returns distinguishable diagnostics.
 5. Invoke `update_pipeline_node` to change label/config/position, then read the
-   graph and validation output.
+   graph and validation output. The result should include the node resource URI,
+   graph URI, validation result, and diagnostics if validation fails.
 6. Invoke `delete_pipeline_edge` and `delete_pipeline_node` on test-only graph
    elements and confirm ownership, affected-edge behavior, and validation
-   diagnostics.
+   diagnostics. Destructive operations should be presented as mutating
+   confirmation-appropriate MCP calls by the client.
 7. Invoke `search_node_types` and `search_tools` with capability-style queries
    and confirm results are bounded and useful for agent selection.
 8. Invoke `get_agent_tool_bindings` for an agent node and confirm explicit
    `ToolNode -> AgentCall` bindings and unresolved tools are visible.
 9. Invoke `auto_layout_pipeline` first with `dryRun: true`, then on a test
    pipeline with confirmation; confirm it changes only `ui_json` placement and
-   leaves graph structure unchanged.
+   leaves graph structure unchanged. The dry-run response should return the
+   same proposed updates without persisting them.
 
 ### Validation Notes
 
