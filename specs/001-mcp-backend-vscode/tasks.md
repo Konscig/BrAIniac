@@ -417,7 +417,7 @@ the MVP before operation tools, export, and VS Code integration.
 
 - [X] T168 [P] [US5] Add or expose node config validation helpers that can preflight supported node type config without creating or updating nodes in `backend/src/services/application/node/node-config-validation.service.ts`
 - [X] T169 [US5] Implement `validate_node_config` MCP handler with read-only annotations, field-level diagnostics where available, unsupported node type errors, and no mutation in `backend/src/mcp/tools/domain-discovery.tools.ts`
-- [ ] T170 [P] [US5] Add or expose owner-scoped node update and delete service methods that preserve graph validation semantics and affected-edge behavior in `backend/src/services/application/node/node.application.service.ts`
+- [X] T170 [P] [US5] Add or expose owner-scoped node update and delete service methods that preserve graph validation semantics and affected-edge behavior in `backend/src/services/application/node/node.application.service.ts`
 - [ ] T171 [P] [US5] Add or expose owner-scoped edge delete service methods with duplicate/missing/cross-pipeline diagnostics in `backend/src/services/application/edge/edge.application.service.ts`
 - [ ] T172 [US5] Implement `update_pipeline_node`, `delete_pipeline_node`, and `delete_pipeline_edge` MCP handlers with confirmation-appropriate annotations, hidden binding rejection, resource links, and graph validation output in `backend/src/mcp/tools/domain-discovery.tools.ts`
 - [ ] T173 [P] [US5] Implement bounded node type and BrAIniac tool catalog search helpers in `backend/src/services/application/tool/tool-search.application.service.ts` and `backend/src/services/application/node/node-type-search.application.service.ts`

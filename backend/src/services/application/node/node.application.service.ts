@@ -7,6 +7,7 @@ import {
   listNodesByPipeline,
   updateNode,
 } from '../../data/node.service.js';
+import { listEdgesByPipeline } from '../../data/edge.service.js';
 import { getNodeTypeById } from '../../data/node_type.service.js';
 import { ensurePipelineOwnedByUser } from '../../core/ownership.service.js';
 
@@ -106,4 +107,55 @@ export async function deleteNodeByIdForUser(nodeId: number, userId: number) {
 
   await ensurePipelineOwnedByUser(existing.fk_pipeline_id, userId, PIPELINE_ACCESS_OPTIONS);
   await deleteNode(nodeId);
+}
+
+export async function updatePipelineNodeForUser(
+  pipelineId: number,
+  nodeId: number,
+  patch: {
+    label?: string;
+    config_json?: unknown;
+    ui_json?: any;
+  },
+  userId: number,
+) {
+  await ensurePipelineOwnedByUser(pipelineId, userId, PIPELINE_ACCESS_OPTIONS);
+  const existing = await getNodeById(nodeId);
+  if (!existing || existing.fk_pipeline_id !== pipelineId) {
+    throw new HttpError(404, { error: 'node not found' });
+  }
+
+  const currentUi = existing.ui_json && typeof existing.ui_json === 'object' && !Array.isArray(existing.ui_json)
+    ? (existing.ui_json as Record<string, unknown>)
+    : {};
+  const nextUi = {
+    ...currentUi,
+    ...(patch.ui_json && typeof patch.ui_json === 'object' && !Array.isArray(patch.ui_json) ? patch.ui_json : {}),
+    ...(patch.label !== undefined ? { label: patch.label } : {}),
+    ...(patch.config_json !== undefined ? { config_json: patch.config_json } : {}),
+  };
+
+  return updateNode(nodeId, { ui_json: nextUi });
+}
+
+export async function deletePipelineNodeForUser(pipelineId: number, nodeId: number, userId: number) {
+  await ensurePipelineOwnedByUser(pipelineId, userId, PIPELINE_ACCESS_OPTIONS);
+  const existing = await getNodeById(nodeId);
+  if (!existing || existing.fk_pipeline_id !== pipelineId) {
+    throw new HttpError(404, { error: 'node not found' });
+  }
+
+  const affectedEdges = (await listEdgesByPipeline(pipelineId)).filter(
+    (edge) => edge.fk_from_node === nodeId || edge.fk_to_node === nodeId,
+  );
+  await deleteNode(nodeId);
+
+  return {
+    deleted_node_id: nodeId,
+    affected_edges: affectedEdges.map((edge) => ({
+      edge_id: edge.edge_id,
+      fk_from_node: edge.fk_from_node,
+      fk_to_node: edge.fk_to_node,
+    })),
+  };
 }
