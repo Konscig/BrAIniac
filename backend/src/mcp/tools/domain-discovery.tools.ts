@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { requireMcpScope, requireMcpUserId } from '../mcp.auth.js';
+import { proposePipelineLayout } from './authoring-layout.js';
 import { toMcpToolJsonText } from '../serializers/mcp-safe-json.js';
 import { nodeTypeUri, pipelineAgentsUri, pipelineGraphUri, pipelineNodeUri, pipelineUri, pipelineValidationUri, toolUri } from '../serializers/mcp-resource-uri.js';
 import {
@@ -543,6 +544,51 @@ export function registerDomainDiscoveryTools(server: McpServer): void {
           availableTools.length === 0
             ? [{ code: 'AGENT_NO_TOOLNODE_CAPABILITIES', message: 'AgentCall has no incoming ToolNode capabilities' }]
             : [],
+      });
+    },
+  );
+
+  server.registerTool(
+    'auto_layout_pipeline',
+    {
+      title: 'Auto Layout BrAIniac Pipeline',
+      description: 'Derive non-overlapping canvas positions for an owned pipeline. Dry-run is the default; apply mode updates only ui_json placement metadata.',
+      inputSchema: {
+        pipelineId: z.number().int().positive(),
+        direction: z.enum(['left_to_right', 'top_to_bottom']).optional(),
+        dryRun: z.boolean().optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+      },
+    },
+    async ({ pipelineId, direction, dryRun }, extra) => {
+      const shouldApply = dryRun === false;
+      requireMcpScope(extra, shouldApply ? 'mcp:execute' : 'mcp:read');
+      const userId = requireMcpUserId(extra);
+      await ensurePipelineOwnedByUser(pipelineId, userId);
+      const nodes = await listNodesByPipeline(pipelineId);
+      const proposal = proposePipelineLayout({
+        nodes: nodes.map((node) => ({ node_id: node.node_id, ui_json: node.ui_json })),
+        direction,
+      });
+
+      if (shouldApply) {
+        for (const update of proposal.updates) {
+          await updatePipelineNodeForUser(pipelineId, update.node_id, { ui_json: update.ui_json }, userId);
+        }
+      }
+
+      const validation = await validatePipelineGraph(pipelineId, 'default');
+      return jsonToolResult({
+        dry_run: !shouldApply,
+        updates: proposal.updates,
+        graph_resource_uri: pipelineGraphUri(pipelineId),
+        validation,
+        resource_links: [{ uri: pipelineGraphUri(pipelineId), name: `Pipeline ${pipelineId} graph` }],
+        diagnostics: [...proposal.diagnostics, ...(validation.valid ? [] : validation.errors)],
       });
     },
   );
