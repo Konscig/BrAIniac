@@ -14,6 +14,7 @@ export type CanvasLayoutHint = {
 };
 
 export type ExistingCanvasNode = {
+  node_id?: number;
   ui_json?: unknown;
 };
 
@@ -103,4 +104,44 @@ export function resolveCanvasPosition(input: {
   }
 
   return { position, diagnostics };
+}
+
+export function proposePipelineLayout(input: {
+  nodes: Array<ExistingCanvasNode & { node_id: number }>;
+  direction?: 'left_to_right' | 'top_to_bottom';
+  xGap?: number;
+  yGap?: number;
+}): {
+  updates: Array<{ node_id: number; ui_json: Record<string, unknown>; position: CanvasPosition }>;
+  diagnostics: Array<{ code: string; message: string; details?: Record<string, unknown> }>;
+} {
+  const direction = input.direction ?? 'left_to_right';
+  const xGap = normalizedGap(input.xGap, MIN_X_GAP, DEFAULT_X_GAP);
+  const yGap = normalizedGap(input.yGap, MIN_Y_GAP, DEFAULT_Y_GAP);
+  const diagnostics: Array<{ code: string; message: string; details?: Record<string, unknown> }> = [];
+
+  const updates = input.nodes.map((node, index) => {
+    const position = direction === 'top_to_bottom' ? { x: 0, y: index * yGap } : { x: index * xGap, y: 0 };
+    const existingUi = node.ui_json && typeof node.ui_json === 'object' && !Array.isArray(node.ui_json)
+      ? (node.ui_json as Record<string, unknown>)
+      : {};
+    return {
+      node_id: node.node_id,
+      position,
+      ui_json: {
+        ...existingUi,
+        x: position.x,
+        y: position.y,
+        position,
+      },
+    };
+  });
+
+  diagnostics.push({
+    code: 'MCP_LAYOUT_PIPELINE_PROPOSED',
+    message: 'pipeline canvas positions were derived without changing graph structure',
+    details: { direction, xGap, yGap, nodeCount: updates.length },
+  });
+
+  return { updates, diagnostics };
 }
