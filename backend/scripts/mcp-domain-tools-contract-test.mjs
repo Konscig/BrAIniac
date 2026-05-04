@@ -18,6 +18,10 @@ for (const toolName of ['get_pipeline_graph', 'list_pipeline_edges']) {
 
 assert.match(toolContract, /### `validate_node_config`/, 'validate_node_config must be documented in MCP tool contract');
 
+for (const toolName of ['update_pipeline_node', 'delete_pipeline_node', 'delete_pipeline_edge']) {
+  assert.match(toolContract, new RegExp(`### \`${toolName}\``), `${toolName} must be documented in MCP tool contract`);
+}
+
 for (const resourceUri of ['brainiac://node-types', 'brainiac://node-types/{nodeTypeId}']) {
   assert.match(resourceContract, new RegExp(resourceUri.replace(/[{}]/g, '\\$&')), `${resourceUri} must be documented`);
 }
@@ -32,5 +36,9 @@ assert.match(toolContract, /check existing\s+connections before calling `connect
 assert.match(toolContract, /Must not mutate state/, 'node config validation must be read-only');
 assert.match(toolContract, /field-level diagnostics/, 'node config validation must expose diagnostics when available');
 assert.match(toolContract, /distinguish unsupported node types from invalid config/, 'node config validation must distinguish unsupported type from invalid config');
+assert.match(toolContract, /Mutating and confirmation-appropriate/, 'graph edit tools must require confirmation');
+assert.match(toolContract, /graph validation after mutation/, 'graph edit tools must run validation after mutation');
+assert.match(toolContract, /Must not delete nodes outside the target owned pipeline/, 'node delete must enforce pipeline ownership');
+assert.match(toolContract, /cross-pipeline endpoints/, 'edge delete must reject cross-pipeline endpoints');
 
 console.log('MCP domain tool contract checks OK');
