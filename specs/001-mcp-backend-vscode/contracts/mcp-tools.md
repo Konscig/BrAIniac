@@ -565,6 +565,7 @@ Rules:
 These tools fill the practical gaps an agent has after the primitive authoring
 slice: discovering creatable node types, reading the current graph as structured
 tool output, validating config before mutation, and repairing mistakes.
+Implementation lives in `backend/src/mcp/tools/domain-discovery.tools.ts`.
 
 ### `list_node_types`
 
@@ -594,6 +595,16 @@ Purpose: Return the owner-scoped pipeline graph directly as structured tool
 output: nodes, edges, node types, tool bindings, validation summary, and graph
 resource links.
 
+Input:
+
+```json
+{
+  "pipelineId": 44,
+  "includeValidation": true,
+  "preset": "default"
+}
+```
+
 ### `list_pipeline_edges`
 
 Purpose: Return edges for one owner-scoped pipeline so agents can check existing
@@ -603,6 +614,15 @@ connections before calling `connect_pipeline_nodes`.
 
 Purpose: Dry-run validation for a node type and proposed `configJson` before
 creating or updating a node.
+
+Input:
+
+```json
+{
+  "nodeTypeId": 7,
+  "configJson": {}
+}
+```
 
 Rules:
 
@@ -616,6 +636,18 @@ Rules:
 Purpose: Update an existing pipeline node's label, `config_json`, or
 `ui_json.position`.
 
+Input:
+
+```json
+{
+  "pipelineId": 44,
+  "nodeId": 101,
+  "label": "Retrieve Documents",
+  "configJson": {},
+  "uiJson": { "x": 380, "y": 220, "position": { "x": 380, "y": 220 } }
+}
+```
+
 Rules:
 
 - Mutating and confirmation-appropriate.
@@ -628,6 +660,15 @@ Rules:
 Purpose: Delete an owned pipeline node, with explicit diagnostics for affected
 edges and validation state.
 
+Input:
+
+```json
+{
+  "pipelineId": 44,
+  "nodeId": 101
+}
+```
+
 Rules:
 
 - Mutating and confirmation-appropriate.
@@ -638,6 +679,16 @@ Rules:
 ### `delete_pipeline_edge`
 
 Purpose: Delete one edge from an owned pipeline.
+
+Input:
+
+```json
+{
+  "pipelineId": 44,
+  "sourceNodeId": 101,
+  "targetNodeId": 102
+}
+```
 
 Rules:
 
@@ -659,6 +710,15 @@ tool ids and linked node types where known.
 
 Purpose: Return tools available to a specific agent node, explicit
 `ToolNode -> AgentCall` capability edges, unresolved tools, and diagnostics.
+
+Input:
+
+```json
+{
+  "pipelineId": 44,
+  "agentNodeId": 103
+}
+```
 
 ### `auto_layout_pipeline`
 
