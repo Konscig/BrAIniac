@@ -424,7 +424,7 @@ the MVP before operation tools, export, and VS Code integration.
 - [X] T174 [US5] Implement `search_node_types`, `search_tools`, and `get_agent_tool_bindings` MCP handlers with bounded read-only results, explicit agent tool capability edges, unresolved-tool diagnostics, and resource links in `backend/src/mcp/tools/domain-discovery.tools.ts`
 - [X] T175 [US5] Extend the existing MCP authoring layout helper to produce full-pipeline dry-run proposals and apply-mode `ui_json` updates without changing graph structure in `backend/src/mcp/tools/authoring-layout.ts`
 - [X] T176 [US5] Implement `auto_layout_pipeline` MCP handler with dry-run default, apply-mode confirmation annotations, ownership checks, spacing diagnostics, and validation output in `backend/src/mcp/tools/domain-discovery.tools.ts`
-- [ ] T177 [US5] Register node type resources and BrAIniac domain discovery/editing tools in `backend/src/mcp/mcp.server.ts` without changing existing read-only, export, validation, execution, auth, or primitive authoring behavior
+- [X] T177 [US5] Register node type resources and BrAIniac domain discovery/editing tools in `backend/src/mcp/mcp.server.ts` without changing existing read-only, export, validation, execution, auth, or primitive authoring behavior
 
 ### Documentation And Verification For BrAIniac Domain Discovery And Editing Tools
 

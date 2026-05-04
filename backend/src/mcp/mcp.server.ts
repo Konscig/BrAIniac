@@ -3,11 +3,13 @@ import { HttpError, isHttpError } from '../common/http-error.js';
 import { registerAgentResources } from './resources/agent.resources.js';
 import { registerExportResources } from './resources/export.resources.js';
 import { registerNodeResources } from './resources/node.resources.js';
+import { registerNodeTypeResources } from './resources/node-type.resources.js';
 import { registerPipelineResources } from './resources/pipeline.resources.js';
 import { registerProjectResources } from './resources/project.resources.js';
 import { registerToolResources } from './resources/tool.resources.js';
 import { registerExportTools } from './tools/export.tools.js';
 import { registerAuthoringTools } from './tools/authoring.tools.js';
+import { registerDomainDiscoveryTools } from './tools/domain-discovery.tools.js';
 import { registerPipelineOperationTools } from './tools/pipeline.tools.js';
 import { registerReadOnlyContextTools, registerReadOnlyProjectTools } from './tools/readonly.tools.js';
 
@@ -108,6 +110,7 @@ export function createBrainiacMcpServer(): McpServer {
   registerProjectResources(server);
   registerPipelineResources(server);
   registerNodeResources(server);
+  registerNodeTypeResources(server);
   registerToolResources(server);
   registerAgentResources(server);
   registerExportResources(server);
@@ -116,6 +119,7 @@ export function createBrainiacMcpServer(): McpServer {
   registerPipelineOperationTools(server);
   registerExportTools(server);
   registerAuthoringTools(server);
+  registerDomainDiscoveryTools(server);
 
   return server;
 }
