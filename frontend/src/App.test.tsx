@@ -1,8 +1,21 @@
-import { buildQuestionInput, isExecutionTerminal, type NodeRecord, type NodeTypeRecord, type ToolRecord } from "./lib/api";
+import {
+  apiRequest,
+  AUTH_EXPIRED_MESSAGE,
+  AUTH_REFRESHED_EVENT,
+  buildQuestionInput,
+  completeVscodeAuth,
+  isExecutionTerminal,
+  type NodeRecord,
+  type NodeTypeRecord,
+  type ToolRecord
+} from "./lib/api";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { buildNodeConfigPatch } from "./lib/node-config";
 import { getNodeRoleVisual } from "./lib/node-roles";
 import { getVisibleNodeTypeCatalog, getVisibleToolCatalog, getNodeTypeUiLabel, getNodeTypeUiTagline } from "./lib/node-catalog";
 import { toReadableError } from "./lib/readable-errors";
+import { completeVscodeAuthState, readVscodeAuthState, shouldRenderAuthPage } from "./lib/vscode-auth";
+import { AuthProvider, useAuth } from "./providers/AuthProvider";
 
 const makeNodeType = (type_id: number, name: string): NodeTypeRecord => ({
   type_id,
@@ -16,6 +29,117 @@ const makeTool = (tool_id: number, name: string, config_json: ToolRecord["config
   tool_id,
   name,
   config_json
+});
+
+const jsonResponse = (body: unknown, status = 200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  text: async () => JSON.stringify(body),
+  json: async () => body
+}) as Response;
+
+beforeEach(() => {
+  localStorage.clear();
+  jest.restoreAllMocks();
+});
+
+test("reads VS Code auth state from the frontend auth URL", () => {
+  expect(readVscodeAuthState("?vscode_state=vscode-state-123")).toBe("vscode-state-123");
+  expect(readVscodeAuthState("?other=value")).toBeNull();
+  expect(shouldRenderAuthPage(false, "")).toBe(true);
+  expect(shouldRenderAuthPage(true, "")).toBe(false);
+  expect(shouldRenderAuthPage(true, "?vscode_state=vscode-state-123")).toBe(true);
+});
+
+test("completes VS Code auth with the issued BrAIniac access token", async () => {
+  const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue(
+    jsonResponse({ status: "authorized", expiresAt: "2026-04-30T12:00:00.000Z" })
+  );
+
+  await completeVscodeAuth("vscode-state-123", "browser-token");
+
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(new URL(String(fetchMock.mock.calls[0][0])).pathname).toBe("/auth/vscode/complete");
+  expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
+    Authorization: "Bearer browser-token"
+  });
+  expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ state: "vscode-state-123" }));
+});
+
+test("allows web login to continue when VS Code completion fails", async () => {
+  const onError = jest.fn();
+  const completed = await completeVscodeAuthState(
+    "vscode-state-456",
+    "browser-token",
+    async () => {
+      throw new Error("completion failed");
+    },
+    onError
+  );
+
+  expect(completed).toBe(false);
+  expect(onError).toHaveBeenCalledTimes(1);
+});
+
+function AuthStateProbe() {
+  const { authNotice, authStatus, isAuthenticated, tokens } = useAuth();
+  return (
+    <div>
+      <span data-testid="auth-state">{isAuthenticated ? "authenticated" : "guest"}</span>
+      <span data-testid="auth-status">{authStatus}</span>
+      <span data-testid="refresh-token-state">{tokens && "refreshToken" in tokens ? "has-refresh" : "no-refresh"}</span>
+      {authNotice && <span>{authNotice}</span>}
+    </div>
+  );
+}
+
+test("clears stale browser tokens and exposes session-expired state on invalid protected token", async () => {
+  localStorage.setItem("brainiac.tokens", JSON.stringify({ accessToken: "stale-token" }));
+  jest.spyOn(global, "fetch").mockResolvedValue(
+    jsonResponse({ ok: false, code: "UNAUTHORIZED", message: "invalid token" }, 401)
+  );
+
+  render(
+    <AuthProvider>
+      <AuthStateProbe />
+    </AuthProvider>
+  );
+
+  expect(screen.getByTestId("auth-state")).toHaveTextContent("authenticated");
+  let requestError: unknown;
+  await act(async () => {
+    try {
+      await apiRequest("/projects");
+    } catch (error) {
+      requestError = error;
+    }
+  });
+
+  expect(requestError).toMatchObject({ message: AUTH_EXPIRED_MESSAGE });
+  await waitFor(() => expect(localStorage.getItem("brainiac.tokens")).toBeNull());
+  expect(screen.getByTestId("auth-state")).toHaveTextContent("guest");
+  expect(await screen.findByText(AUTH_EXPIRED_MESSAGE)).toBeInTheDocument();
+});
+
+test("updates browser auth state after web refresh without storing refresh token", async () => {
+  localStorage.setItem("brainiac.tokens", JSON.stringify({ accessToken: "stale-token", refreshToken: "old-refresh" }));
+
+  render(
+    <AuthProvider>
+      <AuthStateProbe />
+    </AuthProvider>
+  );
+
+  expect(screen.getByTestId("auth-state")).toHaveTextContent("authenticated");
+  expect(screen.getByTestId("refresh-token-state")).toHaveTextContent("no-refresh");
+
+  act(() => {
+    window.dispatchEvent(new CustomEvent(AUTH_REFRESHED_EVENT, { detail: { accessToken: "fresh-token", refreshToken: "ignored" } }));
+  });
+
+  await waitFor(() => expect(localStorage.getItem("brainiac.tokens")).toBe(JSON.stringify({ accessToken: "fresh-token" })));
+  expect(screen.getByTestId("auth-status")).toHaveTextContent("signed_in");
+  expect(screen.getByTestId("refresh-token-state")).toHaveTextContent("no-refresh");
 });
 
 test("builds canonical question input for pipeline execution", () => {

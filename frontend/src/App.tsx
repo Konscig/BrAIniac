@@ -18,6 +18,7 @@ import {
   listNodeTypes,
   listPipelines,
   listProjects,
+  revokeBrowserWebSession,
   updatePipeline,
   updateProject,
   type EdgeRecord,
@@ -26,6 +27,7 @@ import {
   type PipelineRecord,
   type ProjectRecord
 } from "./lib/api";
+import { shouldRenderAuthPage } from "./lib/vscode-auth";
 import { AuthPage } from "./pages/auth-page";
 import { useAuth } from "./providers/AuthProvider";
 
@@ -156,6 +158,9 @@ function MainPage(): React.ReactElement {
   }, [activePipelineId, activeProjectId, pipelinesByProject]);
 
   const handleLogout = React.useCallback(() => {
+    void revokeBrowserWebSession().catch((error) => {
+      console.warn("Failed to revoke browser web session", error);
+    });
     clearSession();
     navigate("/auth", { replace: true });
   }, [clearSession, navigate]);
@@ -365,11 +370,11 @@ function MainPage(): React.ReactElement {
 }
 
 function RequireAuth({ children }: { children: React.ReactElement }): React.ReactElement {
-  const { isAuthenticated } = useAuth();
+  const { authNotice, isAuthenticated } = useAuth();
   const location = useLocation();
 
   if (!isAuthenticated) {
-    return <Navigate to="/auth" replace state={{ from: location }} />;
+    return <Navigate to="/auth" replace state={{ from: location, sessionExpired: authNotice }} />;
   }
 
   return children;
@@ -377,8 +382,9 @@ function RequireAuth({ children }: { children: React.ReactElement }): React.Reac
 
 function PublicOnly({ children }: { children: React.ReactElement }): React.ReactElement {
   const { isAuthenticated } = useAuth();
+  const location = useLocation();
 
-  if (isAuthenticated) {
+  if (!shouldRenderAuthPage(isAuthenticated, location.search)) {
     return <Navigate to="/" replace />;
   }
 

@@ -169,3 +169,41 @@ export async function deleteEdgeByIdForUser(edgeId: number, userId: number) {
   });
   await deleteEdge(edgeId);
 }
+
+export async function deletePipelineEdgeForUser(
+  pipelineId: number,
+  sourceNodeId: number,
+  targetNodeId: number,
+  userId: number,
+) {
+  await ensurePipelineOwnedByUser(pipelineId, userId, {
+    pipelineNotFoundMessage: 'pipeline not found',
+    projectNotFoundMessage: 'project not found',
+  });
+
+  const [sourceNode, targetNode] = await Promise.all([getNodeById(sourceNodeId), getNodeById(targetNodeId)]);
+  if (!sourceNode || !targetNode) {
+    throw new HttpError(404, { error: 'edge endpoint not found' });
+  }
+  if (sourceNode.fk_pipeline_id !== pipelineId || targetNode.fk_pipeline_id !== pipelineId) {
+    throw new HttpError(400, { error: 'cross-pipeline edge is not allowed' });
+  }
+
+  const matches = (await listEdgesByPipeline(pipelineId)).filter(
+    (edge) => edge.fk_from_node === sourceNodeId && edge.fk_to_node === targetNodeId,
+  );
+  if (matches.length === 0) {
+    throw new HttpError(404, { error: 'edge not found' });
+  }
+  if (matches.length > 1) {
+    throw new HttpError(409, { error: 'duplicate edge state is ambiguous' });
+  }
+
+  await deleteEdge(matches[0]!.edge_id);
+  return {
+    edge_id: matches[0]!.edge_id,
+    pipeline_id: pipelineId,
+    source_node_id: sourceNodeId,
+    target_node_id: targetNodeId,
+  };
+}

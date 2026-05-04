@@ -1,11 +1,19 @@
 export const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "http://localhost:3000";
 
-type ApiOptions = RequestInit & { skipAuthHeaders?: boolean };
+type ApiOptions = RequestInit & { skipAuthHeaders?: boolean; skipWebRefresh?: boolean };
 
 export type ApiError = Error & { status?: number; details?: unknown };
+export type AuthExpiredDetail = {
+  message: string;
+  status: number;
+  details?: unknown;
+};
 
 const TOKENS_STORAGE_KEY = "brainiac.tokens";
+export const AUTH_EXPIRED_EVENT = "brainiac:auth-expired";
+export const AUTH_REFRESHED_EVENT = "brainiac:auth-refreshed";
+export const AUTH_EXPIRED_MESSAGE = "Session expired. Sign in again.";
 const DEFAULT_PIPELINE_LIMITS = {
   max_time: 120,
   max_cost: 100,
@@ -13,6 +21,7 @@ const DEFAULT_PIPELINE_LIMITS = {
 } as const;
 
 type StoredTokens = { accessToken?: string; refreshToken?: string } | null;
+type WebRefreshResponse = { accessToken?: string; access_token?: string; expiresAt?: string };
 
 const getStoredTokens = (): StoredTokens => {
   try {
@@ -96,17 +105,128 @@ const extractApiErrorMessage = (details: unknown): string | null => {
   return null;
 };
 
+const collectErrorText = (details: unknown): string => {
+  if (!details) return "";
+  if (typeof details === "string") return details;
+  if (typeof details !== "object") return "";
+
+  const record = details as Record<string, unknown>;
+  return [
+    record.code,
+    record.message,
+    record.error,
+    typeof record.details === "object" && record.details
+      ? (record.details as Record<string, unknown>).code
+      : undefined,
+    typeof record.details === "object" && record.details
+      ? (record.details as Record<string, unknown>).error
+      : undefined
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+};
+
+export const isInvalidOrExpiredTokenResponse = (status: number | undefined, details: unknown): boolean => {
+  if (status !== 401) return false;
+
+  const text = collectErrorText(details);
+  return (
+    /\binvalid[_ -]?token\b/.test(text) ||
+    /\bexpired[_ -]?token\b/.test(text) ||
+    /\bjwt expired\b/.test(text) ||
+    /\bmcp_invalid_token\b/.test(text) ||
+    /\btoken_expired\b/.test(text)
+  );
+};
+
+export const emitAuthExpired = (detail: AuthExpiredDetail): void => {
+  try {
+    localStorage.removeItem(TOKENS_STORAGE_KEY);
+  } catch {
+    /* noop */
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent<AuthExpiredDetail>(AUTH_EXPIRED_EVENT, { detail }));
+  }
+};
+
+const storeAccessTokenOnly = (accessToken: string): void => {
+  try {
+    localStorage.setItem(TOKENS_STORAGE_KEY, JSON.stringify({ accessToken }));
+  } catch {
+    /* noop */
+  }
+};
+
+const emitAuthRefreshed = (tokens: { accessToken: string }): void => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(AUTH_REFRESHED_EVENT, { detail: tokens }));
+  }
+};
+
+async function refreshBrowserSession(): Promise<string | null> {
+  const response = await fetch(`${API_BASE_URL}/auth/web/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: "{}"
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const body = (await response.json().catch(() => null)) as WebRefreshResponse | null;
+  const accessToken = body?.accessToken ?? body?.access_token;
+  if (typeof accessToken !== "string" || accessToken.trim().length === 0) {
+    return null;
+  }
+
+  storeAccessTokenOnly(accessToken);
+  emitAuthRefreshed({ accessToken });
+  return accessToken;
+}
+
 export async function apiRequest<TResponse = unknown>(
   path: string,
   options: ApiOptions = {}
 ): Promise<TResponse> {
   const url = `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
-  const response = await fetch(url, {
-    method: options.method ?? "GET",
-    headers: buildHeaders(options.headers, !options.skipAuthHeaders),
-    body: options.body,
-    credentials: options.credentials ?? "same-origin"
-  });
+  const sentStoredAccessToken = !options.skipAuthHeaders && Boolean(getStoredTokens()?.accessToken);
+  const execute = () =>
+    fetch(url, {
+      method: options.method ?? "GET",
+      headers: buildHeaders(options.headers, !options.skipAuthHeaders),
+      body: options.body,
+      credentials: options.credentials ?? "same-origin"
+    });
+
+  let response = await execute();
+
+  if (
+    !response.ok &&
+    sentStoredAccessToken &&
+    !options.skipWebRefresh &&
+    !options.skipAuthHeaders
+  ) {
+    const errorResponse = typeof response.clone === "function" ? response.clone() : response;
+    const raw = await errorResponse.text().catch(() => "");
+    let details: unknown = raw;
+    try {
+      details = raw ? JSON.parse(raw) : undefined;
+    } catch {
+      details = raw;
+    }
+
+    if (isInvalidOrExpiredTokenResponse(response.status, details)) {
+      const refreshedAccessToken = await refreshBrowserSession().catch(() => null);
+      if (refreshedAccessToken) {
+        response = await execute();
+      }
+    }
+  }
 
   if (!response.ok) {
     const error: ApiError = new Error("Не удалось выполнить запрос");
@@ -122,6 +242,15 @@ export async function apiRequest<TResponse = unknown>(
     const message = extractApiErrorMessage(error.details);
     if (message) {
       error.message = message;
+    }
+
+    if (sentStoredAccessToken && isInvalidOrExpiredTokenResponse(error.status, error.details)) {
+      error.message = AUTH_EXPIRED_MESSAGE;
+      emitAuthExpired({
+        message: AUTH_EXPIRED_MESSAGE,
+        status: response.status,
+        details: error.details
+      });
     }
 
     throw error;
@@ -165,6 +294,17 @@ export async function deleteRequest(path: string, options: ApiOptions = {}): Pro
     ...options,
     method: "DELETE"
   });
+}
+
+export function completeVscodeAuth(state: string, accessToken: string): Promise<{ status: "authorized"; expiresAt: string }> {
+  return postJson<{ status: "authorized"; expiresAt: string }>(
+    "/auth/vscode/complete",
+    { state },
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      skipAuthHeaders: true
+    }
+  );
 }
 
 export type JsonRecord = Record<string, unknown>;
@@ -355,6 +495,18 @@ export function updateProject(projectId: number, payload: CreateProjectPayload):
 
 export function deleteProject(projectId: number): Promise<void> {
   return deleteRequest(`/projects/${projectId}`);
+}
+
+export function revokeBrowserWebSession(): Promise<{ revoked: true }> {
+  return postJson<{ revoked: true }>(
+    "/auth/web/revoke",
+    {},
+    {
+      credentials: "include",
+      skipAuthHeaders: true,
+      skipWebRefresh: true
+    }
+  );
 }
 
 export function listPipelines(projectId: number): Promise<PipelineRecord[]> {
