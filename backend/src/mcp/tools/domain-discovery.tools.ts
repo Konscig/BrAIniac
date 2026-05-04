@@ -10,6 +10,7 @@ import {
 } from '../../services/application/node_type/node_type.application.service.js';
 import { ensurePipelineOwnedByUser } from '../../services/core/ownership.service.js';
 import { parseGraphValidationPreset, validatePipelineGraph } from '../../services/core/graph_validation.service.js';
+import { validateNodeConfigForType } from '../../services/application/node/node-config-validation.service.js';
 import { listEdgesByPipeline } from '../../services/data/edge.service.js';
 import { listNodesByPipeline } from '../../services/data/node.service.js';
 import { getNodeTypeById } from '../../services/data/node_type.service.js';
@@ -218,6 +219,33 @@ export function registerDomainDiscoveryTools(server: McpServer): void {
           { uri: pipelineGraphUri(pipelineId), name: `Pipeline ${pipelineId} graph` },
         ],
         diagnostics: [],
+      });
+    },
+  );
+
+  server.registerTool(
+    'validate_node_config',
+    {
+      title: 'Validate BrAIniac Node Config',
+      description: 'Dry-run validation for a BrAIniac node type and proposed configJson before creating or updating a node.',
+      inputSchema: {
+        nodeTypeId: z.number().int().positive(),
+        configJson: z.unknown().optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+    },
+    async ({ nodeTypeId, configJson }, extra) => {
+      requireMcpScope(extra, 'mcp:read');
+      const validation = await validateNodeConfigForType(nodeTypeId, configJson);
+      return jsonToolResult({
+        validation,
+        node_type_resource_uri: nodeTypeUri(nodeTypeId),
+        resource_links: [{ uri: nodeTypeUri(nodeTypeId), name: `Node Type ${nodeTypeId}` }],
+        diagnostics: [...validation.errors, ...validation.warnings],
       });
     },
   );
