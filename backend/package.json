@@ -42,7 +42,8 @@
     "test:judge:repro": "node ./scripts/judge-reproducibility-smoke-test.mjs",
     "test:judge:route-audit": "node ./scripts/judge-route-audit.mjs",
     "test:judge:cyclic": "node ./scripts/judge-cyclic-graph-smoke-test.mjs",
-    "test:judge:anti-bias": "node ./scripts/judge-anti-bias-smoke-test.mjs"
+    "test:judge:anti-bias": "node ./scripts/judge-anti-bias-smoke-test.mjs",
+    "augment:golden": "node --loader ts-node/esm ./scripts/augment-golden.ts"
   },
   "keywords": [],
   "author": "",
