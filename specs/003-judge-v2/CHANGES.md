@@ -68,6 +68,47 @@
 - [`frontend/src/lib/api.ts`](../../frontend/src/lib/api.ts) — `AssessmentReport` расширен полями `profile_selection`, `axis_coverage`, `axis_warning`, `gate`, `skipped_metrics_detail`.
 - [`frontend/src/components/run-panel.tsx`](../../frontend/src/components/run-panel.tsx) — добавлены опции `auto`, `agentic_rag` в селекторе профиля; в отчёте показываются inferred-профиль с пояснением, axis_warning, таблица покрытия осей, блок operational gate с порогами и причинами FAIL, таблица пропущенных метрик с reason.
 
+## Дата-аугментация (commits 6d7ddc4, 1502961)
+
+### Проблема
+Прогон оценки на исходном `voproshalych-golden.jsonl` (формат: `{item_key, input, reference: "<строка>", meta}`) пропускал 13 из 16 ожидаемых для AgentCall-графа метрик: датасет физически не содержал полей, которые требуют метрики осей C/D/E/G/H — `relevant_docs`, `tool_trajectory`, `claims`, `checklist`, `paraphrases`, `structured_reference`, `rubric`. Это не баг кода, а разрыв между требованиями каталога SDD-12 и форматом записи.
+
+### Решение
+LLM-аугментация датасета через [`backend/scripts/augment-golden.ts`](../../backend/scripts/augment-golden.ts). Один проход через `resolveJudgeProvider()` (Mistral по умолчанию), один большой JSON-ответ на запись со всеми полями. Стоимость на mistral-small-latest: ~3 минуты на 200 записей при concurrency=5.
+
+Запуск:
+```bash
+cd backend && npm run augment:golden -- \
+  --in ../docs/research/voproshalych-golden.jsonl \
+  --out ../docs/research/voproshalych-golden-augmented.jsonl
+```
+
+### Поле trajectory в universal-capabilities
+`tool_trajectory` генерируется в форме `[{tool: "rag_search", params: {query}}, {tool: "answer"}]` — портируется на любой граф через `TOOL_ALIASES` в [`native_metrics.ts`](../../backend/src/services/application/judge/native_metrics.ts) (`rag_search` → `rag | hybridretriever | retriever | search | …`). Финальные шаги (`answer`, `final_answer`, `respond`) фильтруются из reference при сравнении с trace, потому что они не делают tool call.
+
+### AgentCall trace shape
+В [`agent-tool-call-runner.ts`](../../backend/src/services/application/node/handlers/agent-tool-call-runner.ts) traceEntry дополнен явными полями `tool` (=resolved_tool), `params` (=inputPatch от LLM-директивы), `success: bool` — без этого native-метрики оси D не находили нужных полей в записях trace.
+
+### Покрытие после аугментации
+Все 8 осей каталога имеют необходимые поля в reference (F работает на runtime-данных AgentCall):
+
+| Ось | Ключевые метрики | Источник в augmented record |
+|---|---|---|
+| A | f_EM, f_F1, f_sim, f_corr | `reference.answer` |
+| B | f_faith, f_fact, f_cite, f_contra | `claims`, `context_texts`, `relevant_urls` |
+| C | f_recall@k, f_ndcg@k, f_ctx_prec/rec | `relevant_docs` (требует совпадения id-схемы с RAG-tool, см. ниже) |
+| D | f_toolsel, f_argF1, f_trajIoU, f_planEff, f_node_cov | `tool_trajectory` (universal) |
+| E | f_schema, f_field, f_TED | `structured_reference` (94% записей) |
+| F | f_loop_budget, f_loop_term | `agent_output.tool_calls_executed/max_tool_calls` (runtime) |
+| G | f_judge_ref, f_check | `rubric`, `checklist` |
+| H | f_paraph, f_consist | `paraphrases[]` (3 на запись) + replay для consist |
+
+### Известные ограничения
+- **Совпадение id retrieval'а** (ось C): augmented кладёт `relevant_docs = [String(meta.chunk_id)]` (например `"92459"`), а сейчас `Chunker` переименовывает чанки в `doc_1_chunk_1`. Пока схемы не совпадут (либо ingestion сохранит исходный `chunk_id`, либо мы поменяем reference на `confluence_url`-based id), метрики оси C будут возвращать ~0. Это отдельная мини-задача в RAG-tool.
+- **f_paraph** требует replay: по `paraphrases[]` агент должен прогнаться N+1 раз (оригинал + перефразы), и результаты сравниваются на `f_sim`. Replay-логика — в следующем шаге.
+- **f_consist** требует replay одного запроса k раз — отложено.
+- **CheckEval native** — простая токен-overlap проверка; реальная метрика делается через LLM-судью, не реализовано.
+
 ## Оставшаяся работа (не в этой ветке)
 
 - `f_judge_ref` PoLL-ансамбль (несколько дешёвых судей) — SDD-12 §«Политика Судьи».
