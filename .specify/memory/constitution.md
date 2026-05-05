@@ -1,290 +1,158 @@
 <!--
 Sync Impact Report
-Version change: 0.0.0 (template placeholders) → 1.0.0 (initial ratification)
-Bump rationale: First concrete ratification — replaces placeholder template with a
-full set of principles, technology constraints, workflow gates, and governance rules
-derived from docs/sdd (01..12). MAJOR per policy, because this establishes the
-baseline normative contract for the project.
-
-Modified principles (renamed from template placeholders → new titles):
-- [PRINCIPLE_1_NAME] → I. Двухуровневая Согласованность Графа
-- [PRINCIPLE_2_NAME] → II. Канонический Edge-Only Контракт Инструментов
-- [PRINCIPLE_3_NAME] → III. Валидация При Мутации И Детерминированный Preflight (NON-NEGOTIABLE)
-- [PRINCIPLE_4_NAME] → IV. Ограниченное Исполнение (Bounded Execution)
-- [PRINCIPLE_5_NAME] → V. Оценка Через Взвешенные Нормированные Метрики
-Added principles:
-- VI. Стабильность Публичного Контракта
-- VII. Воспроизводимость И Наблюдаемость
-
+Version change: template -> 1.0.0
+Modified principles:
+- Template principle 1 -> I. Product Truth Comes From SDD And Code
+- Template principle 2 -> II. Fixed Technology Stack
+- Template principle 3 -> III. Clear, Adaptive UX
+- Template principle 4 -> IV. Simple, Understandable Code
+- Template principle 5 -> V. Tests Prove Working Behavior
 Added sections:
-- Технологические И Качественные Ограничения (replaces [SECTION_2_NAME])
-- Процесс Разработки И Контрольные Ворота (replaces [SECTION_3_NAME])
-
-Removed sections: none (all template placeholder slots filled).
-
+- Product And Runtime Constraints
+- Development Workflow And Quality Gates
+Removed sections:
+- Template placeholder sections
 Templates requiring updates:
-- ✅ .specify/templates/plan-template.md — Constitution Check gate is referenced;
-      existing "[Gates determined based on constitution file]" placeholder correctly
-      defers to this file and does not need a content change.
-- ✅ .specify/templates/spec-template.md — No principle-driven mandatory sections
-      added; no change required.
-- ✅ .specify/templates/tasks-template.md — Task categories (Setup / Foundational /
-      per-story) remain compatible; no change required.
-- ✅ .specify/templates/commands/*.md — Directory not present in repo; no action.
-- ✅ README.md, docs/sdd/* — Project-level docs; constitution references them as
-      normative sources. No edits needed for this ratification.
-
-Follow-up TODOs: none. Ratification date is set to today (2026-04-23) because this
-is the first adoption of a concrete constitution.
+- updated .specify/templates/plan-template.md
+- updated .specify/templates/spec-template.md
+- updated .specify/templates/tasks-template.md
+- N/A .specify/templates/commands/*.md (directory absent)
+Follow-up TODOs:
+- Fix mojibake/encoding in .specify/extensions/git/scripts/powershell/initialize-repo.ps1 output line.
 -->
-
 # BrAIniac Constitution
 
 ## Core Principles
 
-### I. Двухуровневая Согласованность Графа
+### I. Product Truth Comes From SDD And Code
+Every feature MUST be aligned with the current SDD files under `docs/sdd/` and
+the actual implementation in `backend/` and `frontend/`. When SDD and code
+disagree, the implementation plan MUST explicitly name the conflict and choose
+one source of truth before coding starts. Runtime contracts that are already
+frozen in SDD, especially graph validation, RAG execution, dataset upload,
+tool contracts, and frontend/backend execution APIs, MUST NOT be changed
+implicitly.
 
-Архитектура BrAIniac MUST поддерживать ровно два уровня согласованности,
-и эти уровни MUST NOT смешиваться:
+Rationale: BrAIniac already has a lightweight SDD system. Spec Kit must extend
+that discipline instead of creating a second, conflicting planning layer.
 
-- Уровень 1 — модель данных и канва: `Node` и `Edge` образуют управляемый
-  циклический направленный граф (Bounded Directed Graph) одного pipeline.
-  Внешний граф MAY содержать циклы и MAY иметь несколько стартовых узлов.
-- Уровень 2 — runtime узла: `AgentCall` MAY выполнять внутренний bounded-цикл
-  и tool calls. Внутренние вызовы инструментов MUST NOT создавать записи в
-  `Edge` и MUST NOT менять топологию внешнего графа.
+### II. Fixed Technology Stack
+New application code MUST stay within the existing TypeScript web stack unless
+a plan documents a specific approved exception. Backend work uses Node.js,
+Express, Prisma, PostgreSQL, and the current script-based test approach in
+`backend/package.json`. Frontend work uses React, TypeScript, ReactFlow,
+Tailwind CSS, Radix where already present, and the existing Create React App
+tooling. Docker Compose remains the shared local integration environment.
 
-Циклы внешнего графа допустимы между любыми loop-capable NodeType (включая
-`transform` и tool-like узлы), а не только между `control`-узлами.
+New frameworks, runtimes, databases, UI kits, state managers, queues, or
+service boundaries MUST NOT be introduced only for convenience. Any dependency
+addition MUST include the concrete problem it solves, why existing project
+tools are insufficient, and what tests prove the integration.
 
-Rationale: двухуровневая модель устраняет неоднозначность между графовой
-семантикой pipeline и runtime-семантикой агента, и является единственной
-формой, при которой каталог метрик из `docs/sdd/12-evaluation-metrics-catalog.md`
-остаётся математически корректным.
+Rationale: A stable stack keeps student-facing development understandable and
+prevents the project from drifting into unnecessary infrastructure work.
 
-### II. Канонический Edge-Only Контракт Инструментов
+### III. Clear, Adaptive UX
+User-facing changes MUST make the graph/RAG workflow understandable without
+hidden behavior. The UI MUST expose important state, validation problems,
+provider/tool diagnostics, dataset selection, execution status, and final
+results in the relevant workflow surface. Frontend behavior MUST remain usable
+on common desktop and mobile widths, with no overlapping controls, clipped
+labels, or inaccessible primary actions.
 
-Инструменты MUST становиться доступными агенту только через канонический путь
-`ToolNode -> AgentCall`.
+UX copy and controls MUST reflect actual backend capability. Nodes or actions
+without confirmed runtime support MUST be hidden, clearly disabled, or
+implemented with tests before being presented as available.
 
-- `AgentCall` MUST получать callable tools исключительно через входящие рёбра графа.
-- `AgentCall` MUST NOT иметь скрытого локального каталога callable tools.
-- Любые input-based механики вида `tool_ref` / `tool_refs` MUST NOT использоваться
-  как runtime-путь и не считаются допустимым frontend-путём.
-- `ToolNode` без входов MUST работать в capability-режиме и публиковать
-  advertising output для `AgentCall`.
+Rationale: BrAIniac is an educational tool. Users must be able to understand
+what the system is doing and why a graph succeeds, warns, or fails.
 
-Rationale: единственный путь публикации инструментов делает agent graph
-проверяемым статически (Preflight + mutation-time валидация), а trace —
-пригодным для оценки через `f_toolsel`, `f_argF1`, `f_trajIoU`, `f_planEff`,
-`f_redund`, `f_node_cov`.
+### IV. Simple, Understandable Code
+Implementation MUST prefer small, direct modules that match existing project
+patterns. Shared abstractions are allowed only when they remove real
+duplication or make a contract easier to test. Code MUST avoid speculative
+framework layers, generic engines, broad rewrites, and compatibility branches
+that are not required by the current SDD or feature spec.
 
-### III. Валидация При Мутации И Детерминированный Preflight (NON-NEGOTIABLE)
+Complexity that crosses module boundaries, changes frozen contracts, adds a
+new dependency, or introduces hidden runtime behavior MUST be documented in
+the implementation plan's Complexity Tracking table with a simpler alternative
+and the reason it was rejected.
 
-Корректность графа MUST проверяться при изменении графа, а не только перед запуском.
+Rationale: The codebase should stay readable for contributors and students.
+Simplicity is a product requirement, not just a style preference.
 
-- Операции `create node`, `update node`, `delete node`, `create edge`, `delete edge`
-  MUST выполнять hard-валидацию перед записью.
-- Preflight (`POST /pipelines/:id/validate-graph`) MUST выполнять полную проверку
-  графа и возвращать детерминированную диагностику: `errors[]`, `warnings[]`,
-  `metrics`.
-- Для одинакового графа и одинакового набора профилей ответ Preflight MUST быть
-  бит-в-бит детерминированным.
-- Hard-правила `H1..H5` из `docs/sdd/02-graph-constitution.md` MUST блокировать
-  запись или запуск. Soft-правила (`S1..S5`) MUST возвращать только предупреждения.
-- Коды ошибок и предупреждений из `docs/sdd/04-validation-errors.md` являются
-  стабильной частью API-контракта: семантика кода MUST NOT меняться без
-  major-амендмента этой конституции.
-- Режим валидации MUST определяться только `preset` (`default | dev | production`);
-  legacy-поля (`mode`, `includeWarnings`, `profileFallback`, `enforceLoopPolicies`,
-  `requireExecutionBudgets`, `roleValidationMode`) MUST отклоняться.
+### V. Tests Prove Working Behavior
+Every feature or bug fix MUST include tests appropriate to its risk and user
+surface. Backend changes MUST use the existing scripts where possible:
+integration, auth, ownership, database invariant, RAG smoke/e2e, executor,
+and contract-freeze tests. Frontend changes MUST include component, user-flow,
+or build-level verification when behavior or layout changes. Contract changes
+MUST include contract tests before implementation.
 
-Rationale: ранняя валидация предотвращает «проходящие» графы, которые падают
-только на прогоне; детерминизм Preflight — предпосылка воспроизводимой оценки
-агента (`S = Σ w_j · S_j`).
+Plans and task lists MUST state which test types are required and why. If a
+test cannot be automated in the current stack, the plan MUST document the
+manual verification steps, the gap, and the follow-up needed to automate it.
 
-### IV. Ограниченное Исполнение (Bounded Execution)
+Rationale: The project contains graph execution, auth, persistence, RAG, and
+provider failure paths. Passing code is not enough unless the relevant behavior
+is exercised.
 
-Любое исполнение MUST быть ограничено явными бюджетами. Неограниченных циклов и
-неограниченных агентных стратегий MUST NOT существовать.
+## Product And Runtime Constraints
 
-- Каждый цикл внешнего графа MUST иметь loop-policy с `maxIterations ≥ 1`
-  в JSON-профиле. Отсутствие или `maxIterations ≤ 0` MUST возвращать
-  `GRAPH_LOOP_MAX_ITER_INVALID`.
-- Unguarded-циклы MUST блокировать запуск (`GRAPH_UNGUARDED_CYCLE`).
-- `AgentCall` MUST иметь bounded limits:
-  `maxAttempts`, `maxToolCalls`, `maxTimeMs`, `maxCostUsd`, `maxTokens`.
-- В production-preset глобальные бюджеты исполнения run (`maxSteps`, `maxTimeMs`,
-  `maxCost`, `maxTokens`) MUST быть заданы; их отсутствие MUST возвращать
-  warning `GRAPH_EXECUTION_BUDGET_MISSING` в `default`/`dev` и ошибку в `production`.
-- `AgentCall.output` envelope MUST нести поля наблюдаемости лимитов:
-  `attempts_used`, `tool_calls_executed`, `max_attempts`, `max_tool_calls`, `usage`.
+- The canonical graph model MUST preserve the SDD rules: graph validation runs
+  on mutations and preflight, cross-pipeline edges are forbidden, duplicate
+  `(from,to)` edges are forbidden, and cycles require an explicit loop policy.
+- `AgentCall` tool access MUST be represented through explicit
+  `ToolNode -> AgentCall` capability edges. Hidden tool injection and legacy
+  `tool_ref`/`tool_refs` paths MUST NOT be reintroduced.
+- Dataset upload is a user-visible workflow, not a hidden graph side effect.
+  RAG preparation MUST happen through explicit graph/tool behavior or through
+  clearly exposed product controls.
+- Frontend node catalogs MUST show only runtime-backed nodes for the current
+  product scope, or visibly mark unsupported work as unavailable.
+- Provider failures, empty agent output, validation warnings, and execution
+  diagnostics MUST be surfaced as diagnostic states rather than being treated
+  as successful user answers.
+- Public backend contracts used by the frontend MUST remain covered by
+  contract-freeze or equivalent tests when changed.
 
-Rationale: образовательная среда работает на внешних LLM-провайдерах и должна
-быть экономически и временно предсказуемой; метрики `f_loop_term`, `f_loop_budget`,
-`f_loop_conv`, `f_iter_dispersion`, `f_retry` корректны только на bounded runs.
+## Development Workflow And Quality Gates
 
-### V. Оценка Через Взвешенные Нормированные Метрики
-
-Оценка агента MUST следовать математической постановке из
-`docs/sdd/12-evaluation-metrics-catalog.md`:
-
-- Итоговая оценка агента: `S = Σ_{j=1}^{p} w_j · S_j`, где
-  `S_j = (1/m) · Σ_{k=1}^{m} f_j(a(x_k), y_k)`.
-- Каждая метрика `f_j` MUST быть нормализована на отрезок `[0, 1]`.
-- Веса `W = {w_1..w_p}` MUST удовлетворять `Σ w_j = 1` и MUST быть
-  интерпретируемыми (каждый вес привязан к оси качества и узлу графа).
-- Подмножество метрик `M' ⊆ M` MUST формироваться из rule-based baseline
-  `M'_0` (объединение рекомендованных подмножеств по ролям узлов), с последующим
-  data-driven прунингом при `N ≥ 50` прогонах на эталонном датасете.
-- Обязательные оси (`Correctness`, `Grounding` при наличии контекстного пути,
-  `Tool-Use` при наличии `AgentCall`, `Structure` при structured output,
-  `Safety`) MUST иметь хотя бы одну метрику в `M'_0`.
-- Операционные ограничения `T(a)`, `C(a)`, `R_fail(a)` MUST логироваться отдельно
-  от качественной оценки `S` и MUST NOT включаться в `Σ w_j · S_j`.
-- Пороги интерпретации: `S < 0.6` — доработка; `0.6 ≤ S ≤ 0.8` — удовлетворительно;
-  `S > 0.8` — проход. Эти пороги MAY калиброваться, но методология порогов MUST
-  документироваться в артефакте оценки.
-- Нормализационные параметры (min/max, перцентили) и веса SHOULD быть
-  версионированы вместе с профилем оценки.
-
-Rationale: LLM-as-Judge и модель-судья BrAIniac являются продуктовым
-дифференциатором; без единой нормализации и прозрачного взвешивания оценка
-не воспроизводима между студентами и кейсами.
-
-### VI. Стабильность Публичного Контракта
-
-Публичные backend-контракты, зафиксированные в
-`docs/sdd/11-backend-contract-freeze.md`, считаются замороженной поверхностью
-для frontend и внешних интеграций.
-
-- Замороженные формы (`AgentCall.ui_json`, `ToolNode.ui_json`,
-  `POST /datasets/upload`, `POST /pipelines/:id/execute`,
-  `GET /pipelines/:id/executions/:executionId`, `AgentCall.output`,
-  `tool_call_trace`) MUST изменяться только через документированный амендмент
-  этой конституции и соответствующее повышение `CONSTITUTION_VERSION`.
-- Разрывное изменение замороженного поля MUST сопровождаться migration notes и
-  MUST получать MAJOR-bump конституции.
-- Internal-детали (`artifact_manifest`, snapshot layout в `.artifacts/runtime/...`,
-  process-local cache) MUST NOT объявляться как frontend-контракт.
-- Legacy-формы (`tool_ref` / `tool_refs`, top-level `ui_json.tool_id`,
-  input-based объявления tools) MUST NOT вводиться в новые фичи.
-- Freeze MUST непрерывно подтверждаться тестами:
-  `npm --prefix backend run test:contracts:freeze`,
-  `npm --prefix backend run test:executor:http`,
-  `npm --prefix backend run test:executor:coordination`.
-
-Rationale: frontend, генерация отчётов и экспорт кода опираются на стабильный
-shape; дрейф контракта делает экспортированный код невоспроизводимым.
-
-### VII. Воспроизводимость И Наблюдаемость
-
-Каждый run pipeline MUST давать достаточный след для воспроизводимой оценки
-и отладки.
-
-- Каждое выполнение `AgentCall` MUST заполнять `tool_call_trace` с полями
-  `index`, `requested_tool`, `resolved_tool?`, `source`, `status`, `output?`,
-  `error?`; `status ∈ {completed, failed, not_found}`.
-- `POST /pipelines/:id/execute` MUST поддерживать idempotent replay через
-  заголовок `x-idempotency-key`: повтор с тем же ключом MUST возвращать тот же
-  `execution_id`.
-- `GET /pipelines/:id/executions/:executionId` MUST быть пригоден для polling и
-  MUST отдавать стабильный набор верхнеуровневых полей (`execution_id`,
-  `pipeline_id`, `status`, `created_at`, `updated_at`, `started_at?`,
-  `finished_at?`, `request`, `preflight?`, `summary?`, `warnings?`, `error?`).
-- Oversized manifests и execution snapshots MAY externalize'иться в файловый слой
-  `.artifacts`; snapshot MUST читаться polling-ом даже если текущий worker не
-  держит job в памяти.
-- Логи прогонов SHOULD сохраняться с достаточной гранулярностью для
-  последующей data-driven калибровки весов `W` (M5 из каталога метрик).
-- Нормализационные параметры метрик SHOULD быть версионированы совместно с
-  профилем оценки (M6).
-
-Rationale: тезис BrAIniac — учебная среда с объяснимой оценкой. Без полного,
-воспроизводимого trace учебный отчёт студента не имеет доказательной силы.
-
-## Технологические И Качественные Ограничения
-
-Стек и baseline, считающиеся нормативными на текущем этапе:
-
-- Backend: Node.js + TypeScript, Prisma в качестве ORM, HTTP-JSON executor
-  (`POST /tool-executor/contracts`). `POST /tool-executor/contracts` MUST NOT
-  маскировать `HttpError` в `200 OK`.
-- Frontend: веб-приложение; публичные контракты читаются только из
-  `docs/sdd/11-backend-contract-freeze.md`.
-- Runtime handlers MUST быть реализованы для: `Trigger`, `ManualInput`,
-  `DatasetInput`, `PromptBuilder`, `Filter`, `Ranker`, `LLMCall`, `AgentCall`,
-  `ToolNode`, `Parser`, `SaveResult`.
-- Managed dataset upload path MUST работать через `POST /datasets/upload` с
-  `filename + content_base64`; поддерживаемые форматы v1: `.txt`, `.text`,
-  `.md`, `.json`.
-- `DocumentLoader` MUST поддерживать `workspace://...`, `file://...` и
-  локальные пути внутри workspace root.
-- Schema-free artifact layer MUST использовать манифесты:
-  `documents_manifest`, `chunks_manifest`, `vectors_manifest`,
-  `candidates_manifest`, `context_bundle_manifest`.
-- `in-flight` и `idempotency` MUST создаваться через atomic filesystem claim
-  с stale-policy через `updated_at` и `EXECUTOR_COORDINATION_STALE_MS`.
-- `NodeType.config_json` MUST хранить машиночитаемый профиль (role, input/output
-  диапазоны, loop-policy, agent limits). Fallback-поведение разрешено только
-  в non-production preset (warning, не hard failure).
-- Канонический final answer path для strict realistic RAG baseline —
-  `LLMAnswer`; `AgentCall` без live ответа от провайдера считается допустимым
-  runtime-поведением при условии: execution завершился успешно, `final_result.text`
-  присутствует в snapshot, ответ опирается на retrieval context.
-- Репозиторий MUST запускаться через `docker-compose up --build` и MUST быть
-  открываем по `http://localhost:3000`.
-
-## Процесс Разработки И Контрольные Ворота
-
-Контрольные ворота этой конституции встраиваются в workflow Spec Kit:
-
-- `/speckit.plan` MUST содержать секцию `Constitution Check` и MUST не
-  переходить к Phase 0 Research, пока план содержит нерешённые отступления от
-  принципов I..VII без явного обоснования в секции `Complexity Tracking`.
-- `/speckit.plan` и `/speckit.tasks` MUST перечитывать `Constitution Check`
-  после Phase 1 дизайна.
-- Каждый новый feature-spec MUST фиксировать, какие из замороженных контрактов
-  (`11-backend-contract-freeze.md`) он затрагивает; затрагивание = запрет без
-  амендмента конституции.
-- Каждая фича, работающая с графом pipeline, MUST декларировать ожидаемый
-  стартовый `M'_0` по правилу «объединение рекомендованных подмножеств по
-  ролям узлов графа».
-- Перед merge в `main` MUST проходить минимальный набор:
-  `test:contracts:freeze`, `test:executor:http`, `test:executor:coordination`.
-- PR-обзор MUST проверять: отсутствие `tool_ref` / `tool_refs`, наличие
-  loop-policy на всех циклах, нормализацию новых метрик в `[0, 1]`, наличие
-  trace-артефактов для новых runtime-веток.
-- Сложность, не проходящая принципы (например, tool discovery вне
-  `ToolNode -> AgentCall`), MUST быть явно обоснована или заменена на
-  соответствующий вариант.
+- Before planning, read the current feature spec, relevant `docs/sdd/` files,
+  `backend/package.json`, `frontend/package.json`, and any affected code paths.
+- Each implementation plan MUST fill the Constitution Check with concrete
+  answers for SDD alignment, stack fit, UX/adaptivity, simplicity, and tests.
+- Each feature spec MUST include independently testable user scenarios,
+  measurable success criteria, important edge cases, and explicit assumptions.
+- Each task list MUST include test tasks for every story or change surface
+  unless the plan documents why automation is not currently possible.
+- Before completion, run the smallest reliable test set that proves the change.
+  For cross-cutting backend changes, run relevant `npm run test:*` scripts.
+  For frontend changes, run at least build or targeted UI tests.
+- Documentation updates MUST accompany changes to SDD contracts, API shape,
+  node behavior, diagnostics, or user-facing workflow.
 
 ## Governance
 
-Данная конституция превосходит любые локальные практики и устные договорённости.
+This constitution supersedes conflicting local habits and generic Spec Kit
+defaults for this repository. SDD files remain the detailed product/runtime
+contract layer; this constitution defines the higher-level engineering rules
+that all specs, plans, tasks, and code reviews must enforce.
 
-- Амендмент: предложение изменения MUST оформляться как PR, меняющий
-  `.specify/memory/constitution.md`. PR MUST содержать Sync Impact Report
-  (см. формат в HTML-комментарии сверху файла).
-- Версионирование по Semantic Versioning:
-  - MAJOR: несовместимое удаление/переопределение принципа или правил governance;
-    любое ослабление NON-NEGOTIABLE принципов; разрывное изменение замороженных
-    контрактов из `11-backend-contract-freeze.md`.
-  - MINOR: добавление нового принципа/раздела или существенное расширение
-    нормативного содержания.
-  - PATCH: уточнения формулировок, опечатки, рефакторинг текста без изменения
-    семантики правил.
-- Любой амендмент MUST обновлять: зависимые шаблоны (`plan-template.md`,
-  `spec-template.md`, `tasks-template.md`), runtime guidance (`CLAUDE.md`,
-  `README.md`, `docs/sdd/*`) и Sync Impact Report.
-- Проверка соблюдения: каждый review PR MUST проверять соответствие принципам
-  I..VII. Нарушение hard-правил (из H1..H5 и NON-NEGOTIABLE принципа III)
-  MUST блокировать merge. Нарушение soft-правил MUST быть зафиксировано в
-  `Complexity Tracking` соответствующего плана.
-- Отступления от bounded execution (принцип IV) или от каталога метрик
-  (принцип V) MUST сопровождаться письменным обоснованием в PR и подписью
-  владельца артефакта оценки.
-- Данная конституция используется как нормативная база для runtime-guidance
-  файлов: `CLAUDE.md`, `.specify/templates/*`, `docs/sdd/*`.
+Amendments require:
 
-**Version**: 1.0.0 | **Ratified**: 2026-04-23 | **Last Amended**: 2026-04-23
+1. A documented reason for the change and the affected principles or sections.
+2. Review of impacted SDD files, templates, and runtime guidance.
+3. A semantic version update:
+   - MAJOR for incompatible governance or principle changes.
+   - MINOR for new principles, sections, or materially expanded requirements.
+   - PATCH for wording, clarification, and non-semantic fixes.
+4. A Sync Impact Report at the top of this file.
+
+Compliance is checked during plan creation, task generation, implementation,
+and review. A feature with unresolved constitution violations MUST NOT proceed
+to implementation unless the violation is explicitly tracked with a simpler
+alternative and an approved reason.
+
+**Version**: 1.0.0 | **Ratified**: 2026-04-29 | **Last Amended**: 2026-04-29

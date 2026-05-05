@@ -16,6 +16,7 @@ import judgeRouter from './routes/resources/judge/judge.routes.js';
 import { isHttpError } from './common/http-error.js';
 import { getOpenRouterConfig } from './services/core/openrouter/openrouter.config.js';
 import { resolveToolContractDefinition } from './services/application/tool/contracts/index.js';
+import { mountBrainiacMcpTransport } from './mcp/mcp.transport.js';
 
 loadEnv({ path: process.env.ENV_FILE ?? '.env' });
 if (!process.env.DATABASE_URL || !process.env.OPENROUTER_API_KEY) {
@@ -66,6 +67,7 @@ function createApp() {
   app.options(/.*/, cors(corsOptions));
 
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
+  mountBrainiacMcpTransport(app);
 
   app.post('/tool-executor/contracts', async (req, res) => {
     const payload = req.body && typeof req.body === 'object' ? req.body : {};

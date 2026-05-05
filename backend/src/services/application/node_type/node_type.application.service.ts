@@ -2,6 +2,44 @@ import { HttpError } from '../../../common/http-error.js';
 import { createNodeType, deleteNodeType, getNodeTypeById, listNodeTypes, updateNodeType } from '../../data/node_type.service.js';
 import { getToolById } from '../../data/tool.service.js';
 
+export type NodeTypeCatalogEntry = {
+  node_type_id: number;
+  name: string;
+  desc: string;
+  category: string | null;
+  fk_tool_id: number;
+  runtime_support_state: 'supported' | 'unsupported';
+  config_schema: unknown;
+  default_config: unknown;
+};
+
+function readObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function readCategory(configJson: unknown): string | null {
+  const config = readObject(configJson);
+  const role = config?.role;
+  return typeof role === 'string' && role.trim().length > 0 ? role.trim() : null;
+}
+
+function toCatalogEntry(nodeType: Awaited<ReturnType<typeof getNodeTypeById>>): NodeTypeCatalogEntry {
+  if (!nodeType) {
+    throw new HttpError(404, { error: 'not found' });
+  }
+
+  return {
+    node_type_id: nodeType.type_id,
+    name: nodeType.name.trim(),
+    desc: nodeType.desc.trim(),
+    category: readCategory(nodeType.config_json),
+    fk_tool_id: nodeType.fk_tool_id,
+    runtime_support_state: nodeType.config_json ? 'supported' : 'unsupported',
+    config_schema: nodeType.config_json ?? null,
+    default_config: nodeType.config_json ?? {},
+  };
+}
+
 async function ensureToolExists(toolId: number) {
   const tool = await getToolById(toolId);
   if (!tool) {
@@ -38,12 +76,22 @@ export async function listNodeTypeEntries(fkToolId?: number) {
   return listNodeTypes(fkToolId);
 }
 
+export async function listNodeTypeCatalogEntries(options: { includeUnsupported?: boolean; fkToolId?: number } = {}) {
+  const items = await listNodeTypes(options.fkToolId);
+  const catalog = items.map(toCatalogEntry);
+  return options.includeUnsupported ? catalog : catalog.filter((item) => item.runtime_support_state === 'supported');
+}
+
 export async function getNodeTypeEntryById(typeId: number) {
   const item = await getNodeTypeById(typeId);
   if (!item) {
     throw new HttpError(404, { error: 'not found' });
   }
   return item;
+}
+
+export async function getNodeTypeCatalogEntryById(typeId: number) {
+  return toCatalogEntry(await getNodeTypeEntryById(typeId));
 }
 
 export async function updateNodeTypeEntryById(

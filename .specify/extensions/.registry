@@ -8,7 +8,14 @@
       "enabled": true,
       "priority": 10,
       "registered_commands": {
-        "claude": [
+        "agy": [
+          "speckit.git.feature",
+          "speckit.git.validate",
+          "speckit.git.remote",
+          "speckit.git.initialize",
+          "speckit.git.commit"
+        ],
+        "codex": [
           "speckit.git.feature",
           "speckit.git.validate",
           "speckit.git.remote",
@@ -17,7 +24,7 @@
         ]
       },
       "registered_skills": [],
-      "installed_at": "2026-04-23T07:20:58.259282+00:00"
+      "installed_at": "2026-04-29T12:23:55.845444+00:00"
     }
   }
 }
