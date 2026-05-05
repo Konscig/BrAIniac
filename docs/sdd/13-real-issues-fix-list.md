@@ -160,3 +160,54 @@
 - Priority: P0, **исправлено** commit `47522f9`
 - Влияние: tool_call_trace, structured_output, retrieved_ids никогда не доезжали до judge,
   потому что `persistNodeOutputs` оборачивает реальный output runtime'а в `.data`-поле.
+
+## 17a) Chunker → Embedder теряет 99% chunks: ИСПРАВЛЕНО (judge-v2)
+- Priority: P1, **исправлено** commit `<следующий>`
+- Корень был в `node-handler.common.ts:collectTextFragments` — `nestedKeys` не
+  включал `'contract_output'`, поэтому Chunker.contract_output.chunks никогда
+  не доходил до embedding-конвейера. Также `MAX_EMBEDDING_INPUT_ITEMS=24` было
+  слишком мало; поднял до 256, лимит массива на нём же.
+
+## 17b) VectorUpsert игнорировал toolConfig.index_name: ИСПРАВЛЕНО (judge-v2)
+- Priority: P1, **исправлено** commit `<следующий>`
+- `ToolContractDefinition.resolveInput` теперь принимает третьим параметром
+  `toolConfig` (mergedToolConfig от ui_json.toolConfig + tool.config_json), и
+  `resolveVectorUpsertContractInput` использует его для `index_name`/`namespace`
+  с приоритетом UI-override > input_json > defaults.
+
+## 18) В графе voproshalych-rag-agent нет edge VectorUpsert → HybridRetriever
+- Priority: P1, **исправлено** через SQL `INSERT INTO Edge (25, 26)` в judge-v2.
+- Симптом: HybridRetriever получал inputs.length=0, поэтому
+  `collectIndexedVectorRecords` возвращал [] и retriever всегда отвечал
+  `candidate_count: 0`.
+- Корень: тонология graph в seed создавала `25→27` и `26→27` параллельно,
+  без передачи векторов от VectorUpsert к Retriever.
+- Долгосрочный фикс: либо seed-скрипт восстанавливать с edge `25→26`, либо
+  сделать persistent vector store (см. #19).
+
+## 19) Vector store эфемерный (per-execution artifact path)
+- Priority: P2 (архитектурный), статус: задокументирован
+- VectorUpsert.contract_output.vectors_manifest.pointer.path =
+  `.artifacts/executions/<exec_id>/node-output/...json` — каждый прогон
+  пишет в новую папку, т.е. между прогонами индекс «забывается».
+- На дипломный демонстрационный кейс сейчас не критично (граф 22→23→24→25→26→27
+  выполняется в одном execution и retriever получает свежие векторы по edge),
+  но для prod-ready RAG надо настоящий vector DB или общий artifact store.
+
+## 20) LLMAnswer-узел в `voproloshalych-rag-linear` (pipeline=3) падает с EMPTY_PROVIDER_RESPONSE
+- Priority: P1
+- Влияние: pipeline `voproshalych-rag-linear` не отрабатывает ни одного item — оценить
+  его невозможно, judge корректно отвечает `JUDGE_PIPELINE_RUNS_ALL_FAILED`.
+- Симптом:
+  ```
+  node 18 (LLMAnswer): EXECUTOR_TOOLNODE_EMPTY_PROVIDER_RESPONSE
+    model: deepseek/deepseek-v4-flash-20260423
+    contract: LLMAnswer
+  ```
+- Корневая причина: модель `deepseek-v4-flash-20260423` либо retired, либо отдаёт пустой
+  completion на наш промпт (вероятно из-за structure-mode/JSON-схемы).
+- Что фиксить:
+  - сменить `Node.ui_json.toolConfig.model` на стабильную (тот же `OPENROUTER_LLM_MODEL`,
+    что используется в AgentCall — там работает);
+  - добавить retry с другой моделью на executor-уровне при EMPTY_PROVIDER_RESPONSE.
+- Воспроизведение: `POST /judge/assessments {pipeline_id: 3, dataset_id: 2}`.
