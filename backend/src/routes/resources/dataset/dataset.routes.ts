@@ -8,6 +8,9 @@ import {
   uploadDatasetForUser,
   updateDatasetForUser,
 } from '../../../services/application/dataset/dataset.application.service.js';
+import { persistRagCorpusUpload } from '../../../services/application/dataset/dataset.upload.service.js';
+import { HttpError } from '../../../common/http-error.js';
+import { RAG_DATASET_ERROR_CODES } from '../../../services/application/tool/contracts/rag-dataset.constants.js';
 import { requireAuth } from '../../../middleware/auth.middleware.js';
 import { optionalId, requiredId, requiredNonEmptyString } from '../../shared/req-parse.js';
 import { mapDatasetCreateDTO } from '../../shared/create-dto.mappers.js';
@@ -32,6 +35,29 @@ router.post('/', async (req: any, res) => {
 router.post('/upload', async (req: any, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const rawKind = typeof body.kind === 'string' ? body.kind.trim().toLowerCase() : '';
+    const kind = rawKind === '' ? 'golden' : rawKind;
+
+    if (kind === 'rag-corpus') {
+      const filename = requiredNonEmptyString(body.filename, 'filename required');
+      const contentBase64 = requiredNonEmptyString(body.content_base64, 'content_base64 required');
+      const result = await persistRagCorpusUpload({
+        filename,
+        contentBase64,
+        ownerToken: `user_${req.user.user_id}`,
+      });
+      res.status(201).json(result);
+      return;
+    }
+
+    if (kind !== 'golden') {
+      throw new HttpError(400, {
+        code: RAG_DATASET_ERROR_CODES.INVALID_KIND,
+        error: `Unknown kind: ${rawKind}`,
+        details: { received: rawKind, allowed: ['golden', 'rag-corpus'] },
+      });
+    }
+
     const dataset = await uploadDatasetForUser(
       {
         fk_pipeline_id: requiredId(body.fk_pipeline_id, 'fk_pipeline_id required'),

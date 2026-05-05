@@ -4,6 +4,7 @@ export type ToolExecutorKind = 'http-json' | 'openrouter-embeddings';
 
 export type ToolContractName =
   | 'DocumentLoader'
+  | 'RAGDataset'
   | 'QueryBuilder'
   | 'Chunker'
   | 'Embedder'
@@ -29,7 +30,17 @@ export interface ToolContractDefinition {
   name: ToolContractName;
   aliases: string[];
   allowedExecutors: ToolExecutorKind[];
-  resolveInput: (inputs: any[], context: NodeExecutionContext) => Record<string, any>;
+  /**
+   * Резолвит контрактный input для исполнителя. Третий параметр `toolConfig` —
+   * объединённая конфигурация {tool.config_json, ui_json.toolConfig}, в нём лежат
+   * UI-override'ы вроде index_name/namespace/model — контракт обязан учитывать
+   * их приоритетно поверх context.input_json для соответствующих полей.
+   */
+  resolveInput: (
+    inputs: any[],
+    context: NodeExecutionContext,
+    toolConfig?: Record<string, any>,
+  ) => Record<string, any>;
   buildHttpSuccessOutput?: (
     context: ToolContractHttpSuccessContext,
   ) => Record<string, any> | Promise<Record<string, any>>;

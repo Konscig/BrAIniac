@@ -3,9 +3,6 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-ARG REACT_APP_API_BASE_URL=http://localhost:8080
-ENV REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
-
 # Копируем package.json и package-lock.json
 COPY package*.json ./
 
@@ -24,7 +21,6 @@ FROM nginx:alpine
 # Копируем собранные файлы в папку Nginx
 COPY --from=build /app/build /usr/share/nginx/html
 
-# Копируем кастомный конфиг Nginx (по желанию)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Открываем порт 80

@@ -16,6 +16,19 @@ import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
 
+function ScoreBadge({ score }: { score: number }): React.ReactElement {
+  const pct = Math.round(score * 100);
+  const color =
+    score >= 0.8 ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" :
+    score >= 0.6 ? "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" :
+    "bg-red-500/20 text-red-300 border-red-500/30";
+  return (
+    <span className={cn("ml-auto shrink-0 rounded border px-1 py-0 text-[10px] font-mono leading-4", color)}>
+      {pct}
+    </span>
+  );
+}
+
 export interface SidebarProjectsProps {
   projects: ProjectRecord[];
   pipelinesByProject: Record<number, PipelineRecord[]>;
@@ -165,7 +178,7 @@ export function SidebarProjects({
                   <div
                     key={project.project_id}
                     className={cn(
-                      "overflow-hidden rounded-xl border transition",
+                      "min-w-0 overflow-hidden rounded-xl border transition",
                       isActiveProject
                         ? "border-primary/45 bg-primary/8 shadow-[inset_0_0_0_1px_rgba(39,135,245,0.12)]"
                         : "border-border/50 bg-card/30"
@@ -288,7 +301,7 @@ export function SidebarProjects({
                               <div
                                 key={pipeline.pipeline_id}
                                 className={cn(
-                                  "flex items-center gap-2 rounded-lg border px-2 py-1.5 transition",
+                                  "flex w-full min-w-0 items-center gap-2 rounded-lg border px-2 py-1.5 transition",
                                   pipeline.pipeline_id === activePipelineId
                                     ? "border-primary/50 bg-primary/12"
                                     : "border-border/40 bg-background/20"
@@ -331,9 +344,12 @@ export function SidebarProjects({
                                     className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left"
                                   >
                                     <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                    <span className="truncate text-sm font-medium text-foreground">
+                                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
                                       {pipeline.name}
                                     </span>
+                                    {pipeline.score != null && (
+                                      <ScoreBadge score={Number(pipeline.score)} />
+                                    )}
                                   </button>
                                 )}
 

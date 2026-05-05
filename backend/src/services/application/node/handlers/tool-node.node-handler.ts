@@ -15,6 +15,9 @@ export const toolNodeHandler: NodeHandler = async (runtime, inputs, context) => 
 
   if (inputs.length === 0) {
     const desc = readToolDescription(toolBinding.config_json);
+    const catalogConfig =
+      toolBinding.config_json && typeof toolBinding.config_json === 'object' ? toolBinding.config_json : {};
+    const mergedConfig = { ...catalogConfig, ...toolOverrides };
     return {
       output: {
         kind: 'tool_node',
@@ -22,9 +25,7 @@ export const toolNodeHandler: NodeHandler = async (runtime, inputs, context) => 
         ...(desc ? { desc } : {}),
         ...(toolBinding.tool_id ? { tool_id: toolBinding.tool_id } : {}),
         tool_source: toolBinding.source,
-        ...(toolBinding.config_json && typeof toolBinding.config_json === 'object'
-          ? { config_json: toolBinding.config_json }
-          : {}),
+        ...(Object.keys(mergedConfig).length > 0 ? { config_json: mergedConfig } : {}),
       },
       costUnits: 0,
     };

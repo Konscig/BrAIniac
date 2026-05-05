@@ -67,18 +67,18 @@ model NodeType {
 }
 
 model Node {
-  node_id           Int        @id @default(autoincrement())
-  fk_pipeline_id    Int
-  fk_type_id        Int
-  fk_sub_pipeline   Int?
-  top_k             Int
-  output_json       Json?
-  ui_json           Json
-  pipeline          Pipeline   @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
-  node_type         NodeType   @relation(fields: [fk_type_id], references: [type_id], onDelete: Cascade)
-  sub_pipeline      Pipeline?  @relation("NestedPipeline", fields: [fk_sub_pipeline], references: [pipeline_id], onDelete: Cascade)
-  incoming_edges    Edge[]     @relation("EdgeToNode")
-  outgoing_edges    Edge[]     @relation("EdgeFromNode")
+  node_id         Int       @id @default(autoincrement())
+  fk_pipeline_id  Int
+  fk_type_id      Int
+  fk_sub_pipeline Int?
+  top_k           Int
+  output_json     Json?
+  ui_json         Json
+  pipeline        Pipeline  @relation(fields: [fk_pipeline_id], references: [pipeline_id], onDelete: Cascade)
+  node_type       NodeType  @relation(fields: [fk_type_id], references: [type_id], onDelete: Cascade)
+  sub_pipeline    Pipeline? @relation("NestedPipeline", fields: [fk_sub_pipeline], references: [pipeline_id], onDelete: Cascade)
+  incoming_edges  Edge[]    @relation("EdgeToNode")
+  outgoing_edges  Edge[]    @relation("EdgeFromNode")
 
   @@index([fk_pipeline_id])
   @@index([fk_type_id])
@@ -86,11 +86,11 @@ model Node {
 }
 
 model Edge {
-  edge_id           Int      @id @default(autoincrement())
-  fk_from_node      Int
-  fk_to_node        Int
-  from_node         Node     @relation("EdgeFromNode", fields: [fk_from_node], references: [node_id], onDelete: Cascade)
-  to_node           Node     @relation("EdgeToNode", fields: [fk_to_node], references: [node_id], onDelete: Cascade)
+  edge_id      Int  @id @default(autoincrement())
+  fk_from_node Int
+  fk_to_node   Int
+  from_node    Node @relation("EdgeFromNode", fields: [fk_from_node], references: [node_id], onDelete: Cascade)
+  to_node      Node @relation("EdgeToNode", fields: [fk_to_node], references: [node_id], onDelete: Cascade)
 
   @@unique([fk_from_node, fk_to_node])
   @@index([fk_from_node])

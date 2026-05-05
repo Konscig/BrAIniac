@@ -1,5 +1,9 @@
+// Дефолт — пустая строка: same-origin запросы. CRA dev-server форвардит их
+// через "proxy" из frontend/package.json на http://localhost:3000, благодаря
+// чему в локальной разработке CORS не срабатывает. Прод/Docker задают
+// REACT_APP_API_BASE_URL явно (см. nginx.conf и REACT_APP_API_BASE_URL в env).
 export const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "http://localhost:3000";
+  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "";
 
 type ApiOptions = RequestInit & { skipAuthHeaders?: boolean; skipWebRefresh?: boolean };
 
@@ -592,6 +596,35 @@ export function deleteDataset(datasetId: number): Promise<void> {
   return deleteRequest(`/datasets/${datasetId}`);
 }
 
+export interface RagCorpusUploadResult {
+  uri: string;
+  filename: string;
+  size_bytes: number;
+  kind: "rag-corpus";
+}
+
+/**
+ * Загружает один файл (.txt/.sql/.csv, ≤1 МБ) в управляемое хранилище RAG-корпуса.
+ * Возвращает стабильный URI для использования в `Node.ui_json.uris[]` узла RAGDataset.
+ */
+export async function uploadRagCorpus(file: File): Promise<RagCorpusUploadResult> {
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  const contentBase64 = btoa(binary);
+
+  return postJson<RagCorpusUploadResult>("/datasets/upload", {
+    filename: file.name,
+    content_base64: contentBase64,
+    kind: "rag-corpus"
+  });
+}
+
 export function validatePipelineGraph(
   pipelineId: number,
   preset: "default" | "dev" | "production" = "default"
@@ -650,3 +683,105 @@ export type PipelineGraphResponse = { nodes: NodeRecord[]; edges: EdgeRecord[] }
 export type NodeExecutionResultDto = { nodeId: string; status: string; output: string };
 export type ExecutePipelineResponse = ExecutionSnapshot;
 export type PipelineNodeCategory = "Source" | "Transform" | "Control" | "Sink";
+
+// --- Judge Chat ---
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface JudgeChatRequest {
+  pipeline_id: number;
+  message: string;
+  history?: ChatMessage[];
+  focused_node_id?: number;
+}
+
+export interface JudgeChatResponse {
+  reply: string;
+  tool_calls_used: string[];
+}
+
+export function judgeChat(req: JudgeChatRequest): Promise<JudgeChatResponse> {
+  return postJson<JudgeChatResponse>("/judge/chat", req);
+}
+
+export interface AssessmentSkippedDetail {
+  metric_code: string;
+  axis: string;
+  reason: string;
+  occurrences: number;
+}
+
+export interface AssessmentAxisCoverageEntry {
+  axis: "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H";
+  metrics: string[];
+  weight_total: number;
+}
+
+export interface AssessmentProfileSelection {
+  applied: string;
+  origin: "request" | "auto" | "fallback";
+  reason: string;
+  requested?: string;
+}
+
+export interface AssessmentGate {
+  T_p95_ms: number | null;
+  T_max_ms: number | null;
+  C_total: number | null;
+  C_max: number | null;
+  R_fail: number;
+  R_fail_max: number;
+  f_safe: number | null;
+  f_safe_min: number;
+  passes: boolean;
+  reasons: string[];
+}
+
+export interface AssessmentReport {
+  pipeline_id: number;
+  final_score: number;
+  verdict: "pass" | "improvement" | "fail";
+  weight_profile: string;
+  profile_selection: AssessmentProfileSelection;
+  weights_used: Record<string, number>;
+  metric_scores: Array<{
+    metric_code: string;
+    axis: string;
+    value: number;
+    sample_size: number;
+    executor: string;
+  }>;
+  per_node: Array<{
+    node_id: number;
+    node_type: string;
+    metrics: Array<{ metric_code: string; axis: string; value: number; sample_size: number; executor: string }>;
+  }>;
+  skipped_metrics: string[];
+  skipped_metrics_detail: AssessmentSkippedDetail[];
+  axis_coverage: AssessmentAxisCoverageEntry[];
+  axis_warning?: string;
+  gate: AssessmentGate;
+  item_count: number;
+}
+
+export interface AssessmentItem {
+  item_key: string;
+  input: Record<string, unknown>;
+  agent_output: { text: string; structured_output?: unknown; tool_call_trace?: unknown[] };
+  reference?: { answer?: string; rubric?: string; claims?: string[]; relevant_docs?: string[] };
+}
+
+export interface AssessmentRequest {
+  pipeline_id: number;
+  items?: AssessmentItem[];
+  dataset_id?: number;
+  sample?: { fraction?: number; size?: number; seed?: number };
+  weight_profile?: string;
+}
+
+export function runAssessment(req: AssessmentRequest): Promise<AssessmentReport> {
+  return postJson<AssessmentReport>("/judge/assessments", req);
+}
