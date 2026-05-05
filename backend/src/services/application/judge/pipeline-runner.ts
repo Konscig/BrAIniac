@@ -39,16 +39,18 @@ async function startWithInFlightRetry(
   // 'queued' и executionId, который никогда не будет существовать в jobsById —
   // polling потом получит 404 «execution not found».
   const startInput = { preset: 'default' as const, input_json: { question, user_query: question } };
-  let delayMs = 200;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  const MAX_ATTEMPTS = 10;
+  let delayMs = 250;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const idempotencyKey = `assess-${pipelineId}-${randomUUID()}`;
     try {
       return await startPipelineExecutionForUser(pipelineId, userId, startInput, idempotencyKey);
     } catch (err) {
       const code = (err as any)?.body?.code ?? (err as any)?.code;
-      if (code !== 'PIPELINE_EXECUTION_ALREADY_RUNNING' || attempt === 4) throw err;
+      if (code !== 'PIPELINE_EXECUTION_ALREADY_RUNNING' || attempt === MAX_ATTEMPTS - 1) throw err;
       await sleep(delayMs);
-      delayMs = Math.min(delayMs * 2, 2000);
+      // 250 → 500 → 1000 → 2000 → 3000 (плато), суммарно ~24s
+      delayMs = Math.min(delayMs * 2, 3000);
     }
   }
   throw new HttpError(503, {
