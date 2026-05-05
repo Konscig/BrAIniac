@@ -26,16 +26,22 @@ async function startWithInFlightRetry(
   pipelineId: number,
   userId: number,
   question: string,
-  idempotencyKey: string,
 ): Promise<PipelineExecutionSnapshot> {
-  // Pipeline executor освобождает in-flight lock в finally-блоке после того
+  // Pipeline executor освобождает in-flight lock в finally-блоке после того,
   // как status выставлен в 'succeeded'/'failed'. Между нашим polling-loop'ом
   // (выходим по terminal status) и финальной cleanup'ой есть race window.
-  // При sequential оценке golden dataset мы упирались в HTTP 409 на следующий
+  // При sequential оценке golden dataset мы упираемся в HTTP 409 на следующий
   // item. Отступаем экспоненциально: 200ms → 400ms → 800ms → 1600ms (max 5).
+  //
+  // Важно: на каждый retry используем НОВЫЙ idempotencyKey. Если оставить
+  // тот же ключ, при первой неудаче (409 ALREADY_RUNNING) zombie idempotency
+  // record уже создан, и второй start вернёт stub-snapshot со статусом
+  // 'queued' и executionId, который никогда не будет существовать в jobsById —
+  // polling потом получит 404 «execution not found».
   const startInput = { preset: 'default' as const, input_json: { question, user_query: question } };
   let delayMs = 200;
   for (let attempt = 0; attempt < 5; attempt += 1) {
+    const idempotencyKey = `assess-${pipelineId}-${randomUUID()}`;
     try {
       return await startPipelineExecutionForUser(pipelineId, userId, startInput, idempotencyKey);
     } catch (err) {
@@ -58,8 +64,7 @@ export async function runPipelineForItem(
   question: string,
   options: { timeoutMs?: number } = {},
 ): Promise<PipelineExecutionSnapshot> {
-  const idempotencyKey = `assess-${pipelineId}-${randomUUID()}`;
-  const initial = await startWithInFlightRetry(pipelineId, userId, question, idempotencyKey);
+  const initial = await startWithInFlightRetry(pipelineId, userId, question);
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const deadline = Date.now() + timeoutMs;
