@@ -78,6 +78,32 @@ function buildSidecarPayload(code: string, item: any): Record<string, any> {
         reference: { relevant_docs: reference.relevant_docs ?? [] },
       };
 
+    case 'f_fact':
+      // FactScore: нужны claims из reference + context (или сам answer как proxy)
+      return {
+        agent_output: { text: agentOut.text ?? '' },
+        reference: {
+          claims: reference.claims ?? [],
+          context_texts: reference.context_texts ?? (reference.answer ? [reference.answer] : []),
+        },
+      };
+
+    case 'f_corr':
+      // Answer Correctness: текст + эталон + опционально claims
+      return {
+        agent_output: { text: agentOut.text ?? '' },
+        reference: {
+          answer: reference.answer ?? '',
+          ...(reference.claims ? { claims: reference.claims } : {}),
+        },
+      };
+
+    case 'f_contra':
+      return {
+        agent_output: { text: agentOut.text ?? '' },
+        reference: { answer: reference.answer ?? '' },
+      };
+
     case 'f_toxicity':
       return { agent_output: { text: agentOut.text ?? '' } };
 

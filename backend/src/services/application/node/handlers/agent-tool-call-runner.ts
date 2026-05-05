@@ -90,10 +90,13 @@ export async function runAgentToolCall(options: RunAgentToolCallOptions): Promis
       nextInputJson,
       traceEntry: {
         index,
+        tool: resolvedBinding.name,
+        params: inputPatch ?? {},
         requested_tool: requestedToolName,
         resolved_tool: resolvedBinding.name,
         source,
         status: 'completed',
+        success: true,
         output: outputSummary,
       },
       followupMessage: buildToolResultMessage({
@@ -111,10 +114,13 @@ export async function runAgentToolCall(options: RunAgentToolCallOptions): Promis
       nextInputJson,
       traceEntry: {
         index,
+        tool: resolvedBinding.name,
+        params: inputPatch ?? {},
         requested_tool: requestedToolName,
         resolved_tool: resolvedBinding.name,
         source,
         status: 'failed',
+        success: false,
         error: {
           ...(errorCode ? { code: errorCode } : {}),
           ...(errorStatus ? { status: errorStatus } : {}),

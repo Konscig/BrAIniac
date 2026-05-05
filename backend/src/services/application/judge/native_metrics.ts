@@ -79,13 +79,19 @@ function tokenF1(item: AssessItem): number {
 }
 
 function citationF1(item: AssessItem): number {
-  const refs = item.reference?.relevant_docs ?? [];
-  if (!refs.length) {
-    throw new MetricNotApplicable('f_cite requires reference.relevant_docs');
+  // Цитирование считается по URL'ам (что естественнее для текстовых ответов)
+  // и/или по id'шникам документов. Метрика — recall: доля релевантных источников,
+  // упомянутых в ответе.
+  const urls = item.reference?.relevant_urls ?? [];
+  const docs = item.reference?.relevant_docs ?? [];
+  if (urls.length === 0 && docs.length === 0) {
+    throw new MetricNotApplicable('f_cite requires reference.relevant_urls or reference.relevant_docs');
   }
   const text = item.agent_output.text;
-  const cited = refs.filter((id) => text.includes(String(id)));
-  return cited.length / refs.length;
+  if (!text) return 0;
+  const candidates = [...urls, ...docs.map(String)];
+  const cited = candidates.filter((c) => text.includes(c)).length;
+  return cited / candidates.length;
 }
 
 function recallAtK(item: AssessItem): number {
@@ -129,31 +135,80 @@ function ctxRecall(item: AssessItem): number {
   return recallAtK(item);
 }
 
-function toolSelection(item: AssessItem): number {
+/** Алиасы universal-capabilities в реальные имена tools.
+ *  reference.tool_trajectory приходит из augmented датасета в universal-форме (rag_search, web_search, ...)
+ *  чтобы один датасет работал с разными графами. Здесь раскрываем в множество синонимов и
+ *  сравниваем против trace по нормализованному ключу. */
+const TOOL_ALIASES: Record<string, string[]> = {
+  rag_search: ['rag', 'rag_search', 'ragdataset', 'hybridretriever', 'retriever', 'search', 'vectorsearch', 'voproshalych_rag'],
+  web_search: ['web_search', 'websearch', 'duckduckgo', 'serpapi'],
+  calculator: ['calculator', 'calc', 'math'],
+  // 'answer' — финальная генерация LLM, не tool call. В trace его нет, поэтому
+  // эти шаги при сравнении исключаем (см. canonicalRefTools/Steps).
+};
+
+const TOOL_NAMES_TO_SKIP_IN_REF = new Set(['answer', 'final_answer', 'respond']);
+
+function normalizeToolName(name: string | undefined | null): string {
+  return String(name ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function toolMatches(refName: string, predName: string): boolean {
+  const refNorm = normalizeToolName(refName);
+  const predNorm = normalizeToolName(predName);
+  if (refNorm === predNorm) return true;
+  // Если ref — universal capability, проверяем по списку алиасов
+  const aliases = TOOL_ALIASES[refNorm];
+  if (aliases) {
+    return aliases.some((a) => normalizeToolName(a) === predNorm);
+  }
+  // Иначе наоборот — может быть pred это universal, а ref — конкретное имя
+  for (const [, list] of Object.entries(TOOL_ALIASES)) {
+    if (list.some((a) => normalizeToolName(a) === predNorm) && list.some((a) => normalizeToolName(a) === refNorm)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Достаём имя tool из шага trace: AgentCall пишет resolved_tool/requested_tool,
+ *  LoopGate — tool, разные contracts — tool_name. Берём первое непустое. */
+function stepTool(step: any): string {
+  return step?.tool ?? step?.resolved_tool ?? step?.tool_name ?? step?.requested_tool ?? '';
+}
+
+/** Шаги ожидаемой trajectory без финальной генерации (она не делает tool call). */
+function refTrajectorySteps(item: AssessItem): any[] {
   const refTraj: any[] = (item.reference as any)?.tool_trajectory ?? [];
-  if (!refTraj.length) {
+  return refTraj.filter((s) => !TOOL_NAMES_TO_SKIP_IN_REF.has(normalizeToolName(s?.tool)));
+}
+
+function toolSelection(item: AssessItem): number {
+  const refSteps = refTrajectorySteps(item);
+  if (!refSteps.length) {
     throw new MetricNotApplicable('f_toolsel requires reference.tool_trajectory');
   }
   const trace = item.agent_output.tool_call_trace ?? [];
-  const refTools = new Set(refTraj.map((s: any) => s.tool));
-  const usedTools = new Set(trace.map((s: any) => s.tool));
+  const usedTools = trace.map(stepTool);
   let hits = 0;
-  for (const t of refTools) if (usedTools.has(t)) hits++;
-  return hits / refTools.size;
+  for (const r of refSteps) {
+    if (usedTools.some((u) => toolMatches(r.tool, u))) hits += 1;
+  }
+  return hits / refSteps.length;
 }
 
 function parameterF1(item: AssessItem): number {
-  const refTraj: any[] = (item.reference as any)?.tool_trajectory ?? [];
-  if (!refTraj.length) {
+  const refSteps = refTrajectorySteps(item);
+  if (!refSteps.length) {
     throw new MetricNotApplicable('f_argF1 requires reference.tool_trajectory');
   }
   const trace = item.agent_output.tool_call_trace ?? [];
   let scores = 0;
-  const n = Math.min(trace.length, refTraj.length);
+  const n = Math.min(trace.length, refSteps.length);
   if (n === 0) return 0;
   for (let i = 0; i < n; i++) {
-    const pKeys = Object.keys(trace[i]?.params ?? {});
-    const rKeys = Object.keys(refTraj[i]?.params ?? {});
+    const pKeys = Object.keys(trace[i]?.params ?? trace[i]?.input ?? {});
+    const rKeys = Object.keys(refSteps[i]?.params ?? {});
     if (!pKeys.length && !rKeys.length) { scores++; continue; }
     const pSet = new Set(pKeys), rSet = new Set(rKeys);
     let tp = 0;
@@ -175,40 +230,44 @@ function toolCallSuccess(item: AssessItem): number {
 }
 
 function trajectoryIoU(item: AssessItem): number {
-  const refTraj: any[] = (item.reference as any)?.tool_trajectory ?? [];
-  if (!refTraj.length) {
+  const refSteps = refTrajectorySteps(item);
+  if (!refSteps.length) {
     throw new MetricNotApplicable('f_trajIoU requires reference.tool_trajectory');
   }
   const trace = item.agent_output.tool_call_trace ?? [];
-  const predSet = new Set(trace.map((s: any) => s.tool));
-  const refSet  = new Set(refTraj.map((s: any) => s.tool));
+  const predTools = trace.map(stepTool);
+  const refTools = refSteps.map((s) => s.tool);
   let inter = 0;
-  for (const t of predSet) if (refSet.has(t)) inter++;
-  const union = new Set([...predSet, ...refSet]).size;
+  for (const r of refTools) if (predTools.some((p) => toolMatches(r, p))) inter += 1;
+  // Union — по нормализованным именам, чтобы алиасы не считались дважды
+  const allKeys = new Set<string>();
+  for (const p of predTools) allKeys.add(normalizeToolName(p));
+  for (const r of refTools) allKeys.add(normalizeToolName(r));
+  const union = allKeys.size;
   return union === 0 ? 0 : inter / union;
 }
 
 function planEfficiency(item: AssessItem): number {
-  const refTraj: any[] = (item.reference as any)?.tool_trajectory ?? [];
-  if (!refTraj.length) {
+  const refSteps = refTrajectorySteps(item);
+  if (!refSteps.length) {
     throw new MetricNotApplicable('f_planEff requires reference.tool_trajectory');
   }
   const trace = item.agent_output.tool_call_trace ?? [];
   if (trace.length === 0) return 0;
-  return Math.min(1, refTraj.length / trace.length);
+  return Math.min(1, refSteps.length / trace.length);
 }
 
 function nodeCoverage(item: AssessItem): number {
-  const refTraj: any[] = (item.reference as any)?.tool_trajectory ?? [];
-  if (!refTraj.length) {
+  const refSteps = refTrajectorySteps(item);
+  if (!refSteps.length) {
     throw new MetricNotApplicable('f_node_cov requires reference.tool_trajectory');
   }
   const trace = item.agent_output.tool_call_trace ?? [];
-  const visited = new Set(trace.map((s: any) => s.tool));
-  const required = new Set(refTraj.map((s: any) => s.tool));
+  const visited = trace.map(stepTool);
+  const required = refSteps.map((s) => s.tool);
   let covered = 0;
-  for (const t of required) if (visited.has(t)) covered++;
-  return covered / required.size;
+  for (const t of required) if (visited.some((v) => toolMatches(t, v))) covered += 1;
+  return required.length === 0 ? 1 : covered / required.length;
 }
 
 function schemaValidity(item: AssessItem): number {
@@ -282,18 +341,21 @@ function loopTerm(item: AssessItem): number {
 
 function loopBudget(item: AssessItem): number {
   const out = item.agent_output as any;
-  if (out.loop_iterations === undefined) {
-    throw new MetricNotApplicable('f_loop_budget requires agent_output.loop_iterations');
+  // AgentCall пишет tool_calls_executed/max_tool_calls; LoopGate — loop_iterations/loop_budget.
+  // Принимаем оба источника.
+  const usedRaw = out.loop_iterations ?? out.tool_calls_executed;
+  const maxRaw = (item.input as any)?.max_iterations ?? out.loop_budget ?? out.max_iterations ?? out.max_tool_calls;
+  if (usedRaw === undefined) {
+    throw new MetricNotApplicable('f_loop_budget requires agent_output.loop_iterations or tool_calls_executed');
   }
-  const used = Number(out.loop_iterations);
-  const max  = Number((item.input as any).max_iterations ?? out.loop_budget ?? 0);
+  const used = Number(usedRaw);
+  const max  = Number(maxRaw ?? 0);
   if (!Number.isFinite(used) || used < 0) {
     throw new MetricNotApplicable('f_loop_budget got invalid loop_iterations');
   }
   if (!Number.isFinite(max) || max <= 0) {
     throw new MetricNotApplicable('f_loop_budget requires positive max budget');
   }
-  // Чем меньше итераций потрачено относительно бюджета, тем выше скор.
   return Math.max(0, Math.min(1, 1 - used / max));
 }
 
@@ -319,7 +381,27 @@ function retryEfficacy(item: AssessItem): number {
 }
 
 function checkEval(item: AssessItem): number {
-  return tokenF1(item);
+  // CheckEval (Lee et al. 2024): доля выполненных булевых критериев из чек-листа.
+  // Простейшая native-имплементация: для каждого checklist-item проверяем
+  // подстрочное вхождение ключевых слов критерия в тексте ответа. Грубо, но
+  // воспроизводимо без дополнительного LLM. Реальный CheckEval делается через
+  // LLM-судью — этот вариант оставим на P3 (см. ось G в каталоге).
+  const checklist = item.reference?.checklist;
+  if (!checklist || checklist.length === 0) {
+    throw new MetricNotApplicable('f_check requires reference.checklist');
+  }
+  const text = item.agent_output.text?.toLowerCase() ?? '';
+  if (!text) return 0;
+  let satisfied = 0;
+  for (const c of checklist) {
+    const keyTokens = tokens(c.criterion).filter((t) => t.length >= 4);
+    if (keyTokens.length === 0) continue;
+    const hits = keyTokens.filter((t) => text.includes(t)).length;
+    const present = hits / keyTokens.length >= 0.5;
+    // expected=true → present должно быть true; expected=false → present false
+    if (present === c.expected) satisfied += 1;
+  }
+  return satisfied / checklist.length;
 }
 
 function selfConsistency(item: AssessItem): number {

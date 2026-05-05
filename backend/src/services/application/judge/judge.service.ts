@@ -29,7 +29,18 @@ export interface AssessItem {
     loop_terminated?: boolean;
     loop_converged?: boolean;
   };
-  reference?: { answer?: string; rubric?: string; claims?: string[]; relevant_docs?: string[]; tool_trajectory?: any[] };
+  reference?: {
+    answer?: string;
+    rubric?: string;
+    claims?: string[];
+    checklist?: Array<{ criterion: string; expected: boolean }>;
+    context_texts?: string[];
+    relevant_docs?: string[];
+    relevant_urls?: string[];
+    tool_trajectory?: any[];
+    structured_reference?: Record<string, any> | null;
+    paraphrases?: string[];
+  };
   /** Per-item operational telemetry, измерено runtime'ом */
   ops?: { duration_ms?: number; cost_units?: number; status?: 'succeeded' | 'failed' };
 }
