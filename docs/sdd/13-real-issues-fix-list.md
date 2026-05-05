@@ -97,3 +97,66 @@
   - `docs/sdd/12-frontend-rag-alignment.md`
 - Что фиксить:
   - удалить legacy-компонент или явно пометить как deprecated + покрыть тестом отсутствие использования.
+
+## 11) Chunker → Embedder теряет ~99% chunks (judge-v2 finding 2026-05-05)
+- Priority: P1
+- Влияние на real RAG: критическое — retrieval упирается в почти пустой индекс
+- Статус: подтверждено через прогон оценки на pipeline `voproshalych-rag-agent` (id=4)
+- Симптом:
+  - Chunker.contract_output.chunk_count = **512**
+  - Embedder.input_items = **3**, embeddings list = **3**
+  - VectorUpsert.upserted_count = **3** (из 512 произведённых)
+  - HybridRetriever на любом запросе возвращает `candidate_count: 0, retrieval_source: "no-results"`
+- Доказательства:
+  - `backend/src/services/application/tool/contracts/embedder.tool.ts:50-130` — функции
+    `collectChunks`/`pushDistinctChunk`/`normalizeInputChunks` парсят upstream и
+    выбрасывают всё кроме первых 3 (предположительно читают только preview из
+    artifact-manifest, не следуют по pointer к полному списку);
+  - `backend/src/services/application/tool/contracts/tool-artifact.manifest.ts:49-127` —
+    `readExternalArtifactItems` работает только при `storage_mode==='external-blob'`,
+    а Chunker пишет `storage_mode: 'inline-json'` с большим item_count, но Embedder
+    видит manifest, а не сами items.
+- Что фиксить:
+  - либо Chunker должен класть полный `chunks` массив в payload (если items < 256);
+  - либо Embedder должен честно обходить manifest и читать items из артефакта;
+  - либо договориться о едином формате передачи между ToolNode-узлами в pipeline.
+- Воспроизведение: `node 24` Embedder pipeline=4 после прогона оценки.
+
+## 12) VectorUpsert игнорирует `toolConfig.index_name` и `namespace` override
+- Priority: P1
+- Влияние на real RAG: критическое — записи летят в дефолтный namespace, retriever
+  ищет в кастомном (или наоборот) — индексы расходятся
+- Статус: подтверждено
+- Симптом:
+  - `Node.ui_json.toolConfig` = `{"index_name": "voproshalych-agent", "namespace": ""}`
+  - `Node.output_json.data.contract_output` = `{"index_name": "default-index", "namespace": "default", ...}`
+- Что фиксить:
+  - в `executeResolvedToolBinding`/contract-input протолкнуть `toolConfig` в `contract_input`
+    для VectorUpsert (как минимум поля `index_name`, `namespace`);
+  - либо в seed/UI задавать config_json самого Tool так, чтобы override применялся.
+- Воспроизведение: `Node 25` pipeline=4.
+
+## 13) AgentCall trace не содержал `tool` и `params` (исправлено в judge-v2)
+- Priority: P1, **исправлено** commit `1502961`
+- Влияние: D-метрики оси Tool-Use в judge возвращали 0 даже на корректных прогонах,
+  потому что `agent-tool-call-runner.ts` писал в trace `requested_tool/resolved_tool`,
+  но native-метрики искали `tool/params`.
+- Что сделано: добавлены явные поля `tool`, `params`, `success` в traceEntry.
+
+## 14) ManualInput.ui_json.question перебивал Trigger.input_json (исправлено в judge-v2)
+- Priority: P1, **исправлено** commit `4627117`
+- Влияние: при оценке pipeline через golden dataset все items получали один и тот же
+  захардкоженный вопрос → batch-оценка была бессмысленной.
+- Что сделано: инвертирован приоритет — `Trigger.input_json.question` побеждает
+  `ui_json.manualInput.question`. UI-вопрос остаётся fallback'ом для ручного запуска.
+
+## 15) Pipeline.max_time трактовался как мс вместо секунд в operational gate (исправлено в judge-v2)
+- Priority: P2, **исправлено** commit `47522f9`
+- Влияние: gate всегда failил с `p95 latency 7-10s > 120ms` (потому что `max_time=120`
+  это секунды, а в judge'е сравнивалось с миллисекундами).
+- Что сделано: конвертация `max_time * 1000` в `T_max_ms`.
+
+## 16) extractAssessOutput читал output_json вместо output_json.data (исправлено в judge-v2)
+- Priority: P0, **исправлено** commit `47522f9`
+- Влияние: tool_call_trace, structured_output, retrieved_ids никогда не доезжали до judge,
+  потому что `persistNodeOutputs` оборачивает реальный output runtime'а в `.data`-поле.
