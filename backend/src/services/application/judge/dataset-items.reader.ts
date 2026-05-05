@@ -130,10 +130,19 @@ function buildReferenceFromRecord(
     if (par) reference.paraphrases = par;
   }
 
-  // Fallback: если в reference нет relevant_docs/urls, тянем из meta (chunk_id, confluence_url)
+  // Fallback: если в reference нет relevant_docs/urls, тянем из meta.
+  // Кладём ОБА варианта id: исходный chunk_id (voproshalych corpus) и pageId
+  // (извлечённый из confluence_url) — RAG-tool именует чанки как
+  // `<pageId>_<doc_idx>_chunk_<n>`, поэтому matching через подстроку сработает
+  // именно по pageId. Native-метрики оси C делают substring-сравнение.
   if (!reference.relevant_docs && meta) {
+    const docs: string[] = [];
     const chunkId = meta.chunk_id;
-    if (chunkId !== undefined && chunkId !== null) reference.relevant_docs = [String(chunkId)];
+    if (chunkId !== undefined && chunkId !== null) docs.push(String(chunkId));
+    const url = typeof meta.confluence_url === 'string' ? meta.confluence_url : '';
+    const pageIdMatch = url.match(/pageId=(\d+)/);
+    if (pageIdMatch?.[1]) docs.push(pageIdMatch[1]);
+    if (docs.length > 0) reference.relevant_docs = docs;
   }
   if (!reference.relevant_urls && meta) {
     const url = meta.confluence_url;

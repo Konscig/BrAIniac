@@ -79,9 +79,10 @@ function tokenF1(item: AssessItem): number {
 }
 
 function citationF1(item: AssessItem): number {
-  // Цитирование считается по URL'ам (что естественнее для текстовых ответов)
-  // и/или по id'шникам документов. Метрика — recall: доля релевантных источников,
-  // упомянутых в ответе.
+  // Цитирование считается по URL'ам и/или по id'шникам документов. Метрика —
+  // recall: доля релевантных источников, упомянутых в ответе. URL может
+  // присутствовать в ответе как полная строка либо как часть pageId — поэтому
+  // matching через includes (substring).
   const urls = item.reference?.relevant_urls ?? [];
   const docs = item.reference?.relevant_docs ?? [];
   if (urls.length === 0 && docs.length === 0) {
@@ -89,9 +90,30 @@ function citationF1(item: AssessItem): number {
   }
   const text = item.agent_output.text;
   if (!text) return 0;
+  const lowerText = text.toLowerCase();
   const candidates = [...urls, ...docs.map(String)];
-  const cited = candidates.filter((c) => text.includes(c)).length;
+  const cited = candidates.filter((c) => {
+    const lc = c.toLowerCase();
+    if (lowerText.includes(lc)) return true;
+    // pageId из URL — попробуем извлечь и проверить
+    const m = c.match(/pageId=(\d+)/);
+    return Boolean(m?.[1] && lowerText.includes(m[1]));
+  }).length;
   return cited / candidates.length;
+}
+
+/** Считаем chunk «релевантным», если в его id присутствует ЛЮБОЙ из эталонных
+ *  идентификаторов как подстрока. Это нужно потому что RAG-tool именует чанки
+ *  составным ключом вида `<pageId>_<doc_idx>_chunk_<n>`, а в эталоне обычно
+ *  лежит просто pageId или исходный chunk_id из корпуса. Точное совпадение
+ *  по id'ам в реальной разметке встречается редко. */
+function chunkMatchesAnyRelevant(retrievedId: string, relevant: string[]): boolean {
+  const lower = retrievedId.toLowerCase();
+  return relevant.some((rel) => {
+    if (!rel) return false;
+    const r = rel.toLowerCase();
+    return lower === r || lower.includes(r) || r.includes(lower);
+  });
 }
 
 function recallAtK(item: AssessItem): number {
@@ -104,8 +126,13 @@ function recallAtK(item: AssessItem): number {
   if (!retrieved.length) {
     throw new MetricNotApplicable('f_recall@k requires agent_output.retrieved_ids');
   }
-  const hits = retrieved.filter((id) => relevant.includes(id));
-  return hits.length / relevant.length;
+  // Для каждого relevant'a проверяем, нашёлся ли хоть один retrieved-id, который
+  // его содержит. Это именно recall (доля найденных эталонов), а не precision.
+  let hits = 0;
+  for (const rel of relevant) {
+    if (retrieved.some((rid) => chunkMatchesAnyRelevant(rid, [rel]))) hits += 1;
+  }
+  return hits / relevant.length;
 }
 
 function ndcgAtK(item: AssessItem): number {
@@ -120,7 +147,7 @@ function ndcgAtK(item: AssessItem): number {
   }
   let dcg = 0, idcg = 0;
   for (let i = 0; i < retrieved.length; i++) {
-    const rel = relevant.includes(retrieved[i]!) ? 1 : 0;
+    const rel = chunkMatchesAnyRelevant(retrieved[i]!, relevant) ? 1 : 0;
     dcg  += rel  / Math.log2(i + 2);
     idcg += (i < relevant.length ? 1 : 0) / Math.log2(i + 2);
   }
