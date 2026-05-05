@@ -358,11 +358,12 @@ async function loadOperationalThresholds(pipelineId: number): Promise<{ T_max_ms
     where: { pipeline_id: pipelineId },
     select: { max_time: true, max_cost: true },
   });
-  // Prisma Decimal → number; 0 трактуем как «не задано»
-  const tMax = Number(p?.max_time ?? 0);
+  // Prisma Decimal → number. Pipeline.max_time хранится в СЕКУНДАХ (см. seed_basic_node_types,
+  // там по умолчанию 120 = 2 минуты). Конвертим в мс. 0 трактуем как «не задано».
+  const tMaxSec = Number(p?.max_time ?? 0);
   const cMax = Number(p?.max_cost ?? 0);
   return {
-    T_max_ms: tMax > 0 ? tMax : DEFAULT_GATE.T_max_ms,
+    T_max_ms: tMaxSec > 0 ? Math.round(tMaxSec * 1000) : DEFAULT_GATE.T_max_ms,
     C_max: cMax > 0 ? cMax : DEFAULT_GATE.C_max,
   };
 }

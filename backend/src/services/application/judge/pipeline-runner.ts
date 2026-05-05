@@ -106,9 +106,17 @@ export async function extractAssessOutput(
   let loopIterations: number | undefined;
   let loopTerminated: boolean | undefined;
   let loopConverged: boolean | undefined;
+  let maxIterations: number | undefined;
 
   for (const n of nodes) {
-    const out = (n.output_json ?? {}) as Record<string, any>;
+    // persistNodeOutputs оборачивает реальный output runtime'а в output_json.data,
+    // а в корень добавляет execution_id/status/runs/error и опционально judge-блок
+    // (см. pipeline.executor.graph.ts:286, judge.service.ts:write). Поэтому читаем
+    // с приоритетом из data, с fallback на корень для совместимости со старой схемой.
+    const wrapper = (n.output_json ?? {}) as Record<string, any>;
+    const out: Record<string, any> = (wrapper.data && typeof wrapper.data === 'object')
+      ? { ...wrapper.data, ...(typeof wrapper.tool_call_trace !== 'undefined' ? { tool_call_trace: wrapper.tool_call_trace } : {}) }
+      : wrapper;
 
     // Trace из AgentCall (см. agent-call-output.ts)
     if (Array.isArray(out.tool_call_trace) && out.tool_call_trace.length > 0) {
@@ -128,13 +136,20 @@ export async function extractAssessOutput(
         else if (r && typeof r === 'object') {
           const id = (r as any).id ?? (r as any).doc_id ?? (r as any).document_id;
           if (typeof id === 'string') retrievedIds.push(id);
+          // chunk_id из HybridRetriever / Chunker
+          const chunkId = (r as any).chunk_id;
+          if (typeof chunkId === 'string') retrievedIds.push(chunkId);
         }
       }
     }
 
-    // LoopGate телеметрия
+    // AgentCall-эквивалент loop телеметрии: tool_calls_executed = used iterations,
+    // max_tool_calls = budget. См. agent-call-output.ts.
     if (typeof out.loop_iterations === 'number') loopIterations = out.loop_iterations;
     if (typeof out.iterations === 'number' && loopIterations === undefined) loopIterations = out.iterations;
+    if (typeof out.tool_calls_executed === 'number' && loopIterations === undefined) loopIterations = out.tool_calls_executed;
+    if (typeof out.max_tool_calls === 'number' && maxIterations === undefined) maxIterations = out.max_tool_calls;
+    if (typeof out.max_iterations === 'number' && maxIterations === undefined) maxIterations = out.max_iterations;
     if (typeof out.loop_terminated === 'boolean') loopTerminated = out.loop_terminated;
     if (typeof out.loop_converged === 'boolean') loopConverged = out.loop_converged;
   }
@@ -144,6 +159,7 @@ export async function extractAssessOutput(
   if (structuredOutput !== undefined) agentOutput.structured_output = structuredOutput;
   if (retrievedIds.length > 0) agentOutput.retrieved_ids = retrievedIds;
   if (loopIterations !== undefined) agentOutput.loop_iterations = loopIterations;
+  if (maxIterations !== undefined) (agentOutput as any).max_iterations = maxIterations;
   if (loopTerminated !== undefined) agentOutput.loop_terminated = loopTerminated;
   if (loopConverged !== undefined) agentOutput.loop_converged = loopConverged;
   return agentOutput;
