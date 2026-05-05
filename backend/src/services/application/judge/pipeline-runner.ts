@@ -22,6 +22,36 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function startWithInFlightRetry(
+  pipelineId: number,
+  userId: number,
+  question: string,
+  idempotencyKey: string,
+): Promise<PipelineExecutionSnapshot> {
+  // Pipeline executor освобождает in-flight lock в finally-блоке после того
+  // как status выставлен в 'succeeded'/'failed'. Между нашим polling-loop'ом
+  // (выходим по terminal status) и финальной cleanup'ой есть race window.
+  // При sequential оценке golden dataset мы упирались в HTTP 409 на следующий
+  // item. Отступаем экспоненциально: 200ms → 400ms → 800ms → 1600ms (max 5).
+  const startInput = { preset: 'default' as const, input_json: { question, user_query: question } };
+  let delayMs = 200;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      return await startPipelineExecutionForUser(pipelineId, userId, startInput, idempotencyKey);
+    } catch (err) {
+      const code = (err as any)?.body?.code ?? (err as any)?.code;
+      if (code !== 'PIPELINE_EXECUTION_ALREADY_RUNNING' || attempt === 4) throw err;
+      await sleep(delayMs);
+      delayMs = Math.min(delayMs * 2, 2000);
+    }
+  }
+  throw new HttpError(503, {
+    code: 'JUDGE_PIPELINE_BUSY',
+    error: 'pipeline executor stayed busy beyond retry budget',
+    details: { pipeline_id: pipelineId },
+  });
+}
+
 export async function runPipelineForItem(
   pipelineId: number,
   userId: number,
@@ -29,15 +59,7 @@ export async function runPipelineForItem(
   options: { timeoutMs?: number } = {},
 ): Promise<PipelineExecutionSnapshot> {
   const idempotencyKey = `assess-${pipelineId}-${randomUUID()}`;
-  const initial = await startPipelineExecutionForUser(
-    pipelineId,
-    userId,
-    {
-      preset: 'default',
-      input_json: { question, user_query: question },
-    },
-    idempotencyKey,
-  );
+  const initial = await startWithInFlightRetry(pipelineId, userId, question, idempotencyKey);
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const deadline = Date.now() + timeoutMs;
