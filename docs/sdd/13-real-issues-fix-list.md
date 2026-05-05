@@ -194,6 +194,33 @@
   выполняется в одном execution и retriever получает свежие векторы по edge),
   но для prod-ready RAG надо настоящий vector DB или общий artifact store.
 
+## 19a) AgentCall в RAG-графе не получает retrieved-context в prompt
+- Priority: P1
+- Влияние: агент в `voproshalych-rag-agent` отвечает «по своим знаниям LLM»,
+  игнорируя 5 кандидатов от HybridRetriever — судья ставит f_judge_ref ~0.25,
+  ось C даёт ~0 даже на корректном retrieval'е.
+- Симптом:
+  - `Node 26 (HybridRetriever).contract_output.candidate_count = 5` ✓
+  - `Node 27 (AgentCall).tool_calls_executed = 0`
+  - `Node 27.available_tools = null` (отсутствует ключ)
+- Корень:
+  1) `agent-call.node-handler.ts:17` отфильтровывает все tool_node-shaped
+     inputs из prompt через `isToolAdvertisingInput`, поэтому candidates
+     никогда не попадают в context.
+  2) При попытке зарегистрировать их как tools, `resolveAgentToolBindings`
+     требует совпадения с записями в БД `Tool` через `listTools()`.
+     VectorUpsert/HybridRetriever как **узлы графа** есть, но в `Tool`-таблице
+     может не быть совпадения для этого пользователя или namespace.
+  3) System-prompt агента ожидает «фрагменты в тройных кавычках» — то есть
+     pre-fetched context, а не tool-using flow.
+- Что фиксить (один из вариантов):
+  - добавить ContextAssembler-узел между HybridRetriever и AgentCall, который
+    превращает `candidates[]` в plain text;
+  - либо изменить AgentCall handler так, чтобы для retrieval-toolnode-input
+    он сам экстрагировал `candidates[].text` и подмешивал их в promptInputs;
+  - либо явно разделить роли: tool-using агент vs context-prefetch агент,
+    переключатель в ui_json.
+
 ## 20) LLMAnswer-узел в `voproloshalych-rag-linear` (pipeline=3) падает с EMPTY_PROVIDER_RESPONSE
 - Priority: P1
 - Влияние: pipeline `voproshalych-rag-linear` не отрабатывает ни одного item — оценить
