@@ -43,7 +43,10 @@ function createApp() {
   // CORS configuration
   const defaultOrigins = [
     'http://localhost:3000',
-    'http://127.0.0.1:3000'
+    'http://127.0.0.1:3000',
+    // Docker-compose: FRONTEND_PORT defaults to 3270 (frontend container)
+    'http://localhost:3270',
+    'http://127.0.0.1:3270'
   ];
   const parsedOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
