@@ -80,8 +80,12 @@ function createBrainiacMcpProvider(sessionStore) {
                 : await sessionStore.readSession();
             const hasValidSession = session ? Boolean(session.accessToken) && !isExpired(session) : false;
             output.appendLine(`[provider] provide definitions url=${normalizeBackendUrl(session?.backendUrl ?? configuredBackendUrl)} hasSession=${Boolean(session?.accessToken)} valid=${hasValidSession}`);
+            if (!hasValidSession || !session) {
+                output.appendLine('[provider] no valid session; not publishing MCP server definition');
+                return [];
+            }
             return [
-                createHttpServerDefinition(normalizeBackendUrl(session?.backendUrl ?? configuredBackendUrl), hasValidSession && session ? session.accessToken : undefined),
+                createHttpServerDefinition(normalizeBackendUrl(session.backendUrl ?? configuredBackendUrl), session.accessToken),
             ];
         },
         async resolveMcpServerDefinition(definition) {
