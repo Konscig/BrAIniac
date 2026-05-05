@@ -1,5 +1,9 @@
+// Дефолт — пустая строка: same-origin запросы. CRA dev-server форвардит их
+// через "proxy" из frontend/package.json на http://localhost:3000, благодаря
+// чему в локальной разработке CORS не срабатывает. Прод/Docker задают
+// REACT_APP_API_BASE_URL явно (см. nginx.conf и REACT_APP_API_BASE_URL в env).
 export const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "http://localhost:3000";
+  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "";
 
 type ApiOptions = RequestInit & { skipAuthHeaders?: boolean; skipWebRefresh?: boolean };
 
