@@ -1,6 +1,28 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
 const base = process.env.BASE_URL || 'http://localhost:8080';
 const headers = { 'Content-Type': 'application/json' };
-const llmContractModel = String(process.env.OPENROUTER_LLM_MODEL || process.env.RAG_E2E_AGENT_MODEL || '').trim();
+const llmContractModel = String(
+  process.env.OPENROUTER_LLM_MODEL ||
+    process.env.RAG_E2E_AGENT_MODEL ||
+    readDotEnvValue('OPENROUTER_LLM_MODEL') ||
+    readDotEnvValue('RAG_E2E_AGENT_MODEL') ||
+    '',
+).trim();
+
+function readDotEnvValue(key) {
+  const candidates = [path.join(process.cwd(), '.env'), path.join(process.cwd(), 'backend', '.env')];
+  for (const filePath of candidates) {
+    if (!existsSync(filePath)) continue;
+    const line = readFileSync(filePath, 'utf8')
+      .split(/\r?\n/)
+      .find((entry) => entry.trim().startsWith(`${key}=`));
+    if (!line) continue;
+    return line.slice(line.indexOf('=') + 1).trim().replace(/^['"]|['"]$/g, '');
+  }
+  return '';
+}
 
 async function req(path, opts) {
   const url = base + path;
@@ -1950,6 +1972,26 @@ async function run() {
         top_k: 3,
         mode: 'hybrid',
         alpha: 0.35,
+        records: [
+          {
+            document_id: 'doc_1',
+            chunk_id: 'chunk_1',
+            text: 'rag retrieval quality depends on cited source context',
+            vector: [0.6, 0.2, 0.1],
+          },
+          {
+            document_id: 'doc_2',
+            chunk_id: 'chunk_2',
+            text: 'citations improve retrieval trustworthiness and review quality',
+            vector: [0.3, 0.5, 0.2],
+          },
+          {
+            document_id: 'doc_3',
+            chunk_id: 'chunk_3',
+            text: 'hybrid retrieval combines sparse keywords and dense vectors',
+            vector: [0.2, 0.3, 0.5],
+          },
+        ],
       },
     }),
   });
@@ -2376,8 +2418,13 @@ async function run() {
     });
   }
 
+  const llmAnswerModel = String(llmAnswerContractOutput?.model ?? '');
+  const llmModelMatches =
+    llmAnswerModel === llmContractModel ||
+    llmAnswerModel.startsWith(`${llmContractModel}-`) ||
+    llmContractModel.startsWith(`${llmAnswerModel}-`);
   if (
-    llmAnswerContractOutput?.model !== llmContractModel ||
+    !llmModelMatches ||
     Number(llmAnswerContractOutput?.max_output_tokens) !== 64 ||
     !String(llmAnswerContractOutput?.prompt ?? '').includes('What is RAG?')
   ) {

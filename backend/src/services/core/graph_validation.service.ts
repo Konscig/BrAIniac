@@ -1,7 +1,15 @@
+import path from 'node:path';
 import { listEdgesByPipeline } from '../data/edge.service.js';
 import { listNodesByPipeline } from '../data/node.service.js';
 import { getNodeTypeById } from '../data/node_type.service.js';
 import { getPipelineById } from '../data/pipeline.service.js';
+import {
+  RAG_CORPUS_URI_PREFIX,
+  RAG_DATASET_ALLOWED_EXTENSIONS,
+  RAG_DATASET_ERROR_CODES,
+  RAG_DATASET_ERROR_MESSAGES,
+  RAG_DATASET_MAX_FILES_PER_NODE,
+} from '../application/tool/contracts/rag-dataset.constants.js';
 
 export type ValidationMode = 'strict' | 'relaxed';
 export type ProfileFallbackMode = 'warn' | 'strict' | 'off';
@@ -46,6 +54,7 @@ export interface GraphValidationResult {
 type NodeRecord = {
   node_id: number;
   fk_type_id: number;
+  ui_json?: any;
 };
 
 type EdgeRecord = {
@@ -379,6 +388,17 @@ export async function validatePipelineGraph(
     }
   }
 
+  // RAGDataset per-node config preflight (детерминирован: упорядочен по node_id, затем по uri_index).
+  for (const node of [...nodes].sort((a, b) => a.node_id - b.node_id)) {
+    const nodeType = nodeTypeMap.get(node.fk_type_id);
+    const nodeTypeName = typeof nodeType?.name === 'string' ? nodeType.name.trim() : '';
+    if (nodeTypeName !== 'RAGDataset') continue;
+
+    for (const diagnostic of collectRagDatasetConfigDiagnostics(node)) {
+      errors.push(diagnostic);
+    }
+  }
+
   // Structural hard checks.
   const seenEdgePairs = new Set<string>();
   for (const edge of edges) {
@@ -510,4 +530,87 @@ export async function validatePipelineGraph(
     warnings,
     metrics,
   };
+}
+
+/**
+ * Возвращает список диагностик preflight для одного узла RAGDataset.
+ * Ошибки упорядочены по `(node_id, uri_index)`, что обеспечивает
+ * детерминированный порядок (принцип III конституции).
+ *
+ * Все коды и сообщения соответствуют `RAG_DATASET_ERROR_*` в
+ * `services/application/tool/contracts/rag-dataset.constants.ts`.
+ */
+function collectRagDatasetConfigDiagnostics(node: NodeRecord): GraphDiagnostic[] {
+  const out: GraphDiagnostic[] = [];
+  const ui = node.ui_json && typeof node.ui_json === 'object' && !Array.isArray(node.ui_json)
+    ? (node.ui_json as Record<string, unknown>)
+    : null;
+
+  if (!ui || !Array.isArray(ui.uris) || ui.uris.length === 0) {
+    out.push({
+      code: RAG_DATASET_ERROR_CODES.FILE_LIST_EMPTY,
+      message: RAG_DATASET_ERROR_MESSAGES[RAG_DATASET_ERROR_CODES.FILE_LIST_EMPTY],
+      details: { nodeId: node.node_id },
+    });
+    return out;
+  }
+
+  if (ui.uris.length > RAG_DATASET_MAX_FILES_PER_NODE) {
+    out.push({
+      code: RAG_DATASET_ERROR_CODES.FILE_LIST_TOO_LONG,
+      message: RAG_DATASET_ERROR_MESSAGES[RAG_DATASET_ERROR_CODES.FILE_LIST_TOO_LONG],
+      details: { nodeId: node.node_id, received_count: ui.uris.length, limit: RAG_DATASET_MAX_FILES_PER_NODE },
+    });
+  }
+
+  const allowed = new Set<string>(RAG_DATASET_ALLOWED_EXTENSIONS);
+  const seen = new Set<string>();
+
+  for (let index = 0; index < ui.uris.length; index += 1) {
+    const raw = ui.uris[index];
+    if (typeof raw !== 'string') {
+      out.push({
+        code: RAG_DATASET_ERROR_CODES.URI_INVALID,
+        message: RAG_DATASET_ERROR_MESSAGES[RAG_DATASET_ERROR_CODES.URI_INVALID],
+        details: { nodeId: node.node_id, uri_index: index, received_type: typeof raw },
+      });
+      continue;
+    }
+    const uri = raw.trim();
+    if (uri.length === 0 || !uri.startsWith(RAG_CORPUS_URI_PREFIX)) {
+      out.push({
+        code: RAG_DATASET_ERROR_CODES.URI_INVALID,
+        message: RAG_DATASET_ERROR_MESSAGES[RAG_DATASET_ERROR_CODES.URI_INVALID],
+        details: { nodeId: node.node_id, uri_index: index, uri, expected_prefix: RAG_CORPUS_URI_PREFIX },
+      });
+      continue;
+    }
+
+    if (seen.has(uri)) {
+      out.push({
+        code: RAG_DATASET_ERROR_CODES.FILE_DUPLICATE,
+        message: RAG_DATASET_ERROR_MESSAGES[RAG_DATASET_ERROR_CODES.FILE_DUPLICATE],
+        details: { nodeId: node.node_id, uri_index: index, uri },
+      });
+      continue;
+    }
+    seen.add(uri);
+
+    const extension = path.extname(uri).toLowerCase();
+    if (!allowed.has(extension)) {
+      out.push({
+        code: RAG_DATASET_ERROR_CODES.FORMAT_INVALID,
+        message: RAG_DATASET_ERROR_MESSAGES[RAG_DATASET_ERROR_CODES.FORMAT_INVALID],
+        details: {
+          nodeId: node.node_id,
+          uri_index: index,
+          uri,
+          extension: extension || null,
+          allowed: [...RAG_DATASET_ALLOWED_EXTENSIONS],
+        },
+      });
+    }
+  }
+
+  return out;
 }

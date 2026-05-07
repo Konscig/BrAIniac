@@ -9,6 +9,20 @@ import { cn } from "../lib/utils";
 
 type CanvasNodeStatus = "idle" | "completed" | "failed" | "skipped" | "running";
 
+function JudgeScoreDot({ score }: { score: number }): React.ReactElement {
+  const pct = Math.round(score * 100);
+  const cls =
+    score >= 0.8 ? "bg-emerald-400 ring-emerald-400/30" :
+    score >= 0.6 ? "bg-yellow-400 ring-yellow-400/30" :
+    "bg-red-400 ring-red-400/30";
+  return (
+    <span
+      title={`Судья: ${pct}%`}
+      className={cn("inline-flex h-2 w-2 shrink-0 rounded-full ring-2", cls)}
+    />
+  );
+}
+
 export type CanvasNodeData = {
   nodeId: number;
   label: string;
@@ -24,6 +38,8 @@ export type CanvasNodeData = {
   isConfigurable?: boolean;
   finalOutputPreview?: string;
   tracePreview?: string;
+  /** Средний judge-score по метрикам узла (0..1), null если оценки ещё не было */
+  judgeScore?: number | null;
   tools?: ToolRecord[];
   onManualQuestionCommit?: (nodeId: number, question: string) => void;
   onToolSelect?: (nodeId: number, toolId: number | null) => void;
@@ -41,6 +57,7 @@ const statusTokens: Record<CanvasNodeStatus, { label: string; tone: string }> = 
 const iconByType: Record<string, React.ComponentType<{ className?: string }>> = {
   Trigger: CirclePlay,
   ManualInput: Database,
+  RAGDataset: Database,
   PromptBuilder: Braces,
   Filter: Cable,
   Ranker: Cable,
@@ -103,7 +120,12 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
           <Icon className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="whitespace-normal break-words text-xs font-semibold leading-4 text-foreground">{data.label}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="whitespace-normal break-words text-xs font-semibold leading-4 text-foreground">{data.label}</span>
+            {data.judgeScore != null && (
+              <JudgeScoreDot score={data.judgeScore} />
+            )}
+          </div>
           <div className="truncate text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
             {data.technicalLabel}
           </div>
@@ -114,7 +136,8 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
             className="nodrag flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
             onClick={(event) => {
               stopCanvasGesture(event);
-              if (isToolNode) {
+              // ToolNode без bind → открыть пикер; иначе — окно настроек тула.
+              if (isToolNode && !data.selectedToolId) {
                 setIsToolPickerOpen((current) => !current);
                 return;
               }
@@ -122,7 +145,7 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
             }}
             onMouseDown={stopCanvasGesture}
             onPointerDown={stopCanvasGesture}
-            aria-label={isToolNode ? "Сменить инструмент" : "Настроить узел"}
+            aria-label={isToolNode && data.selectedToolId ? "Настроить инструмент" : "Настроить узел"}
           >
             <Settings className="h-3.5 w-3.5" />
           </button>
@@ -220,12 +243,8 @@ export const RuntimeNodeCard: React.FC<NodeProps<CanvasNodeData>> = ({ data, sel
         </details>
       )}
 
-      {!isToolNode && (
-        <>
-          <Handle type="target" id="flow-in" position={Position.Left} className={handleClassName} />
-          <Handle type="source" id="flow-out" position={Position.Right} className={handleClassName} />
-        </>
-      )}
+      <Handle type="target" id="flow-in" position={Position.Left} className={handleClassName} />
+      <Handle type="source" id="flow-out" position={Position.Right} className={handleClassName} />
 
       {isToolNode && (
         <>

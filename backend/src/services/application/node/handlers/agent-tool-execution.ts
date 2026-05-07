@@ -125,7 +125,7 @@ function resolveToolContract(
   return {
     name: contractSelector.definition.name,
     definition: contractSelector.definition,
-    input: contractSelector.definition.resolveInput(inputs, context),
+    input: contractSelector.definition.resolveInput(inputs, context, mergedToolConfig),
   };
 }
 

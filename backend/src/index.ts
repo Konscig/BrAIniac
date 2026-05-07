@@ -12,9 +12,11 @@ import edgeRouter from './routes/resources/edge/edge.routes.js';
 import toolRouter from './routes/resources/tool/tool.routes.js';
 import pipelineRouter from './routes/resources/pipeline/pipeline.routes.js';
 import nodeTypeRouter from './routes/resources/node_type/node_type.routes.js';
+import judgeRouter from './routes/resources/judge/judge.routes.js';
 import { isHttpError } from './common/http-error.js';
 import { getOpenRouterConfig } from './services/core/openrouter/openrouter.config.js';
 import { resolveToolContractDefinition } from './services/application/tool/contracts/index.js';
+import { mountBrainiacMcpTransport } from './mcp/mcp.transport.js';
 
 loadEnv({ path: process.env.ENV_FILE ?? '.env' });
 if (!process.env.DATABASE_URL || !process.env.OPENROUTER_API_KEY) {
@@ -41,7 +43,10 @@ function createApp() {
   // CORS configuration
   const defaultOrigins = [
     'http://localhost:3000',
-    'http://127.0.0.1:3000'
+    'http://127.0.0.1:3000',
+    // Docker-compose: FRONTEND_PORT defaults to 3270 (frontend container)
+    'http://localhost:3270',
+    'http://127.0.0.1:3270'
   ];
   const parsedOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
@@ -65,6 +70,7 @@ function createApp() {
   app.options(/.*/, cors(corsOptions));
 
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
+  mountBrainiacMcpTransport(app);
 
   app.post('/tool-executor/contracts', async (req, res) => {
     const payload = req.body && typeof req.body === 'object' ? req.body : {};
@@ -139,6 +145,7 @@ function createApp() {
   app.use('/tools', toolRouter);
   app.use('/node-types', nodeTypeRouter);
   app.use('/pipelines', pipelineRouter);
+  app.use('/judge', judgeRouter);
 
   return app;
 }
@@ -155,7 +162,7 @@ if (SHOULD_FORK && cluster.isPrimary) {
   });
 } else {
   const app = createApp();
-  app.listen(PORT, () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`[worker ${process.pid}] server started on port ${PORT}`);
   });
 }
