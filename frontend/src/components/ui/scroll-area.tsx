@@ -13,7 +13,7 @@ export function ScrollArea({
       className={cn("relative overflow-hidden", className)}
       {...props}
     >
-      <ScrollAreaPrimitive.Viewport className="h-full w-full overflow-x-hidden rounded-[inherit]">
+      <ScrollAreaPrimitive.Viewport className="h-full w-full overflow-x-hidden rounded-[inherit] [&>div]:!block">
         {children}
       </ScrollAreaPrimitive.Viewport>
       <ScrollAreaPrimitive.Scrollbar

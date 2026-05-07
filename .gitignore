@@ -117,4 +117,16 @@ docker-compose.override.yml
 # -----------------------
 backend/.artifacts/
 backend/.artifacts/executions/**/execution-snapshot.json
+<<<<<<< HEAD
 .codex-run/
+=======
+*.docx
+
+# -----------------------
+# Local research & one-off scripts
+# -----------------------
+scripts/
+docs/research/
+
+.codex-run/
+>>>>>>> 944a50b6ec86da48afb62a59d57085a1b859765b

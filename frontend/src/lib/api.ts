@@ -1,11 +1,23 @@
+// Дефолт — пустая строка: same-origin запросы. CRA dev-server форвардит их
+// через "proxy" из frontend/package.json на http://localhost:3000, благодаря
+// чему в локальной разработке CORS не срабатывает. Прод/Docker задают
+// REACT_APP_API_BASE_URL явно (см. nginx.conf и REACT_APP_API_BASE_URL в env).
 export const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "http://localhost:3000";
+  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "";
 
-type ApiOptions = RequestInit & { skipAuthHeaders?: boolean };
+type ApiOptions = RequestInit & { skipAuthHeaders?: boolean; skipWebRefresh?: boolean };
 
 export type ApiError = Error & { status?: number; details?: unknown };
+export type AuthExpiredDetail = {
+  message: string;
+  status: number;
+  details?: unknown;
+};
 
 const TOKENS_STORAGE_KEY = "brainiac.tokens";
+export const AUTH_EXPIRED_EVENT = "brainiac:auth-expired";
+export const AUTH_REFRESHED_EVENT = "brainiac:auth-refreshed";
+export const AUTH_EXPIRED_MESSAGE = "Session expired. Sign in again.";
 const DEFAULT_PIPELINE_LIMITS = {
   max_time: 120,
   max_cost: 100,
@@ -13,6 +25,7 @@ const DEFAULT_PIPELINE_LIMITS = {
 } as const;
 
 type StoredTokens = { accessToken?: string; refreshToken?: string } | null;
+type WebRefreshResponse = { accessToken?: string; access_token?: string; expiresAt?: string };
 
 const getStoredTokens = (): StoredTokens => {
   try {
@@ -96,17 +109,128 @@ const extractApiErrorMessage = (details: unknown): string | null => {
   return null;
 };
 
+const collectErrorText = (details: unknown): string => {
+  if (!details) return "";
+  if (typeof details === "string") return details;
+  if (typeof details !== "object") return "";
+
+  const record = details as Record<string, unknown>;
+  return [
+    record.code,
+    record.message,
+    record.error,
+    typeof record.details === "object" && record.details
+      ? (record.details as Record<string, unknown>).code
+      : undefined,
+    typeof record.details === "object" && record.details
+      ? (record.details as Record<string, unknown>).error
+      : undefined
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+};
+
+export const isInvalidOrExpiredTokenResponse = (status: number | undefined, details: unknown): boolean => {
+  if (status !== 401) return false;
+
+  const text = collectErrorText(details);
+  return (
+    /\binvalid[_ -]?token\b/.test(text) ||
+    /\bexpired[_ -]?token\b/.test(text) ||
+    /\bjwt expired\b/.test(text) ||
+    /\bmcp_invalid_token\b/.test(text) ||
+    /\btoken_expired\b/.test(text)
+  );
+};
+
+export const emitAuthExpired = (detail: AuthExpiredDetail): void => {
+  try {
+    localStorage.removeItem(TOKENS_STORAGE_KEY);
+  } catch {
+    /* noop */
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent<AuthExpiredDetail>(AUTH_EXPIRED_EVENT, { detail }));
+  }
+};
+
+const storeAccessTokenOnly = (accessToken: string): void => {
+  try {
+    localStorage.setItem(TOKENS_STORAGE_KEY, JSON.stringify({ accessToken }));
+  } catch {
+    /* noop */
+  }
+};
+
+const emitAuthRefreshed = (tokens: { accessToken: string }): void => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(AUTH_REFRESHED_EVENT, { detail: tokens }));
+  }
+};
+
+async function refreshBrowserSession(): Promise<string | null> {
+  const response = await fetch(`${API_BASE_URL}/auth/web/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: "{}"
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const body = (await response.json().catch(() => null)) as WebRefreshResponse | null;
+  const accessToken = body?.accessToken ?? body?.access_token;
+  if (typeof accessToken !== "string" || accessToken.trim().length === 0) {
+    return null;
+  }
+
+  storeAccessTokenOnly(accessToken);
+  emitAuthRefreshed({ accessToken });
+  return accessToken;
+}
+
 export async function apiRequest<TResponse = unknown>(
   path: string,
   options: ApiOptions = {}
 ): Promise<TResponse> {
   const url = `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
-  const response = await fetch(url, {
-    method: options.method ?? "GET",
-    headers: buildHeaders(options.headers, !options.skipAuthHeaders),
-    body: options.body,
-    credentials: options.credentials ?? "same-origin"
-  });
+  const sentStoredAccessToken = !options.skipAuthHeaders && Boolean(getStoredTokens()?.accessToken);
+  const execute = () =>
+    fetch(url, {
+      method: options.method ?? "GET",
+      headers: buildHeaders(options.headers, !options.skipAuthHeaders),
+      body: options.body,
+      credentials: options.credentials ?? "same-origin"
+    });
+
+  let response = await execute();
+
+  if (
+    !response.ok &&
+    sentStoredAccessToken &&
+    !options.skipWebRefresh &&
+    !options.skipAuthHeaders
+  ) {
+    const errorResponse = typeof response.clone === "function" ? response.clone() : response;
+    const raw = await errorResponse.text().catch(() => "");
+    let details: unknown = raw;
+    try {
+      details = raw ? JSON.parse(raw) : undefined;
+    } catch {
+      details = raw;
+    }
+
+    if (isInvalidOrExpiredTokenResponse(response.status, details)) {
+      const refreshedAccessToken = await refreshBrowserSession().catch(() => null);
+      if (refreshedAccessToken) {
+        response = await execute();
+      }
+    }
+  }
 
   if (!response.ok) {
     const error: ApiError = new Error("Не удалось выполнить запрос");
@@ -122,6 +246,15 @@ export async function apiRequest<TResponse = unknown>(
     const message = extractApiErrorMessage(error.details);
     if (message) {
       error.message = message;
+    }
+
+    if (sentStoredAccessToken && isInvalidOrExpiredTokenResponse(error.status, error.details)) {
+      error.message = AUTH_EXPIRED_MESSAGE;
+      emitAuthExpired({
+        message: AUTH_EXPIRED_MESSAGE,
+        status: response.status,
+        details: error.details
+      });
     }
 
     throw error;
@@ -165,6 +298,17 @@ export async function deleteRequest(path: string, options: ApiOptions = {}): Pro
     ...options,
     method: "DELETE"
   });
+}
+
+export function completeVscodeAuth(state: string, accessToken: string): Promise<{ status: "authorized"; expiresAt: string }> {
+  return postJson<{ status: "authorized"; expiresAt: string }>(
+    "/auth/vscode/complete",
+    { state },
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      skipAuthHeaders: true
+    }
+  );
 }
 
 export type JsonRecord = Record<string, unknown>;
@@ -357,6 +501,18 @@ export function deleteProject(projectId: number): Promise<void> {
   return deleteRequest(`/projects/${projectId}`);
 }
 
+export function revokeBrowserWebSession(): Promise<{ revoked: true }> {
+  return postJson<{ revoked: true }>(
+    "/auth/web/revoke",
+    {},
+    {
+      credentials: "include",
+      skipAuthHeaders: true,
+      skipWebRefresh: true
+    }
+  );
+}
+
 export function listPipelines(projectId: number): Promise<PipelineRecord[]> {
   return apiRequest<PipelineRecord[]>(`/pipelines?fk_project_id=${encodeURIComponent(String(projectId))}`);
 }
@@ -440,6 +596,35 @@ export function deleteDataset(datasetId: number): Promise<void> {
   return deleteRequest(`/datasets/${datasetId}`);
 }
 
+export interface RagCorpusUploadResult {
+  uri: string;
+  filename: string;
+  size_bytes: number;
+  kind: "rag-corpus";
+}
+
+/**
+ * Загружает один файл (.txt/.sql/.csv, ≤1 МБ) в управляемое хранилище RAG-корпуса.
+ * Возвращает стабильный URI для использования в `Node.ui_json.uris[]` узла RAGDataset.
+ */
+export async function uploadRagCorpus(file: File): Promise<RagCorpusUploadResult> {
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  const contentBase64 = btoa(binary);
+
+  return postJson<RagCorpusUploadResult>("/datasets/upload", {
+    filename: file.name,
+    content_base64: contentBase64,
+    kind: "rag-corpus"
+  });
+}
+
 export function validatePipelineGraph(
   pipelineId: number,
   preset: "default" | "dev" | "production" = "default"
@@ -498,3 +683,105 @@ export type PipelineGraphResponse = { nodes: NodeRecord[]; edges: EdgeRecord[] }
 export type NodeExecutionResultDto = { nodeId: string; status: string; output: string };
 export type ExecutePipelineResponse = ExecutionSnapshot;
 export type PipelineNodeCategory = "Source" | "Transform" | "Control" | "Sink";
+
+// --- Judge Chat ---
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface JudgeChatRequest {
+  pipeline_id: number;
+  message: string;
+  history?: ChatMessage[];
+  focused_node_id?: number;
+}
+
+export interface JudgeChatResponse {
+  reply: string;
+  tool_calls_used: string[];
+}
+
+export function judgeChat(req: JudgeChatRequest): Promise<JudgeChatResponse> {
+  return postJson<JudgeChatResponse>("/judge/chat", req);
+}
+
+export interface AssessmentSkippedDetail {
+  metric_code: string;
+  axis: string;
+  reason: string;
+  occurrences: number;
+}
+
+export interface AssessmentAxisCoverageEntry {
+  axis: "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H";
+  metrics: string[];
+  weight_total: number;
+}
+
+export interface AssessmentProfileSelection {
+  applied: string;
+  origin: "request" | "auto" | "fallback";
+  reason: string;
+  requested?: string;
+}
+
+export interface AssessmentGate {
+  T_p95_ms: number | null;
+  T_max_ms: number | null;
+  C_total: number | null;
+  C_max: number | null;
+  R_fail: number;
+  R_fail_max: number;
+  f_safe: number | null;
+  f_safe_min: number;
+  passes: boolean;
+  reasons: string[];
+}
+
+export interface AssessmentReport {
+  pipeline_id: number;
+  final_score: number;
+  verdict: "pass" | "improvement" | "fail";
+  weight_profile: string;
+  profile_selection: AssessmentProfileSelection;
+  weights_used: Record<string, number>;
+  metric_scores: Array<{
+    metric_code: string;
+    axis: string;
+    value: number;
+    sample_size: number;
+    executor: string;
+  }>;
+  per_node: Array<{
+    node_id: number;
+    node_type: string;
+    metrics: Array<{ metric_code: string; axis: string; value: number; sample_size: number; executor: string }>;
+  }>;
+  skipped_metrics: string[];
+  skipped_metrics_detail: AssessmentSkippedDetail[];
+  axis_coverage: AssessmentAxisCoverageEntry[];
+  axis_warning?: string;
+  gate: AssessmentGate;
+  item_count: number;
+}
+
+export interface AssessmentItem {
+  item_key: string;
+  input: Record<string, unknown>;
+  agent_output: { text: string; structured_output?: unknown; tool_call_trace?: unknown[] };
+  reference?: { answer?: string; rubric?: string; claims?: string[]; relevant_docs?: string[] };
+}
+
+export interface AssessmentRequest {
+  pipeline_id: number;
+  items?: AssessmentItem[];
+  dataset_id?: number;
+  sample?: { fraction?: number; size?: number; seed?: number };
+  weight_profile?: string;
+}
+
+export function runAssessment(req: AssessmentRequest): Promise<AssessmentReport> {
+  return postJson<AssessmentReport>("/judge/assessments", req);
+}

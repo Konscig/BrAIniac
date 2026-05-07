@@ -28,10 +28,23 @@
 ## Каталог Инструментов
 
 ### 1) Ingest / Index
-1. DocumentLoader
+
+**Источники корпуса** (одно из двух, в зависимости от продуктового сценария):
+
+0a. RAG Dataset (рекомендуется для новых пайплайнов; см. feature 002-rag-dataset-tool)
+- purpose: подключение корпуса документов к RAG-агенту через управляемое хранилище
+- node type: `RAGDataset` (source-узел, без входов графа)
+- input: `Node.ui_json.uris[]` — список URI на загруженные файлы
+- output: documents[] (формат совпадает с DocumentLoader → drop-in replacement)
+- supported formats: `.txt`, `.sql`, `.csv`
+- limits: ≤1 МБ на файл, ≤64 файла на узел
+- storage prefix: `workspace://backend/.artifacts/rag-corpus/...`
+
+0b. DocumentLoader (legacy путь; сохраняется для обратной совместимости)
 - purpose: загрузка документов из Dataset, URI, хранилища
 - input: dataset_id или список URI
 - output: documents[]
+- note: для новых RAG-пайплайнов рекомендуется RAG Dataset, который явно отделяет корпус от golden-датасета (используемого ИИ-Судьёй).
 
 2. TextNormalizer
 - purpose: очистка и унификация текста

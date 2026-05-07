@@ -17,12 +17,12 @@
   the iteration process.
 -->
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]  
+**Language/Version**: TypeScript for backend and frontend, matching existing package/tooling versions
+**Primary Dependencies**: Backend: Node.js, Express, Prisma. Frontend: React, ReactFlow, Tailwind CSS, Radix/lucide where already used
+**Storage**: PostgreSQL via Prisma; local filesystem artifacts where existing runtime uses `.artifacts`
+**Testing**: Existing backend `npm run test:*` scripts, contract-freeze/RAG/executor tests, frontend build and targeted UI/component tests
+**Target Platform**: Docker Compose local web app; browser frontend and Node.js backend
+**Project Type**: Web application with `backend/` and `frontend/`
 **Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
 **Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
 **Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
@@ -31,7 +31,19 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- **SDD/code truth**: List the relevant `docs/sdd/` files and code paths read.
+  If SDD and code conflict, document the chosen source of truth before coding.
+- **Technology stack**: Confirm the plan stays within the existing TypeScript,
+  Express, Prisma, PostgreSQL, React, ReactFlow, Tailwind, Docker Compose stack.
+  Any new dependency or tool must be justified in Complexity Tracking.
+- **UX/adaptivity**: State how user-visible behavior remains understandable,
+  responsive, and honest about backend capability and diagnostic states.
+- **Simplicity**: Explain why the design is the smallest direct change that
+  solves the problem. Any new abstraction, broad rewrite, hidden behavior, or
+  service boundary must be justified in Complexity Tracking.
+- **Tests**: Name the required backend, frontend, contract, integration, smoke,
+  e2e, or manual verification checks. If automation is missing, document the
+  gap and follow-up.
 
 ## Project Structure
 

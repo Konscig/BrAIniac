@@ -14,3 +14,9 @@ export function verifyAccessToken(token: string) {
     return null;
   }
 }
+
+export function readAccessTokenExpiresAt(token: string): string | undefined {
+  const decoded = jwt.decode(token);
+  const exp = decoded && typeof decoded === 'object' ? decoded.exp : undefined;
+  return typeof exp === 'number' && Number.isFinite(exp) ? new Date(exp * 1000).toISOString() : undefined;
+}
