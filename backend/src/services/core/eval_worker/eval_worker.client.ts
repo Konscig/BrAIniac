@@ -79,12 +79,16 @@ function buildSidecarPayload(code: string, item: any): Record<string, any> {
       };
 
     case 'f_fact':
-      // FactScore: нужны claims из reference + context (или сам answer как proxy)
+      // FactScore (worker schema FactReference): требуется reference.relevant_doc_texts —
+      // тексты документов-источников, на которых модель проверяет atomic facts.
+      // Берём context_texts из augmented dataset, fallback на reference.answer.
       return {
         agent_output: { text: agentOut.text ?? '' },
         reference: {
-          claims: reference.claims ?? [],
-          context_texts: reference.context_texts ?? (reference.answer ? [reference.answer] : []),
+          relevant_doc_texts:
+            (Array.isArray(reference.context_texts) && reference.context_texts.length > 0)
+              ? reference.context_texts
+              : (reference.answer ? [reference.answer] : []),
         },
       };
 
