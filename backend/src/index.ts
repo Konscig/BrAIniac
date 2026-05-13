@@ -28,7 +28,10 @@ const DEFAULT_WORKERS = Math.max(1, os.cpus().length);
 const CONFIGURED_WORKERS = Number(process.env.HTTP_WORKERS ?? DEFAULT_WORKERS);
 const ENABLE_CLUSTER = (process.env.HTTP_ENABLE_CLUSTER ?? 'true').toLowerCase() !== 'false';
 const SHOULD_FORK = ENABLE_CLUSTER && CONFIGURED_WORKERS > 1;
-const JSON_BODY_LIMIT = (process.env.HTTP_JSON_LIMIT ?? '12mb').trim();
+// Default 64mb (раньше было 12mb): VectorUpsert при 512 чанках × 2048-dim
+// embedding получает payload ~12-15MB; на дефолте 12mb body-parser рубил
+// запрос с PayloadTooLargeError. Override через HTTP_JSON_LIMIT env.
+const JSON_BODY_LIMIT = (process.env.HTTP_JSON_LIMIT ?? '64mb').trim();
 
 function createApp() {
   const app = express();
