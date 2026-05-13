@@ -2,7 +2,10 @@ import { HttpError } from '../../../../common/http-error.js';
 import type { DatasetContext, NodeExecutionContext, NodeHandlerResult, RuntimeNode } from '../../pipeline/pipeline.executor.types.js';
 import { buildPrompt, toText } from '../../pipeline/pipeline.executor.utils.js';
 
-const MAX_EMBEDDING_INPUT_ITEMS = Number(process.env.EXECUTOR_EMBEDDING_MAX_INPUTS) > 0 ? Number(process.env.EXECUTOR_EMBEDDING_MAX_INPUTS) : 256;
+// Поднято до 4096 (с 256): на openrouter-embeddings-path Embedder обрабатывал
+// только первые 256 чанков из 512+, отсекая половину корпуса. Согласовано
+// с MAX_EMBEDDER_CHUNKS=4096 в embedder.tool.ts.
+const MAX_EMBEDDING_INPUT_ITEMS = Number(process.env.EXECUTOR_EMBEDDING_MAX_INPUTS) > 0 ? Number(process.env.EXECUTOR_EMBEDDING_MAX_INPUTS) : 4096;
 const MAX_EMBEDDING_TEXT_LENGTH =
   Number(process.env.EXECUTOR_EMBEDDING_MAX_TEXT_LENGTH) > 0 ? Number(process.env.EXECUTOR_EMBEDDING_MAX_TEXT_LENGTH) : 1800;
 
