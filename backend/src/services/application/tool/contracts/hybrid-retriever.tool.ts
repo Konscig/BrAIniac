@@ -27,10 +27,33 @@ type IndexedVectorRecord = {
   model: string | null;
 };
 
+// Стоп-слова — самые частые служебные русские и английские слова. Без фильтра
+// scoreSparse считал coverage по «по», «за», «и», «как» и т.п. — они почти
+// всегда есть в любом чанке, и retrieval уходил в шум.
+const STOPWORDS = new Set<string>([
+  // русские
+  'и','в','во','не','что','он','на','я','с','со','как','а','то','все','она','так','его','но','да','ты','к',
+  'у','же','вы','за','бы','по','только','ее','мне','было','вот','от','меня','еще','нет','о','из','ему',
+  'теперь','когда','даже','ну','вдруг','ли','если','уже','или','ни','быть','был','него','до','вас','нибудь',
+  'опять','уж','вам','ведь','там','потом','себя','ничего','ей','может','они','тут','где','есть','надо','ней',
+  'для','мы','тебя','их','чем','была','сам','чтоб','без','будто','чего','раз','тоже','себе','под','будет',
+  'ж','тогда','кто','этот','того','потому','этого','какой','совсем','ним','здесь','этом','один','почти','мой',
+  'тем','чтобы','нее','сейчас','были','куда','зачем','всех','никогда','можно','при','наконец','два','об',
+  'другой','хоть','после','над','больше','тот','через','эти','нас','про','всего','них','какая','много','разве',
+  'три','эту','моя','впрочем','хорошо','свою','этой','перед','иногда','лучше','чуть','том','нельзя','такой',
+  'им','более','всегда','конечно','всю','между','чё','чо','щас','та','такие','такое','такого','такое',
+  // частые «формальные»
+  'это','том','этом','этой','эта','этот','эти','такие','такое','такого','такая',
+  // англ
+  'the','a','an','and','or','but','of','in','on','at','to','for','is','are','was','were','be','been','it',
+  'this','that','these','those','as','by','with','from','do','does','did','have','has','had','will','would',
+  'can','could','should','may','might','must',
+]);
+
 function tokenize(raw: string): string[] {
   const matches = raw.toLowerCase().match(/[\p{L}\p{N}]+/gu);
   if (!matches) return [];
-  return matches.filter((token) => token.length > 1);
+  return matches.filter((token) => token.length > 2 && !STOPWORDS.has(token));
 }
 
 function extractRetrievalQuery(value: unknown): string | undefined {
@@ -316,11 +339,15 @@ function buildArtifactBackedHybridRetrieverContractOutput(input: Record<string, 
 
   const scored = records.map((record, index) => {
     const sparseScore = scoreSparse(queryTerms, record.text);
-    const denseScore = shouldUseDenseSimilarity(record)
-      ? Number(
-          clampNumber((cosineSimilarity(buildDeterministicVector(retrievalQuery, record.vector.length), record.vector) + 1) / 2, 0, 1).toFixed(6),
-        )
-      : 0;
+    // Dense-similarity отключён: для текущего graph executor нет узла, который
+    // считал бы embedding запроса через тот же провайдер, что и Embedder
+    // для корпуса. Ранее здесь сравнивался buildDeterministicVector(query,...)
+    // с реальным embedding'ом chunk'а — это давало псевдослучайный score
+    // (cos между hash-вектором и осмысленным embedding'ом ≈ шум), что портило
+    // hybrid-режим и приводило к нулевому retrieval'у на любом семантически
+    // нетривиальном запросе. До появления QueryEmbedder-узла полагаемся на
+    // sparse-overlap (со стоп-словами в tokenize).
+    const denseScore = 0;
 
     let score = sparseScore;
     if (mode === 'dense') {
