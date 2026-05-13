@@ -10,9 +10,15 @@ import {
 } from './tool-contract.input.js';
 import type { ToolContractDefinition } from './tool-contract.types.js';
 
-const MAX_EMBEDDER_CHUNKS = 256;
-const DEFAULT_BATCH_SIZE = 16;
-const MAX_BATCH_SIZE = 64;
+// Поднято до 4096: на pipeline=3 (voproshalych-rag-linear) Chunker даёт ~500
+// чанков на 42 confluence-страницах, и при лимите 256 половина корпуса
+// (страницы с pageId 86xxx) выпадала из индекса просто из-за lex-порядка
+// загрузки файлов. 4096 покрывает реальные дипломные датасеты.
+const MAX_EMBEDDER_CHUNKS = Number(process.env.EXECUTOR_EMBEDDER_MAX_CHUNKS) > 0
+  ? Number(process.env.EXECUTOR_EMBEDDER_MAX_CHUNKS)
+  : 4096;
+const DEFAULT_BATCH_SIZE = 64;
+const MAX_BATCH_SIZE = 256;
 const DEFAULT_VECTOR_SIZE = 8;
 const MAX_VECTOR_SIZE = 64;
 
