@@ -83,55 +83,60 @@ export const NODE_TYPE_METRICS: Record<string, string[]> = {
  *  resolveWeights(activeCodes, profile) ренормализует только по реально активным.
  */
 export const WEIGHT_PROFILES: Record<string, Record<string, number>> = {
+  // ВАЖНО: f_judge_ref (LLM-судья) — приоритетная метрика во всех профилях.
+  // Это единственный метрический сигнал, согласованный с человеческой оценкой;
+  // остальные (EM, F1, NLI-Faithfulness) — proxy без понимания семантики.
+  // Поэтому судья получает 20-25% веса в любом профиле.
   rag: {
-    // Axis A — Correctness (0.20)
-    f_EM: 0.04, f_F1: 0.04, f_sim: 0.06, f_corr: 0.06,
-    // Axis B — Grounding (0.25)
-    f_faith: 0.10, f_fact: 0.07, f_cite: 0.04, f_contra: 0.04,
-    // Axis C — Retrieval (0.25)
-    'f_recall@k': 0.075, 'f_ndcg@k': 0.075, f_ctx_prec: 0.05, f_ctx_rec: 0.05,
-    // Axis D — Tool-Use & Planning (0.10)
-    f_tool_ok: 0.02, f_argF1: 0.02, f_toolsel: 0.02, f_trajIoU: 0.02, f_planEff: 0.02,
-    // Axis E — Output Structure (0.02)
-    f_schema: 0.02,
-    // Axis F — Loop Discipline (0.03)
-    f_loop_budget: 0.03,
-    // Axis G — LLM-Judge (0.10) — повышаем, t.k. для RAG это ключевая ось согласованности с человеком
-    f_judge_ref: 0.06, f_check: 0.04,
-    // Axis H — Safety & Consistency (0.05)
-    f_safe: 0.025, f_consist: 0.025,
+    // Axis A — Correctness (0.16)
+    f_EM: 0.03, f_F1: 0.03, f_sim: 0.05, f_corr: 0.05,
+    // Axis B — Grounding (0.20)
+    f_faith: 0.08, f_fact: 0.05, f_cite: 0.04, f_contra: 0.03,
+    // Axis C — Retrieval (0.22)
+    'f_recall@k': 0.07, 'f_ndcg@k': 0.07, f_ctx_prec: 0.04, f_ctx_rec: 0.04,
+    // Axis D — Tool-Use (0.05) — для линейного RAG второстепенно
+    f_tool_ok: 0.01, f_argF1: 0.01, f_toolsel: 0.01, f_trajIoU: 0.01, f_planEff: 0.01,
+    // Axis E (0.02) + F (0.03)
+    f_schema: 0.02, f_loop_budget: 0.03,
+    // Axis G — LLM-Judge (0.25) — ключевая метрика, согласованная с человеком
+    f_judge_ref: 0.20, f_check: 0.05,
+    // Axis H (0.07)
+    f_safe: 0.04, f_consist: 0.03,
   },
   agentic_rag: {
-    // RAG-агент с tool-use loop. RAG-сигнал важен, но planning/trajectory выше, чем у чистого RAG.
-    // Axis A — Correctness (0.15)
-    f_EM: 0.03, f_F1: 0.03, f_sim: 0.05, f_corr: 0.04,
-    // Axis B — Grounding (0.18)
-    f_faith: 0.10, f_fact: 0.05, f_cite: 0.03,
-    // Axis C — Retrieval (0.10)
+    // RAG-агент с tool-use loop. Tool-trajectory и judge — на равных приоритетах.
+    // Axis A (0.12) + B (0.15) + C (0.10)
+    f_EM: 0.02, f_F1: 0.03, f_sim: 0.04, f_corr: 0.03,
+    f_faith: 0.08, f_fact: 0.04, f_cite: 0.03,
     'f_recall@k': 0.04, 'f_ndcg@k': 0.04, f_ctx_prec: 0.02,
-    // Axis D — Tool-Use & Trajectory (0.27) — ядро для AgentCall
-    f_toolsel: 0.06, f_argF1: 0.06, f_trajIoU: 0.06, f_planEff: 0.04, f_node_cov: 0.03, f_tool_ok: 0.02,
-    // Axis F — Loop Discipline (0.05)
+    // Axis D (0.22)
+    f_toolsel: 0.05, f_argF1: 0.05, f_trajIoU: 0.05, f_planEff: 0.03, f_node_cov: 0.02, f_tool_ok: 0.02,
+    // Axis F (0.05)
     f_loop_budget: 0.03, f_loop_term: 0.02,
-    // Axis G — LLM-Judge (0.15)
-    f_judge_ref: 0.10, f_check: 0.05,
-    // Axis H — Safety & Consistency (0.10)
-    f_safe: 0.05, f_consist: 0.05,
+    // Axis G (0.25) — judge приоритетен и для AgentCall
+    f_judge_ref: 0.20, f_check: 0.05,
+    // Axis H (0.11)
+    f_safe: 0.04, f_consist: 0.07,
   },
   tool_use: {
-    f_toolsel: 0.18, f_argF1: 0.18, f_tool_ok: 0.12, f_trajIoU: 0.12,
-    f_planEff: 0.08, f_node_cov: 0.08, f_loop_budget: 0.04,
-    f_judge_ref: 0.08, f_safe: 0.06, f_consist: 0.06,
+    f_toolsel: 0.15, f_argF1: 0.15, f_tool_ok: 0.10, f_trajIoU: 0.10,
+    f_planEff: 0.07, f_node_cov: 0.05, f_loop_budget: 0.03,
+    f_judge_ref: 0.20, f_check: 0.05,
+    f_safe: 0.06, f_consist: 0.04,
   },
   extractor: {
-    f_EM: 0.12, f_F1: 0.12, f_schema: 0.20, f_field: 0.20,
-    f_TED: 0.15, f_sim: 0.08, f_judge_ref: 0.08, f_safe: 0.05,
+    f_EM: 0.10, f_F1: 0.10, f_schema: 0.18, f_field: 0.18,
+    f_TED: 0.12, f_sim: 0.05,
+    f_judge_ref: 0.20, f_check: 0.03,
+    f_safe: 0.04,
   },
   default: {
-    f_EM: 0.10, f_F1: 0.10, f_sim: 0.10, f_judge_ref: 0.15,
-    f_schema: 0.05, f_TED: 0.05, f_safe: 0.10,
-    f_faith: 0.10, f_corr: 0.05, f_tool_ok: 0.05,
-    'f_recall@k': 0.05, f_loop_term: 0.05, f_check: 0.05,
+    f_EM: 0.06, f_F1: 0.08, f_sim: 0.10, f_corr: 0.05,
+    f_faith: 0.10,
+    'f_recall@k': 0.05, f_schema: 0.03, f_TED: 0.03,
+    f_tool_ok: 0.03, f_loop_term: 0.03,
+    f_judge_ref: 0.25, f_check: 0.05,
+    f_safe: 0.10, f_consist: 0.04,
   },
 };
 

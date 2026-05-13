@@ -170,6 +170,14 @@ function percentile(values: number[], p: number): number | null {
  *  ToolNode со специфичным контрактом (LLMAnswer, HybridRetriever и т.п.)
  *  должен получать соответствующий набор метрик.
  */
+/** Метрики, которые применимы к любому пайплайну, имеющему финальный текстовый
+ *  ответ — независимо от состава узлов графа. Привязываются к финальному узлу
+ *  (последнему по lex-порядку node_id с непустым output). Самая ценная из
+ *  них — f_judge_ref: LLM-as-a-judge оценивает ответ против эталона, и без
+ *  него оценка теряет «человекоподобный» сигнал качества. f_safe — общая
+ *  безопасность ответа, актуальна всегда. */
+const ALWAYS_ON_METRICS = ['f_judge_ref', 'f_safe'] as const;
+
 async function selectMetrics(pipelineId: number) {
   const nodes = await prisma.node.findMany({
     where: { fk_pipeline_id: pipelineId },
@@ -182,6 +190,8 @@ async function selectMetrics(pipelineId: number) {
   const nodeTypeMap = new Map<number, string>();
   /** Все нормализованные имена типов в графе — для inferProfile */
   const allNodeTypes: string[] = [];
+
+  let pivotNodeId: number | undefined;
 
   for (const node of nodes) {
     const candidates = new Set<string>();
@@ -214,6 +224,28 @@ async function selectMetrics(pipelineId: number) {
           bucket.add(node.node_id);
         }
       }
+    }
+
+    // Пивот для глобальных метрик: предпочитаем финальный текстовый узел
+    // (LLMAnswer / AgentCall / LLMCall), иначе берём максимальный по id.
+    const isFinalText = ['llmanswer', 'agentcall', 'llmcall'].some((k) =>
+      Array.from(candidates).some((c) => c.includes(k)),
+    );
+    if (isFinalText) pivotNodeId = node.node_id;
+    else if (pivotNodeId === undefined) pivotNodeId = node.node_id;
+  }
+
+  // ВСЕГДА добавляем глобальные метрики (LLM-judge, safety) — привязываем к pivot-узлу,
+  // чтобы они отображались в per-node отчёте, но не зависели от наличия конкретного
+  // типа узла в каталоге NODE_TYPE_METRICS.
+  if (pivotNodeId !== undefined) {
+    for (const code of ALWAYS_ON_METRICS) {
+      let bucket = codeToNodes.get(code);
+      if (!bucket) {
+        bucket = new Set<number>();
+        codeToNodes.set(code, bucket);
+      }
+      bucket.add(pivotNodeId);
     }
   }
 
