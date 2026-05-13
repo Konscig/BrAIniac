@@ -157,8 +157,13 @@ export async function extractAssessOutput(
       structuredOutput = out.structured_output;
     }
 
-    // Retrieval-узлы возвращают список id найденных документов под разными ключами
-    const retrieved = out.retrieved_ids ?? out.retrieved_doc_ids ?? out.documents ?? out.docs;
+    // Retrieval-узлы возвращают список id найденных документов под разными ключами.
+    // HybridRetriever-контракт кладёт candidates в out.contract_output.candidates,
+    // поэтому подхватываем не только верхний уровень, но и contract_output.*.
+    const co = (out as any).contract_output ?? {};
+    const retrieved =
+      out.retrieved_ids ?? out.retrieved_doc_ids ?? out.documents ?? out.docs ??
+      co.candidates ?? co.retrieved ?? co.retrieved_documents ?? co.documents;
     if (Array.isArray(retrieved)) {
       for (const r of retrieved) {
         if (typeof r === 'string') retrievedIds.push(r);
