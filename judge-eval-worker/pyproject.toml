@@ -15,8 +15,8 @@ dependencies = [
     "sentence-transformers>=3.0",
     "transformers>=4.44",
     "torch>=2.2",
-    "pymorphy3>=2.0",
-    "pymorphy3-dicts-ru>=2.4",
+    "pymorphy3>=2.0,<3.0",
+    "pymorphy3-dicts-ru>=2.4,<3.0",
 ]
 
 [build-system]

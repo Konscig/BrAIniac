@@ -17,6 +17,7 @@ import { isHttpError } from './common/http-error.js';
 import { getOpenRouterConfig } from './services/core/openrouter/openrouter.config.js';
 import { resolveToolContractDefinition } from './services/application/tool/contracts/index.js';
 import { mountBrainiacMcpTransport } from './mcp/mcp.transport.js';
+import { requireAuth } from './middleware/auth.middleware.js';
 
 loadEnv({ path: process.env.ENV_FILE ?? '.env' });
 if (!process.env.DATABASE_URL || !process.env.OPENROUTER_API_KEY) {
@@ -75,35 +76,52 @@ function createApp() {
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
   mountBrainiacMcpTransport(app);
 
-  // FIFO semaphore: ограничивает одновременную обработку heavy contract-ов
-  // (VectorUpsert/Embedder/Chunker — большие payload-ы с тысячами векторов
-  // или эмбеддинговыми batch-ами). Без него параллельные batch-eval execution-ы
-  // забивают single-threaded event loop, клиент абортит запрос до конца body-read
-  // и приходит EXECUTOR_TOOLNODE_UNAVAILABLE / 'request aborted'.
-  // Лимиты тюнятся через JUDGE_TOOL_EXECUTOR_HEAVY_LIMIT (default 2).
+  // FIFO semaphore с bounded queue: ограничивает одновременную обработку
+  // heavy contract-ов (VectorUpsert/Embedder/Chunker) и отбивает DoS-флуд
+  // (queue cap + waiter timeout). NB: семафор per-worker, при cluster=true
+  // эффективный cap = HEAVY_CONCURRENCY × workers.
   const HEAVY_CONCURRENCY = Math.max(1, Number(process.env.JUDGE_TOOL_EXECUTOR_HEAVY_LIMIT ?? '2'));
+  const HEAVY_QUEUE_LIMIT = Math.max(1, Number(process.env.JUDGE_TOOL_EXECUTOR_HEAVY_QUEUE_LIMIT ?? '32'));
+  const HEAVY_WAIT_TIMEOUT_MS = Math.max(1000, Number(process.env.JUDGE_TOOL_EXECUTOR_HEAVY_WAIT_MS ?? '60000'));
   const HEAVY_CONTRACTS = new Set(['VectorUpsert', 'Embedder', 'Chunker']);
+  type HeavyWaiter = { resolve: () => void; reject: (err: Error) => void; timer: NodeJS.Timeout };
   let heavyInFlight = 0;
-  const heavyQueue: Array<() => void> = [];
-  const heavyAcquire = (): Promise<void> => new Promise<void>((resolve) => {
+  const heavyQueue: HeavyWaiter[] = [];
+  const heavyAcquire = (): Promise<void> => new Promise<void>((resolve, reject) => {
     if (heavyInFlight < HEAVY_CONCURRENCY) {
       heavyInFlight += 1;
       resolve();
-    } else {
-      heavyQueue.push(resolve);
+      return;
     }
+    if (heavyQueue.length >= HEAVY_QUEUE_LIMIT) {
+      const err = new Error('heavy contract queue overflow');
+      (err as any).code = 'EXECUTOR_TOOLNODE_BUSY';
+      (err as any).status = 503;
+      reject(err);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const idx = heavyQueue.findIndex((w) => w.timer === timer);
+      if (idx >= 0) heavyQueue.splice(idx, 1);
+      const err = new Error('heavy contract acquire timed out');
+      (err as any).code = 'EXECUTOR_TOOLNODE_BUSY';
+      (err as any).status = 503;
+      reject(err);
+    }, HEAVY_WAIT_TIMEOUT_MS);
+    heavyQueue.push({ resolve, reject, timer });
   });
   const heavyRelease = (): void => {
     const next = heavyQueue.shift();
     if (next) {
+      clearTimeout(next.timer);
       // counter не уменьшаем — слот сразу занят следующим
-      next();
+      next.resolve();
     } else {
-      heavyInFlight -= 1;
+      heavyInFlight = Math.max(0, heavyInFlight - 1);
     }
   };
 
-  app.post('/tool-executor/contracts', async (req, res) => {
+  app.post('/tool-executor/contracts', requireAuth, async (req, res) => {
     const payload = req.body && typeof req.body === 'object' ? req.body : {};
     const tool = payload.tool && typeof payload.tool === 'object' ? payload.tool : {};
     const contract = payload.contract && typeof payload.contract === 'object' ? payload.contract : {};
@@ -120,60 +138,71 @@ function createApp() {
       ? HEAVY_CONTRACTS.has(resolvedContractDefinition.name)
       : HEAVY_CONTRACTS.has(resolvedContractName);
     if (isHeavy) {
-      await heavyAcquire();
-    }
-
-    let contractOutput: Record<string, any> | null = null;
-    if (
-      resolvedContractDefinition?.buildHttpSuccessOutput &&
-      contractInput &&
-      typeof contractInput === 'object' &&
-      !Array.isArray(contractInput)
-    ) {
       try {
-        contractOutput = await resolvedContractDefinition.buildHttpSuccessOutput({
-          input: contractInput as Record<string, any>,
-          status: 200,
-          response: null,
-        });
-      } catch (error) {
-        if (isHeavy) heavyRelease();
-        if (isHttpError(error)) {
-          return res.status(error.status).json({
-            ok: false,
-            executor: 'backend-contract-http-json',
-            tool_name: requestedToolName || null,
-            contract_name: (resolvedContractDefinition?.name ?? resolvedContractName) || null,
-            ...error.body,
-          });
-        }
-
-        return res.status(500).json({
+        await heavyAcquire();
+      } catch (err: any) {
+        return res.status(err?.status ?? 503).json({
           ok: false,
-          executor: 'backend-contract-http-json',
-          tool_name: requestedToolName || null,
-          contract_name: (resolvedContractDefinition?.name ?? resolvedContractName) || null,
-          error: error instanceof Error ? error.message : 'contract output builder failed',
+          code: err?.code ?? 'EXECUTOR_TOOLNODE_BUSY',
+          error: err?.message ?? 'tool executor busy',
         });
       }
     }
 
-    if (isHeavy) heavyRelease();
-    res.json({
-      ok: true,
-      executor: 'backend-contract-http-json',
-      tool_name: requestedToolName || null,
-      contract_name: (resolvedContractDefinition?.name ?? resolvedContractName) || null,
-      received_at: new Date().toISOString(),
-      contract_output_source: contractOutput ? 'backend-tool-executor' : null,
-      ...(contractOutput ? { contract_output: contractOutput } : {}),
-      input_preview:
-        contractInput && typeof contractInput === 'object'
-          ? Object.keys(contractInput).slice(0, 24)
-          : typeof contractInput === 'string'
-          ? contractInput.slice(0, 256)
-          : contractInput,
-    });
+    // try/finally гарантирует heavyRelease на всех путях — даже если
+    // res.json кинет на закрытом сокете или builder бросит синхронно.
+    try {
+      let contractOutput: Record<string, any> | null = null;
+      if (
+        resolvedContractDefinition?.buildHttpSuccessOutput &&
+        contractInput &&
+        typeof contractInput === 'object' &&
+        !Array.isArray(contractInput)
+      ) {
+        try {
+          contractOutput = await resolvedContractDefinition.buildHttpSuccessOutput({
+            input: contractInput as Record<string, any>,
+            status: 200,
+            response: null,
+          });
+        } catch (error) {
+          if (isHttpError(error)) {
+            return res.status(error.status).json({
+              ok: false,
+              executor: 'backend-contract-http-json',
+              tool_name: requestedToolName || null,
+              contract_name: (resolvedContractDefinition?.name ?? resolvedContractName) || null,
+              ...error.body,
+            });
+          }
+          return res.status(500).json({
+            ok: false,
+            executor: 'backend-contract-http-json',
+            tool_name: requestedToolName || null,
+            contract_name: (resolvedContractDefinition?.name ?? resolvedContractName) || null,
+            error: error instanceof Error ? error.message : 'contract output builder failed',
+          });
+        }
+      }
+
+      res.json({
+        ok: true,
+        executor: 'backend-contract-http-json',
+        tool_name: requestedToolName || null,
+        contract_name: (resolvedContractDefinition?.name ?? resolvedContractName) || null,
+        received_at: new Date().toISOString(),
+        contract_output_source: contractOutput ? 'backend-tool-executor' : null,
+        ...(contractOutput ? { contract_output: contractOutput } : {}),
+        input_preview:
+          contractInput && typeof contractInput === 'object'
+            ? Object.keys(contractInput).slice(0, 24)
+            : typeof contractInput === 'string'
+            ? contractInput.slice(0, 256)
+            : contractInput,
+      });
+    } finally {
+      if (isHeavy) heavyRelease();
+    }
   });
 
   app.use('/users', userRouter);

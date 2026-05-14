@@ -82,6 +82,42 @@ router.post('/assessments', async (req: any, res) => {
  * metrics_started, metric_done, assessment_complete, error. Клиент должен
  * читать как text/event-stream (fetch + ReadableStream или EventSource).
  */
+/** Allowlist полей для SSE-стрима. Жёстко ограничиваем shape report'а,
+ *  который улетает в браузер: чтобы будущие поля report (raw LLM-prompt,
+ *  служебные ключи, item_runs с PII reference-данных) автоматически
+ *  не утекали через stream. Полный отчёт остаётся доступен через
+ *  обычный POST /judge/assessments. */
+function buildPublicReport(report: any): Record<string, any> {
+  if (!report || typeof report !== 'object') return {};
+  return {
+    pipeline_id: report.pipeline_id,
+    final_score: report.final_score,
+    verdict: report.verdict,
+    weight_profile: report.weight_profile,
+    profile_selection: report.profile_selection,
+    weights_used: report.weights_used,
+    metric_scores: report.metric_scores,
+    per_node: report.per_node,
+    skipped_metrics: report.skipped_metrics,
+    skipped_metrics_detail: report.skipped_metrics_detail,
+    axis_coverage: report.axis_coverage,
+    axis_warning: report.axis_warning,
+    gate: report.gate,
+    item_count: report.item_count,
+    sampling: report.sampling,
+    item_runs: Array.isArray(report.item_runs)
+      ? report.item_runs.map((r: any) => ({
+          item_key: r?.item_key,
+          execution_id: r?.execution_id,
+          status: r?.status,
+          duration_ms: r?.duration_ms,
+          cost_units: r?.cost_units,
+          ...(r?.error ? { error: typeof r.error === 'string' ? r.error.slice(0, 500) : 'failed' } : {}),
+        }))
+      : undefined,
+  };
+}
+
 router.post('/assessments/stream', async (req: any, res) => {
   const parsed = parseAssessmentBody(req.body ?? {});
   if (parsed.error) return res.status(400).json({ error: parsed.error });
@@ -98,12 +134,23 @@ router.post('/assessments/stream', async (req: any, res) => {
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
 
+  // Abort propagation: при закрытии клиентского сокета прерываем дальнейшие
+  // emit'ы. Полная отмена runAssessment требует AbortSignal pass-through через
+  // executor — это отдельная задача, но как минимум прекратим жечь стрим.
+  let clientClosed = false;
+  const onClientClose = () => { clientClosed = true; };
+  req.on('close', onClientClose);
+
   const sendEvent = (type: string, data: any) => {
-    res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+    if (clientClosed) return;
+    try { res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); } catch { clientClosed = true; }
   };
 
   // Heartbeat для предотвращения idle-timeout на proxy/CDN.
-  const heartbeat = setInterval(() => { try { res.write(':hb\n\n'); } catch {} }, 15000);
+  const heartbeat = setInterval(() => {
+    if (clientClosed) return;
+    try { res.write(':hb\n\n'); } catch { clientClosed = true; }
+  }, 15000);
 
   try {
     const report = await runAssessment({
@@ -115,7 +162,7 @@ router.post('/assessments/stream', async (req: any, res) => {
       ...(parsed.weightProfile ? { weight_profile: parsed.weightProfile } : {}),
       onProgress: (event) => sendEvent(event.type, event),
     });
-    sendEvent('report', report);
+    sendEvent('report', buildPublicReport(report));
   } catch (err: any) {
     const status = typeof err?.status === 'number' ? err.status : 500;
     sendEvent('error', {
@@ -125,7 +172,8 @@ router.post('/assessments/stream', async (req: any, res) => {
     });
   } finally {
     clearInterval(heartbeat);
-    res.end();
+    req.off('close', onClientClose);
+    try { res.end(); } catch { /* socket already closed */ }
   }
 });
 

@@ -113,7 +113,10 @@ class LlmJudgeError extends Error {
  *  относительно одиночного запроса. Если хотя бы одна попытка распарсилась,
  *  результат считается валидным и возвращается среднее по успешным голосам.
  *  Бросает Error только если ВСЕ попытки провалились. */
-const JUDGE_VOTES = 1;
+// Кол-во независимых голосов LLM-судьи. Default 1 — стоимость и время; для
+// stabilization variance можно поднять до 3 через env JUDGE_VOTES_N (даёт
+// ~√3 reduction в σ при условии действительно независимых выборок).
+const JUDGE_VOTES = Math.max(1, Math.min(10, Number(process.env.JUDGE_VOTES_N ?? '1')));
 
 export async function computeRubricJudge(item: AssessItem): Promise<number> {
   if (!isLlmJudgeAvailable()) {

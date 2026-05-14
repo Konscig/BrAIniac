@@ -18,7 +18,7 @@ RUN pip install --index-url https://download.pytorch.org/whl/cpu torch && \
     pip install "fastapi>=0.115" "uvicorn[standard]>=0.32" "pydantic>=2.8" \
         "httpx>=0.27" "numpy>=1.26" "ragas>=0.2" "deepeval>=1.0" \
         "detoxify>=0.5" "sentence-transformers>=3.0" "transformers>=4.44" \
-        "pymorphy3>=2.0" "pymorphy3-dicts-ru>=2.4"
+        "pymorphy3>=2.0,<3.0" "pymorphy3-dicts-ru>=2.4,<3.0"
 
 COPY app ./app
 

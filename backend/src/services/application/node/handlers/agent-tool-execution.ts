@@ -27,6 +27,116 @@ function isLocalSelfContractsUrl(rawUrl: string): boolean {
   }
 }
 
+/** SSRF deny-list для external http-json fetch. Блокирует:
+ *  - loopback (127.0.0.0/8, ::1)
+ *  - link-local (169.254.0.0/16 — AWS/GCP metadata; fe80::/10)
+ *  - private RFC1918 (10/8, 172.16/12, 192.168/16) и IPv6 ULA (fc00::/7)
+ *  - cloud metadata-домены и broadcast (0.0.0.0).
+ *  Override через EXECUTOR_HTTP_JSON_ALLOW_PRIVATE=1 (для разработки локально).
+ *
+ *  Поскольку `toolConfig.url` хранится в `node.tool.config_json` / `ui_json.toolConfig`
+ *  и доступен пользователю через MCP-tools обновления узла, без этой проверки
+ *  атакующий мог бы заставить backend ходить к AWS metadata-сервису или
+ *  внутренним SaaS-сервисам сети.
+ *
+ *  Анти-DNS-rebinding делается отдельно: мы резолвим hostname и проверяем
+ *  все возвращённые IP перед connect-ом. */
+const ALLOW_PRIVATE_URLS = (process.env.EXECUTOR_HTTP_JSON_ALLOW_PRIVATE ?? '0').trim() === '1';
+
+function isBlockedIpLiteral(hostname: string): boolean {
+  if (!hostname) return true;
+  const h = hostname.toLowerCase();
+  // bracketed IPv6
+  const v6 = h.startsWith('[') && h.endsWith(']') ? h.slice(1, -1) : h;
+  if (v6 === '::1' || v6 === '::' || v6 === '0:0:0:0:0:0:0:1') return true;
+  if (v6.startsWith('fe80:') || v6.startsWith('fe8') || v6.startsWith('fe9') || v6.startsWith('fea') || v6.startsWith('feb')) return true; // link-local
+  if (v6.startsWith('fc') || v6.startsWith('fd')) return true; // ULA fc00::/7
+  // IPv4-mapped IPv6
+  const v4m = v6.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (v4m) return isPrivateIPv4(v4m[1]!);
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return isPrivateIPv4(h);
+  return false;
+}
+
+function isPrivateIPv4(ip: string): boolean {
+  const parts = ip.split('.').map((p) => Number(p));
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) return true;
+  const [a, b] = parts as [number, number, number, number];
+  if (a === 0) return true; // 0.0.0.0/8
+  if (a === 10) return true; // private
+  if (a === 127) return true; // loopback
+  if (a === 169 && b === 254) return true; // link-local + AWS/GCP metadata
+  if (a === 172 && b >= 16 && b <= 31) return true; // private
+  if (a === 192 && b === 168) return true; // private
+  if (a === 192 && b === 0 && parts[2] === 0) return true; // IETF
+  if (a === 224) return true; // multicast
+  if (a >= 240) return true; // reserved
+  return false;
+}
+
+const BLOCKED_METADATA_HOSTS = new Set([
+  'metadata.google.internal',
+  'metadata',
+  'instance-data',
+  'instance-data.ec2.internal',
+]);
+
+async function assertSafeExternalUrl(rawUrl: string): Promise<URL> {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new HttpError(400, {
+      code: 'EXECUTOR_TOOLNODE_HTTP_URL_INVALID',
+      error: 'http-json tool executor url is invalid',
+    });
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new HttpError(400, {
+      code: 'EXECUTOR_TOOLNODE_HTTP_URL_INVALID',
+      error: 'only http(s) protocols allowed',
+    });
+  }
+  if (ALLOW_PRIVATE_URLS) return url;
+
+  const host = url.hostname.toLowerCase();
+  if (BLOCKED_METADATA_HOSTS.has(host)) {
+    throw new HttpError(400, {
+      code: 'EXECUTOR_TOOLNODE_HTTP_URL_FORBIDDEN',
+      error: 'metadata host is not allowed',
+      details: { host },
+    });
+  }
+  if (host === 'localhost' || isBlockedIpLiteral(host)) {
+    throw new HttpError(400, {
+      code: 'EXECUTOR_TOOLNODE_HTTP_URL_FORBIDDEN',
+      error: 'loopback / private / link-local addresses are not allowed for external http-json',
+      details: { host },
+    });
+  }
+
+  // Anti-DNS-rebinding: resolve hostname и проверим IP-литералы.
+  // Используем dynamic import для node:dns/promises чтобы избежать top-level
+  // зависимости в типе для не-серверной сборки.
+  try {
+    const { lookup } = await import('node:dns/promises');
+    const records = await lookup(host, { all: true });
+    for (const rec of records) {
+      if (isBlockedIpLiteral(rec.address)) {
+        throw new HttpError(400, {
+          code: 'EXECUTOR_TOOLNODE_HTTP_URL_FORBIDDEN',
+          error: 'DNS resolves to a blocked address',
+          details: { host, address: rec.address },
+        });
+      }
+    }
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    // dns lookup failed — пусть fetch сам упадёт; не блокируем
+  }
+  return url;
+}
+
 export type ResolvedToolBinding = {
   tool_id: number | null;
   name: string;
@@ -460,19 +570,11 @@ export async function executeResolvedToolBinding(
     }
   }
 
-  let normalizedUrl = rawUrl;
-  try {
-    const parsedUrl = new URL(rawUrl);
-    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-      throw new Error('invalid protocol');
-    }
-    normalizedUrl = parsedUrl.toString();
-  } catch {
-    throw new HttpError(400, {
-      code: 'EXECUTOR_TOOLNODE_HTTP_URL_INVALID',
-      error: 'http-json tool executor url is invalid',
-    });
-  }
+  // SSRF-защита: deny-list для loopback / private / link-local / metadata-хостов
+  // + anti-DNS-rebinding lookup (см. assertSafeExternalUrl). Override через
+  // EXECUTOR_HTTP_JSON_ALLOW_PRIVATE=1 для локальной разработки.
+  const parsedUrl = await assertSafeExternalUrl(rawUrl);
+  const normalizedUrl = parsedUrl.toString();
 
   const methodRaw =
     typeof executorOptions.method === 'string'

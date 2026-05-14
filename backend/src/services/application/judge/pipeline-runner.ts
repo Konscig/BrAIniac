@@ -42,16 +42,16 @@ async function startWithInFlightRetry(
   const startInput = {
     preset: 'default' as const,
     input_json: { question, user_query: question },
-    ...(bypassInFlightLock ? { bypass_in_flight_lock: true as const } : {}),
   };
-  // Увеличенный retry budget на случай если bypass-флаг не дойдёт (legacy
-  // совместимость). При bypassInFlightLock=true retry почти не понадобится.
+  // bypass-флаг идёт через options-параметр startPipelineExecutionForUser
+  // (не через user-facing startInput). normalizeStartInput гарантирует, что
+  // флаг недостижим из user API.
   const MAX_ATTEMPTS = bypassInFlightLock ? 3 : 30;
   let delayMs = 250;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const idempotencyKey = `assess-${pipelineId}-${randomUUID()}`;
     try {
-      return await startPipelineExecutionForUser(pipelineId, userId, startInput, idempotencyKey);
+      return await startPipelineExecutionForUser(pipelineId, userId, startInput, idempotencyKey, { bypassInFlightLock });
     } catch (err) {
       const code = (err as any)?.body?.code ?? (err as any)?.code;
       if (code !== 'PIPELINE_EXECUTION_ALREADY_RUNNING' || attempt === MAX_ATTEMPTS - 1) throw err;
@@ -137,6 +137,7 @@ export async function extractAssessOutput(
 
   type NodeRow = { node_id: number; output_json: unknown };
   let nodes: NodeRow[];
+  const isBatchMode = Boolean((snapshot.request as any)?.__bypass_in_flight_lock);
   if (snapshot.node_states && snapshot.node_states.length > 0) {
     // Конвертируем node_states в форму, эквивалентную Node.output_json, чтобы
     // ниже идущая логика парсинга работала без изменений (она ожидает
@@ -151,6 +152,16 @@ export async function extractAssessOutput(
         ...(ns.error ? { error: ns.error } : {}),
       },
     }));
+  } else if (isBatchMode) {
+    // В batch-режиме Node.output_json намеренно не пишется в БД (isolation
+    // от concurrent execution-ов того же pipeline), и читать оттуда — значит
+    // подхватить stale-данные другого item-а. Лучше упасть явно, чем выдать
+    // искажённую оценку.
+    throw new HttpError(500, {
+      code: 'JUDGE_SNAPSHOT_NODE_STATES_MISSING',
+      error: 'snapshot.node_states is empty in batch mode — DB fallback disabled to avoid cross-contamination',
+      details: { execution_id: snapshot.execution_id, pipeline_id: pipelineId },
+    });
   } else {
     nodes = await prisma.node.findMany({
       where: { fk_pipeline_id: pipelineId },

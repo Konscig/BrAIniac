@@ -297,7 +297,11 @@ export type AssessmentProgressHandler = (event: AssessmentProgressEvent) => void
 // Это позволяет параллельно гонять несколько items одного pipeline без cross-
 // contamination. Лимит 3 — компромисс между скоростью и rate-limit-ами на
 // внешнем LLM-провайдере (openrouter free tier).
-const DEFAULT_BATCH_CONCURRENCY = Number(process.env.JUDGE_BATCH_CONCURRENCY ?? '6');
+// concurrency=1 по умолчанию (sequential). Параллельный batch требует, чтобы
+// все contracts, на которые опирается граф, были thread-safe для concurrent
+// execution-ов одного pipeline (state isolation сделана только для Node.output_json,
+// VectorUpsert namespace и snapshot.node_states). Включается явно через env.
+const DEFAULT_BATCH_CONCURRENCY = Math.max(1, Number(process.env.JUDGE_BATCH_CONCURRENCY ?? '1'));
 
 async function runWithConcurrency<T, R>(
   items: T[],

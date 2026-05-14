@@ -145,7 +145,7 @@ export async function readExecutionSnapshot(executionId: string): Promise<Pipeli
  *
  *  Если параметр = 0 — соответствующая политика выключена. Best-effort: ошибки
  *  логируются, но не пробрасываются. */
-export async function pruneOldExecutions(): Promise<{ removed: number; kept: number }> {
+export async function pruneOldExecutions(activeExecutionIds: Set<string> = new Set()): Promise<{ removed: number; kept: number }> {
   const root = path.join(getArtifactStoreRoot(), 'executions');
   const retentionDays = Number(process.env.EXECUTION_RETENTION_DAYS ?? DEFAULT_EXECUTION_RETENTION_DAYS);
   const retentionMax = Number(process.env.EXECUTION_RETENTION_MAX ?? DEFAULT_EXECUTION_RETENTION_MAX);
@@ -160,6 +160,9 @@ export async function pruneOldExecutions(): Promise<{ removed: number; kept: num
 
   const candidates: Array<{ name: string; mtime: number }> = [];
   for (const name of entries) {
+    // Защита от удаления активной execution-директории, которая может
+    // быть всё ещё в процессе записи (long-running прогон > retention_days).
+    if (activeExecutionIds.has(name)) continue;
     try {
       const st = await stat(path.join(root, name));
       if (!st.isDirectory()) continue;

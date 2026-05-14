@@ -144,7 +144,15 @@ function maybePruneFilesystem(): void {
   const now = Date.now();
   if (now - lastFilesystemPruneAt < FILESYSTEM_PRUNE_INTERVAL_MS) return;
   lastFilesystemPruneAt = now;
-  void pruneOldExecutions().then((stats) => {
+  // Передаём в prune активные execution_id (queued/running) этого worker'а
+  // плюс id из жив снапшотов — чтобы не удалить директорию пишущего прогона.
+  // Cross-worker (cluster mode) защиты тут нет, для prod-кластера надо
+  // выносить prune в выделенный sidecar/cron с FS-lock.
+  const active = new Set<string>();
+  for (const [executionId, job] of jobsById.entries()) {
+    if (job.status === 'running' || job.status === 'queued') active.add(executionId);
+  }
+  void pruneOldExecutions(active).then((stats) => {
     if (stats.removed > 0) {
       console.info(`[executor] pruned ${stats.removed} execution dirs (kept ${stats.kept})`);
     }
@@ -195,6 +203,10 @@ export async function startPipelineExecutionForUser(
   userId: number,
   input: StartPipelineExecutionInput,
   idempotencyKeyRaw?: string,
+  /** Внутренний флаг batch-eval. Передаётся ТОЛЬКО доверенными callers
+   *  (judge/pipeline-runner) — пользовательский API его не выставляет.
+   *  В user-facing input (`StartPipelineExecutionInput`) поля нет вообще. */
+  options: { bypassInFlightLock?: boolean } = {},
 ): Promise<PipelineExecutionSnapshot> {
   cleanupExecutionStore();
 
@@ -206,6 +218,10 @@ export async function startPipelineExecutionForUser(
   const idempotencyKey = normalizeIdempotencyKey(idempotencyKeyRaw);
   const idempotencyIndexKey = idempotencyKey ? `${userId}:${pipelineId}:${idempotencyKey}` : undefined;
   const request = normalizeStartInput(input);
+  // Внутренний флаг bypass хранится в request под защищённым namespace,
+  // нормализатор не даёт пользователю его проставить через API.
+  const bypassFlag = options.bypassInFlightLock === true;
+  (request as any).__bypass_in_flight_lock = bypassFlag;
   const now = new Date();
   const executionId = randomUUID();
 
@@ -293,13 +309,10 @@ export async function startPipelineExecutionForUser(
     }
   }
 
-  // bypass_in_flight_lock: используется batch-eval'ом, где каждый item получает
-  // независимый execution_id и не конкурирует за state. Lock per-pipeline в
-  // обычном режиме защищает от restart-recovery race; в batch-режиме он
-  // искусственно сериализует ИО и порождает HTTP 409 (см. judge.service /
-  // pipeline-runner). Bypass-флаг приходит из startInput только от внутренних
-  // вызывателей (judge), пользовательский API его не выставляет.
-  const bypassInFlight = Boolean((input as any)?.bypass_in_flight_lock);
+  // Bypass-флаг хранится в normalized request (выставляется только
+  // внутренним options-параметром startPipelineExecutionForUser). Через
+  // пользовательский API недостижим — normalizeStartInput его выкидывает.
+  const bypassInFlight = bypassFlag;
 
   const existingInFlight = inFlightByPipelineId.get(pipelineId);
   if (existingInFlight && !bypassInFlight) {
@@ -540,7 +553,7 @@ async function runExecutionJob(job: ExecutionJob) {
       });
     }
 
-    const isolatedState = Boolean((job.request as any)?.bypass_in_flight_lock);
+    const isolatedState = Boolean((job.request as any)?.__bypass_in_flight_lock);
     const result = await executeGraph(
       pipeline,
       runtimeByNodeId,
@@ -568,7 +581,7 @@ async function runExecutionJob(job: ExecutionJob) {
     // В batch-eval режиме (bypass_in_flight_lock) НЕ пишем в Node.output_json:
     // concurrent execution-ы одного pipeline затирали бы друг друга по node_id.
     // Snapshot файла per-execution уже несёт node_states как source of truth.
-    const jobBypassesLock = Boolean((job.request as any)?.bypass_in_flight_lock);
+    const jobBypassesLock = Boolean((job.request as any)?.__bypass_in_flight_lock);
     if (!jobBypassesLock) {
       await persistNodeOutputs(job.execution_id, nodeStates);
     }
@@ -603,7 +616,7 @@ async function runExecutionJob(job: ExecutionJob) {
     touch(job);
 
     try {
-      if (!Boolean((job.request as any)?.bypass_in_flight_lock)) {
+      if (!Boolean((job.request as any)?.__bypass_in_flight_lock)) {
         await persistNodeOutputs(job.execution_id, nodeStates);
       }
     } catch (persistError) {
