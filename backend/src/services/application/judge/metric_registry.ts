@@ -87,36 +87,100 @@ export const WEIGHT_PROFILES: Record<string, Record<string, number>> = {
   // Это единственный метрический сигнал, согласованный с человеческой оценкой;
   // остальные (EM, F1, NLI-Faithfulness) — proxy без понимания семантики.
   // Поэтому судья получает 20-25% веса в любом профиле.
-  rag: {
-    // Axis A — Correctness (0.16)
+  // Старый профиль для линейного RAG — сохранён для воспроизводимости
+  // baseline в главе 6. Применять только при сравнительных прогонах.
+  rag_legacy: {
     f_EM: 0.03, f_F1: 0.03, f_sim: 0.05, f_corr: 0.05,
-    // Axis B — Grounding (0.20)
     f_faith: 0.08, f_fact: 0.05, f_cite: 0.04, f_contra: 0.03,
-    // Axis C — Retrieval (0.22)
     'f_recall@k': 0.07, 'f_ndcg@k': 0.07, f_ctx_prec: 0.04, f_ctx_rec: 0.04,
-    // Axis D — Tool-Use (0.05) — для линейного RAG второстепенно
     f_tool_ok: 0.01, f_argF1: 0.01, f_toolsel: 0.01, f_trajIoU: 0.01, f_planEff: 0.01,
-    // Axis E (0.02) + F (0.03)
     f_schema: 0.02, f_loop_budget: 0.03,
-    // Axis G — LLM-Judge (0.25) — ключевая метрика, согласованная с человеком
     f_judge_ref: 0.20, f_check: 0.05,
-    // Axis H (0.07)
     f_safe: 0.04, f_consist: 0.03,
   },
-  agentic_rag: {
-    // RAG-агент с tool-use loop. Tool-trajectory и judge — на равных приоритетах.
-    // Axis A (0.12) + B (0.15) + C (0.10)
+  // v2 для линейного RAG. Перебалансировка по принципам MCDA/AHP с опорой
+  // на «RAG Triad» (TruLens: context_relevance + groundedness + answer_relevance —
+  // три равноправные группы метрик), RAG-survey (arXiv:2405.07437) и
+  // RAGAS (arXiv:2309.15217: четыре метрики поровну, две из них retrieval).
+  // Изменения:
+  //   — Axis D=0 (линейный pipeline без tool-using; присвоение веса метрикам,
+  //     которые структурно неприменимы, нарушает applicability gate AHP-калибровки);
+  //   — Axis F=0 (loop_budget неприменим без LoopGate/AgentCall);
+  //   — Axis A: EM убран (флексивный язык), F1 минимален; основной сигнал в sim+corr;
+  //   — Axis B (Grounding): faith — главный сигнал hallucination-detection
+  //     (TruLens: «most critical metric in the entire evaluation stack» для production);
+  //   — Axis C (Retrieval): сохраняем как фундамент (RAGAS, Confident AI);
+  //   — f_judge_ref понижен 0.20→0.13 (variance-correction, см. agentic_rag_v2);
+  //   — f_consist убран (skipped при одиночных прогонах);
+  //   — f_safe поднят 0.04→0.13 (HELM: core-метрика).
+  // Основной профиль линейного RAG. Перебалансирован по принципам MCDA/AHP
+  // в главе 6.4. Старая версия доступна как `rag_legacy`.
+  rag: {
+    // Axis A — Answer Correctness (0.15). RAG Triad answer_relevance proxy
+    f_F1: 0.03, f_sim: 0.08, f_corr: 0.04,
+    // Axis B — Grounding (0.07). NLI-faithfulness в eval-worker'е использует
+    // англоязычную модель mnli-base, на русском не подтверждает ни одно
+    // утверждение → f_faith систематически ≈ 0. По applicability gate AHP
+    // (LLM-Assisted AHP, arXiv:2512.10487) метрика с нулевой discriminative
+    // power на этих данных не должна занимать большой вес.
+    // ВАЖНО: f_faith концептуально критична для anti-hallucination (TruLens
+    // RAG Triad: «most critical metric»), поэтому она НЕ удаляется — её вес
+    // символический. Замена sidecar-модели на multilingual NLI (mDeBERTa-v3-
+    // xnli) поднимет дискриминативность и позволит вернуть исходный вес.
+    f_faith: 0.02, f_fact: 0.03, f_cite: 0.02,
+    // Axis C — Retrieval (0.28). RAG Triad context_relevance + RAGAS-фундамент
+    'f_recall@k': 0.10, 'f_ndcg@k': 0.08, f_ctx_prec: 0.05, f_ctx_rec: 0.05,
+    // Axis E (0.02)
+    f_schema: 0.02,
+    // Axis G — LLM-Judge (0.23) — повышен после высвобождения веса из axis B;
+    // на линейном RAG судья даёт значительно более стабильный сигнал (≈0.50),
+    // чем на агентном (≈0.22), поэтому его information value выше.
+    f_judge_ref: 0.18, f_check: 0.05,
+    // Axis H — Safety (0.23) — risk-asymmetric, HELM-core; вес поднят
+    // как компенсация за неприменимый axis B
+    f_safe: 0.23,
+  },
+  // Старый профиль для agentic RAG — сохранён для воспроизводимости baseline.
+  agentic_rag_legacy: {
     f_EM: 0.02, f_F1: 0.03, f_sim: 0.04, f_corr: 0.03,
     f_faith: 0.08, f_fact: 0.04, f_cite: 0.03,
     'f_recall@k': 0.04, 'f_ndcg@k': 0.04, f_ctx_prec: 0.02,
-    // Axis D (0.22)
     f_toolsel: 0.05, f_argF1: 0.05, f_trajIoU: 0.05, f_planEff: 0.03, f_node_cov: 0.02, f_tool_ok: 0.02,
+    f_loop_budget: 0.03, f_loop_term: 0.02,
+    f_judge_ref: 0.20, f_check: 0.05,
+    f_safe: 0.04, f_consist: 0.07,
+  },
+  // v2: перебалансировка по принципам MCDA/AHP. См. главу 6 (раздел 6.4) и
+  // источники: RAGAS (arXiv:2309.15217), HELM (arXiv:2211.09110), τ-bench
+  // (arXiv:2406.12045), Prometheus-2 (arXiv:2405.01535), LLMs-as-Judges Survey
+  // (arXiv:2412.05579), LLM-Assisted AHP (arXiv:2512.10487).
+  //   — EM убран (флексивный язык → структурный шум, RAGAS-обоснование);
+  //   — Axis C поднята до 0.20 (retrieval — фундамент RAG, RAGAS/Confident AI);
+  //   — Axis D дедуплицирована (trajIoU, node_cov, planEff коррелированы с
+  //     toolsel/argF1, τ-bench использует одну агрегатную метрику pass^k);
+  //   — f_judge_ref понижен 0.20→0.15 (variance-correction, LLMs-as-Judges
+  //     Survey: judge correlation с человеком ≈0.6, не доминирующее значение);
+  //   — f_consist убран (applicability gate из LLM-Assisted AHP: метрика с
+  //     нулевой discriminative power на одиночных прогонах не должна занимать
+  //     вес);
+  //   — f_safe поднят до 0.10 (HELM трактует safety как core, risk-asymmetric).
+  // Основной профиль агентного RAG. Перебалансирован по MCDA/AHP в главе 6.4.
+  // Старая версия доступна как `agentic_rag_legacy`.
+  agentic_rag: {
+    // Axis A (0.07)
+    f_F1: 0.03, f_sim: 0.04,
+    // Axis B (0.12)
+    f_faith: 0.06, f_fact: 0.04, f_cite: 0.02,
+    // Axis C (0.20) — поднята
+    'f_recall@k': 0.08, 'f_ndcg@k': 0.06, f_ctx_prec: 0.03, f_ctx_rec: 0.03,
+    // Axis D (0.16) — дедуплицирована, оставлены независимые сигналы
+    f_toolsel: 0.06, f_argF1: 0.05, f_tool_ok: 0.05,
     // Axis F (0.05)
     f_loop_budget: 0.03, f_loop_term: 0.02,
-    // Axis G (0.25) — judge приоритетен и для AgentCall
-    f_judge_ref: 0.20, f_check: 0.05,
-    // Axis H (0.11)
-    f_safe: 0.04, f_consist: 0.07,
+    // Axis G (0.20) — судья понижен с variance-коррекцией
+    f_judge_ref: 0.15, f_check: 0.05,
+    // Axis H (0.20) — safety поднята, consist убран
+    f_safe: 0.20,
   },
   tool_use: {
     f_toolsel: 0.15, f_argF1: 0.15, f_tool_ok: 0.10, f_trajIoU: 0.10,

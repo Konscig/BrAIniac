@@ -38,8 +38,39 @@ class MetricNotApplicable extends Error {
   }
 }
 
+// Snowball-стеммер русского из natural (стандарт NLP-JS): обрезает флексивные
+// окончания, что для overlap-метрик (f_F1, f_EM, f_cite) эквивалентно
+// лемматизации pymorphy3 в sidecar — устраняет систематическое занижение
+// на флексивном языке («оформляется» vs «оформляются» → один и тот же stem).
+// English-токены не трогаем (стеммер сам определяет, что не русское).
+let _stemRu: ((w: string) => string) | null = null;
+try {
+  // dynamic require чтобы пакет был опциональным
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const natural = require('natural');
+  if (natural?.PorterStemmerRu?.stem) {
+    _stemRu = (w: string) => natural.PorterStemmerRu.stem(w);
+  }
+} catch {
+  _stemRu = null;
+}
+
+const RU_TOKEN_RE = /[а-яё]/i;
+
+function stemToken(t: string): string {
+  if (_stemRu && RU_TOKEN_RE.test(t)) {
+    try { return _stemRu(t); } catch { return t; }
+  }
+  return t;
+}
+
 function tokens(text: string): string[] {
-  return text.toLowerCase().replace(/[^\wа-яёa-z0-9]/gi, ' ').split(/\s+/).filter(Boolean);
+  return text
+    .toLowerCase()
+    .replace(/[^\wа-яёa-z0-9]/gi, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(stemToken);
 }
 
 function counter(arr: string[]): Map<string, number> {
@@ -264,14 +295,22 @@ function trajectoryIoU(item: AssessItem): number {
   const trace = item.agent_output.tool_call_trace ?? [];
   const predTools = trace.map(stepTool);
   const refTools = refSteps.map((s) => s.tool);
+  // Объединение групп-эквивалентности: алиасы (rag_search/HybridRetriever/...)
+  // считаются одним ключом, иначе IoU зажата на 0.5 даже когда trajectory
+  // полностью совпадает по семантике.
+  const equivKey = (name: string): string => {
+    const n = normalizeToolName(name);
+    for (const [universal, aliases] of Object.entries(TOOL_ALIASES)) {
+      if (aliases.some((a) => normalizeToolName(a) === n)) return universal;
+    }
+    return n;
+  };
+  const predSet = new Set(predTools.map(equivKey).filter(Boolean));
+  const refSet = new Set(refTools.map(equivKey).filter(Boolean));
   let inter = 0;
-  for (const r of refTools) if (predTools.some((p) => toolMatches(r, p))) inter += 1;
-  // Union — по нормализованным именам, чтобы алиасы не считались дважды
-  const allKeys = new Set<string>();
-  for (const p of predTools) allKeys.add(normalizeToolName(p));
-  for (const r of refTools) allKeys.add(normalizeToolName(r));
-  const union = allKeys.size;
-  return union === 0 ? 0 : inter / union;
+  for (const r of refSet) if (predSet.has(r)) inter += 1;
+  const unionSize = new Set([...predSet, ...refSet]).size;
+  return unionSize === 0 ? 0 : inter / unionSize;
 }
 
 function planEfficiency(item: AssessItem): number {

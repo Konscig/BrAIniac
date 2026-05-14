@@ -130,23 +130,16 @@ function buildReferenceFromRecord(
     if (par) reference.paraphrases = par;
   }
 
-  // ВСЕГДА дополняем relevant_docs / relevant_urls из meta — даже если в
-  // augmented reference уже что-то есть. Augmented LLM кладёт туда chunk_id
-  // исходного voproshalych-корпуса (например '92577'), а RAG-tool в нашем
-  // pipeline именует чанки как `<confluencePageId>_<doc_idx>_chunk_<n>`.
-  // Без pageId из confluence_url substring-matching между этими двумя
-  // системами id никогда не сработает. Поэтому к существующим relevant_docs
-  // добавляем pageId как ещё один валидный идентификатор.
+  // relevant_docs нормализуем под нашу систему id-шников: pageId из
+  // confluence_url. Старый chunk_id voproshalych-корпуса (meta.chunk_id)
+  // структурно несовместим с нашими `<pageId>_idx_chunk_N` и поэтому
+  // никогда не даёт hit — он искусственно занижает recall@k. Pageid же
+  // подтягивается как подстрока в retrieved id и работает корректно.
   if (meta) {
-    const docs = reference.relevant_docs ? [...reference.relevant_docs] : [];
-    const chunkId = meta.chunk_id;
-    if (chunkId !== undefined && chunkId !== null) {
-      const s = String(chunkId);
-      if (!docs.includes(s)) docs.push(s);
-    }
+    const docs: string[] = [];
     const url = typeof meta.confluence_url === 'string' ? meta.confluence_url : '';
     const pageIdMatch = url.match(/pageId=(\d+)/);
-    if (pageIdMatch?.[1] && !docs.includes(pageIdMatch[1])) docs.push(pageIdMatch[1]);
+    if (pageIdMatch?.[1]) docs.push(pageIdMatch[1]);
     if (docs.length > 0) reference.relevant_docs = docs;
   }
   if (!reference.relevant_urls && meta) {
