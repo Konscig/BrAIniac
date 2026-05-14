@@ -26,6 +26,7 @@ async function startWithInFlightRetry(
   pipelineId: number,
   userId: number,
   question: string,
+  bypassInFlightLock = false,
 ): Promise<PipelineExecutionSnapshot> {
   // Pipeline executor освобождает in-flight lock в finally-блоке после того,
   // как status выставлен в 'succeeded'/'failed'. Между нашим polling-loop'ом
@@ -38,8 +39,14 @@ async function startWithInFlightRetry(
   // record уже создан, и второй start вернёт stub-snapshot со статусом
   // 'queued' и executionId, который никогда не будет существовать в jobsById —
   // polling потом получит 404 «execution not found».
-  const startInput = { preset: 'default' as const, input_json: { question, user_query: question } };
-  const MAX_ATTEMPTS = 10;
+  const startInput = {
+    preset: 'default' as const,
+    input_json: { question, user_query: question },
+    ...(bypassInFlightLock ? { bypass_in_flight_lock: true as const } : {}),
+  };
+  // Увеличенный retry budget на случай если bypass-флаг не дойдёт (legacy
+  // совместимость). При bypassInFlightLock=true retry почти не понадобится.
+  const MAX_ATTEMPTS = bypassInFlightLock ? 3 : 30;
   let delayMs = 250;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const idempotencyKey = `assess-${pipelineId}-${randomUUID()}`;
@@ -49,8 +56,8 @@ async function startWithInFlightRetry(
       const code = (err as any)?.body?.code ?? (err as any)?.code;
       if (code !== 'PIPELINE_EXECUTION_ALREADY_RUNNING' || attempt === MAX_ATTEMPTS - 1) throw err;
       await sleep(delayMs);
-      // 250 → 500 → 1000 → 2000 → 3000 (плато), суммарно ~24s
-      delayMs = Math.min(delayMs * 2, 3000);
+      // 250 → 500 → 1000 → 2000 → 4000 → 5000 (плато), суммарно ~120s
+      delayMs = Math.min(delayMs * 2, 5000);
     }
   }
   throw new HttpError(503, {
@@ -64,9 +71,9 @@ export async function runPipelineForItem(
   pipelineId: number,
   userId: number,
   question: string,
-  options: { timeoutMs?: number } = {},
+  options: { timeoutMs?: number; bypassInFlightLock?: boolean } = {},
 ): Promise<PipelineExecutionSnapshot> {
-  const initial = await startWithInFlightRetry(pipelineId, userId, question);
+  const initial = await startWithInFlightRetry(pipelineId, userId, question, options.bypassInFlightLock);
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const deadline = Date.now() + timeoutMs;

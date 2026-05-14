@@ -9,6 +9,8 @@ import {
   isExecutionTerminal,
   listDatasets,
   runAssessment,
+  runAssessmentStream,
+  type AssessmentProgressEvent,
   startPipelineExecution,
   uploadDataset,
   validatePipelineGraph,
@@ -152,6 +154,28 @@ export function RunPanel({
   const [assessSampleSize, setAssessSampleSize] = React.useState<string>("");
   const [assessSeed, setAssessSeed] = React.useState<string>("42");
   const [isAssessing, setIsAssessing] = React.useState(false);
+  const [assessProgress, setAssessProgress] = React.useState<{
+    phase: "items" | "metrics" | "idle";
+    itemsTotal: number;
+    itemsDone: number;
+    itemsFailed: number;
+    activeItems: Set<string>;
+    metricsTotal: number;
+    metricsDone: number;
+    lastMetric: string | null;
+    startedAt: number | null;
+  }>({
+    phase: "idle",
+    itemsTotal: 0,
+    itemsDone: 0,
+    itemsFailed: 0,
+    activeItems: new Set(),
+    metricsTotal: 0,
+    metricsDone: 0,
+    lastMetric: null,
+    startedAt: null,
+  });
+  const [assessElapsedMs, setAssessElapsedMs] = React.useState(0);
   const [assessReport, setAssessReport] = React.useState<AssessmentReport | null>(null);
 
   const assessReportStorageKey = React.useMemo(
@@ -331,12 +355,73 @@ export function RunPanel({
   const elapsedSeconds = isRunning && startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
   const runStatus = isRunning ? `Выполняется ${elapsedSeconds}с` : execution ? `Статус: ${execution.status}` : "Готов к запуску";
 
+  const resetProgress = React.useCallback(() => {
+    setAssessProgress({
+      phase: "idle",
+      itemsTotal: 0,
+      itemsDone: 0,
+      itemsFailed: 0,
+      activeItems: new Set(),
+      metricsTotal: 0,
+      metricsDone: 0,
+      lastMetric: null,
+      startedAt: null,
+    });
+  }, []);
+
+  const onProgressEvent = React.useCallback((ev: AssessmentProgressEvent) => {
+    setAssessProgress((prev) => {
+      const next = { ...prev, activeItems: new Set(prev.activeItems) };
+      switch (ev.type) {
+        case "batch_started":
+          next.phase = "items";
+          next.itemsTotal = Number(ev.total_items) || 0;
+          next.startedAt = next.startedAt ?? Date.now();
+          break;
+        case "item_started":
+          next.activeItems.add(String(ev.item_key));
+          break;
+        case "item_completed":
+          next.activeItems.delete(String(ev.item_key));
+          if (ev.status === "succeeded") next.itemsDone += 1;
+          else next.itemsFailed += 1;
+          break;
+        case "items_done":
+          next.phase = "metrics";
+          break;
+        case "metrics_started":
+          next.phase = "metrics";
+          next.metricsTotal = Number(ev.metric_count) || 0;
+          break;
+        case "metric_done":
+          next.metricsDone += 1;
+          next.lastMetric = String(ev.metric_code);
+          break;
+        case "assessment_complete":
+          next.phase = "idle";
+          break;
+      }
+      return next;
+    });
+  }, []);
+
+  // Тикер elapsed-таймера во время прогона.
+  React.useEffect(() => {
+    if (!isAssessing || !assessProgress.startedAt) return;
+    const id = window.setInterval(() => {
+      setAssessElapsedMs(Date.now() - (assessProgress.startedAt ?? Date.now()));
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [isAssessing, assessProgress.startedAt]);
+
   const handleAssess = React.useCallback(async () => {
     if (!pipelineId) return;
 
     setIsAssessing(true);
     setAssessError(null);
     setAssessReport(null);
+    resetProgress();
+    setAssessElapsedMs(0);
     try {
       if (assessMode === "batch") {
         if (!selectedDatasetId) {
@@ -358,12 +443,15 @@ export function RunPanel({
           const s = Number.parseInt(seedRaw, 10);
           if (Number.isInteger(s)) sample.seed = s;
         }
-        const report = await runAssessment({
-          pipeline_id: pipelineId,
-          weight_profile: assessProfile,
-          dataset_id: Number(selectedDatasetId),
-          ...(Object.keys(sample).length > 0 ? { sample } : {})
-        });
+        const report = await runAssessmentStream(
+          {
+            pipeline_id: pipelineId,
+            weight_profile: assessProfile,
+            dataset_id: Number(selectedDatasetId),
+            ...(Object.keys(sample).length > 0 ? { sample } : {}),
+          },
+          onProgressEvent
+        );
         setAssessReport(report);
         onAssessComplete?.();
         return;
@@ -400,7 +488,7 @@ export function RunPanel({
     } finally {
       setIsAssessing(false);
     }
-  }, [assessMode, assessProfile, assessReference, assessSampleFraction, assessSampleSize, assessSeed, execution, onAssessComplete, pipelineId, question, selectedDatasetId]);
+  }, [assessMode, assessProfile, assessReference, assessSampleFraction, assessSampleSize, assessSeed, execution, onAssessComplete, onProgressEvent, pipelineId, question, resetProgress, selectedDatasetId]);
 
   const verdictBadgeClass: Record<AssessmentReport["verdict"], string> = {
     pass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40",
@@ -657,6 +745,57 @@ export function RunPanel({
               <div className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-200">
                 <div className="font-medium text-red-100">{assessError.title}</div>
                 <div>{assessError.message}</div>
+              </div>
+            )}
+
+            {isAssessing && assessProgress.phase !== "idle" && (
+              <div className="rounded-md border border-border/60 bg-muted/15 p-2 text-[11px]">
+                <div className="mb-1 flex items-center justify-between">
+                  <div className="font-medium text-foreground">
+                    {assessProgress.phase === "items"
+                      ? `Прогоны (${assessProgress.itemsDone + assessProgress.itemsFailed}/${assessProgress.itemsTotal})`
+                      : `Метрики (${assessProgress.metricsDone}/${assessProgress.metricsTotal})`}
+                  </div>
+                  <div className="font-mono text-muted-foreground">
+                    {(assessElapsedMs / 1000).toFixed(1)}s
+                  </div>
+                </div>
+                {assessProgress.phase === "items" && assessProgress.itemsTotal > 0 && (
+                  <>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/40">
+                      <div
+                        className="h-full bg-primary transition-all"
+                        style={{
+                          width: `${Math.min(100, ((assessProgress.itemsDone + assessProgress.itemsFailed) / assessProgress.itemsTotal) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                    {assessProgress.activeItems.size > 0 && (
+                      <div className="mt-1 truncate text-muted-foreground">
+                        в работе: {Array.from(assessProgress.activeItems).slice(0, 3).join(", ")}
+                        {assessProgress.activeItems.size > 3 ? ` +${assessProgress.activeItems.size - 3}` : ""}
+                      </div>
+                    )}
+                    {assessProgress.itemsFailed > 0 && (
+                      <div className="mt-0.5 text-amber-300">failed: {assessProgress.itemsFailed}</div>
+                    )}
+                  </>
+                )}
+                {assessProgress.phase === "metrics" && assessProgress.metricsTotal > 0 && (
+                  <>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/40">
+                      <div
+                        className="h-full bg-primary transition-all"
+                        style={{ width: `${Math.min(100, (assessProgress.metricsDone / assessProgress.metricsTotal) * 100)}%` }}
+                      />
+                    </div>
+                    {assessProgress.lastMetric && (
+                      <div className="mt-1 truncate font-mono text-muted-foreground">
+                        last: {assessProgress.lastMetric}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

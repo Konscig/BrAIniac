@@ -785,3 +785,89 @@ export interface AssessmentRequest {
 export function runAssessment(req: AssessmentRequest): Promise<AssessmentReport> {
   return postJson<AssessmentReport>("/judge/assessments", req);
 }
+
+/** Server-Sent Events: прогресс batch-оценки в реальном времени.
+ *  Использует POST + ReadableStream вместо EventSource (EventSource не
+ *  поддерживает POST и Authorization-заголовок).
+ *  onEvent вызывается на каждое событие; `report` — финальный отчёт. */
+export interface AssessmentProgressEvent {
+  type:
+    | "batch_started"
+    | "item_started"
+    | "item_completed"
+    | "items_done"
+    | "metrics_started"
+    | "metric_done"
+    | "assessment_complete"
+    | "report"
+    | "error";
+  [key: string]: unknown;
+}
+
+export async function runAssessmentStream(
+  req: AssessmentRequest,
+  onEvent: (event: AssessmentProgressEvent) => void,
+  signal?: AbortSignal
+): Promise<AssessmentReport> {
+  const headers = buildHeaders({ "Content-Type": "application/json" }, true);
+  const response = await fetch(`${API_BASE_URL}/judge/assessments/stream`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(req),
+    credentials: "same-origin",
+    ...(signal ? { signal } : {}),
+  });
+  if (!response.ok || !response.body) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Stream request failed: HTTP ${response.status} ${text}`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalReport: AssessmentReport | undefined;
+
+  const parseEventBlock = (block: string): { event: string; data: string } | null => {
+    let event = "message";
+    const dataLines: string[] = [];
+    for (const line of block.split("\n")) {
+      if (line.startsWith(":")) continue; // heartbeat / comment
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    }
+    if (dataLines.length === 0) return null;
+    return { event, data: dataLines.join("\n") };
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let separator = buffer.indexOf("\n\n");
+    while (separator !== -1) {
+      const block = buffer.slice(0, separator);
+      buffer = buffer.slice(separator + 2);
+      const parsed = parseEventBlock(block);
+      if (parsed) {
+        let payload: unknown;
+        try {
+          payload = JSON.parse(parsed.data);
+        } catch {
+          payload = parsed.data;
+        }
+        if (parsed.event === "report") {
+          finalReport = payload as AssessmentReport;
+        } else if (parsed.event === "error") {
+          const err = payload as { message?: string; code?: string };
+          throw new Error(err.message ?? err.code ?? "stream error");
+        } else {
+          onEvent({ type: parsed.event as AssessmentProgressEvent["type"], ...(payload as object) });
+        }
+      }
+      separator = buffer.indexOf("\n\n");
+    }
+  }
+  if (!finalReport) {
+    throw new Error("stream finished without a final report event");
+  }
+  return finalReport;
+}

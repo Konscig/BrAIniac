@@ -271,8 +271,16 @@ export async function startPipelineExecutionForUser(
     }
   }
 
+  // bypass_in_flight_lock: используется batch-eval'ом, где каждый item получает
+  // независимый execution_id и не конкурирует за state. Lock per-pipeline в
+  // обычном режиме защищает от restart-recovery race; в batch-режиме он
+  // искусственно сериализует ИО и порождает HTTP 409 (см. judge.service /
+  // pipeline-runner). Bypass-флаг приходит из startInput только от внутренних
+  // вызывателей (judge), пользовательский API его не выставляет.
+  const bypassInFlight = Boolean((input as any)?.bypass_in_flight_lock);
+
   const existingInFlight = inFlightByPipelineId.get(pipelineId);
-  if (existingInFlight) {
+  if (existingInFlight && !bypassInFlight) {
     const runningJob = jobsById.get(existingInFlight);
     if (runningJob && (runningJob.status === 'queued' || runningJob.status === 'running')) {
       throw new HttpError(409, {
@@ -285,7 +293,9 @@ export async function startPipelineExecutionForUser(
 
   }
 
-  const inFlightClaim = await claimInFlightExecutionRecord(pipelineId, executionId);
+  const inFlightClaim = bypassInFlight
+    ? { claimed: true, record: { pipeline_id: pipelineId, execution_id: executionId, updated_at: new Date().toISOString() } } as const
+    : await claimInFlightExecutionRecord(pipelineId, executionId);
   if (!inFlightClaim.claimed) {
     const runningJob = jobsById.get(inFlightClaim.record.execution_id);
     if (runningJob && (runningJob.status === 'queued' || runningJob.status === 'running')) {

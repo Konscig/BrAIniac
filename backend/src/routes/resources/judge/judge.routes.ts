@@ -31,44 +31,101 @@ router.use(requireAuth);
  *
  * Ответ: полный отчёт оценки (200 OK).
  */
+function parseAssessmentBody(body: any): { error?: string; pipelineId?: number; items?: AssessItem[]; datasetId?: number; sample?: any; weightProfile?: string } {
+  const pipelineId = Number(body?.pipeline_id);
+  if (!Number.isInteger(pipelineId) || pipelineId <= 0) return { error: 'pipeline_id required' };
+  const items: AssessItem[] | undefined = Array.isArray(body.items) ? body.items : undefined;
+  const datasetId = Number.isInteger(Number(body.dataset_id)) && Number(body.dataset_id) > 0 ? Number(body.dataset_id) : undefined;
+  if (!items?.length && datasetId === undefined) return { error: 'either items[] or dataset_id is required' };
+  const sample = body.sample && typeof body.sample === 'object' && !Array.isArray(body.sample)
+    ? {
+        ...(typeof body.sample.fraction === 'number' ? { fraction: body.sample.fraction } : {}),
+        ...(Number.isInteger(body.sample.size) ? { size: body.sample.size } : {}),
+        ...(typeof body.sample.seed === 'number' ? { seed: body.sample.seed } : {}),
+      }
+    : undefined;
+  return {
+    pipelineId,
+    ...(items?.length ? { items } : {}),
+    ...(datasetId !== undefined ? { datasetId } : {}),
+    ...(sample ? { sample } : {}),
+    ...(body.weight_profile ? { weightProfile: String(body.weight_profile) } : {}),
+  };
+}
+
 router.post('/assessments', async (req: any, res) => {
   try {
-    const body = req.body ?? {};
-    const pipelineId = Number(body.pipeline_id);
-    if (!Number.isInteger(pipelineId) || pipelineId <= 0) {
-      return res.status(400).json({ error: 'pipeline_id required' });
-    }
-    const items: AssessItem[] | undefined = Array.isArray(body.items) ? body.items : undefined;
-    const datasetId = Number.isInteger(Number(body.dataset_id)) && Number(body.dataset_id) > 0
-      ? Number(body.dataset_id)
-      : undefined;
-
-    if (!items?.length && datasetId === undefined) {
-      return res.status(400).json({ error: 'either items[] or dataset_id is required' });
-    }
-
-    const sample = body.sample && typeof body.sample === 'object' && !Array.isArray(body.sample)
-      ? {
-          ...(typeof body.sample.fraction === 'number' ? { fraction: body.sample.fraction } : {}),
-          ...(Number.isInteger(body.sample.size) ? { size: body.sample.size } : {}),
-          ...(typeof body.sample.seed === 'number' ? { seed: body.sample.seed } : {}),
-        }
-      : undefined;
-
-    await ensurePipelineOwnedByUser(pipelineId, req.user.user_id);
+    const parsed = parseAssessmentBody(req.body ?? {});
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    await ensurePipelineOwnedByUser(parsed.pipelineId!, req.user.user_id);
 
     const report = await runAssessment({
-      pipeline_id: pipelineId,
+      pipeline_id: parsed.pipelineId!,
       user_id: req.user.user_id,
-      ...(items?.length ? { items } : {}),
-      ...(datasetId !== undefined ? { dataset_id: datasetId } : {}),
-      ...(sample ? { sample } : {}),
-      ...(body.weight_profile ? { weight_profile: String(body.weight_profile) } : {}),
+      ...(parsed.items?.length ? { items: parsed.items } : {}),
+      ...(parsed.datasetId !== undefined ? { dataset_id: parsed.datasetId } : {}),
+      ...(parsed.sample ? { sample: parsed.sample } : {}),
+      ...(parsed.weightProfile ? { weight_profile: parsed.weightProfile } : {}),
     });
 
     return res.json(report);
   } catch (err) {
     return sendRouteError(res, err);
+  }
+});
+
+/**
+ * POST /judge/assessments/stream
+ *
+ * Server-Sent Events стрим прогресса оценки. Тело то же что у /assessments.
+ * Шлёт события: batch_started, item_started, item_completed, items_done,
+ * metrics_started, metric_done, assessment_complete, error. Клиент должен
+ * читать как text/event-stream (fetch + ReadableStream или EventSource).
+ */
+router.post('/assessments/stream', async (req: any, res) => {
+  const parsed = parseAssessmentBody(req.body ?? {});
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+
+  try {
+    await ensurePipelineOwnedByUser(parsed.pipelineId!, req.user.user_id);
+  } catch (err) {
+    return sendRouteError(res, err);
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  const sendEvent = (type: string, data: any) => {
+    res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // Heartbeat для предотвращения idle-timeout на proxy/CDN.
+  const heartbeat = setInterval(() => { try { res.write(':hb\n\n'); } catch {} }, 15000);
+
+  try {
+    const report = await runAssessment({
+      pipeline_id: parsed.pipelineId!,
+      user_id: req.user.user_id,
+      ...(parsed.items?.length ? { items: parsed.items } : {}),
+      ...(parsed.datasetId !== undefined ? { dataset_id: parsed.datasetId } : {}),
+      ...(parsed.sample ? { sample: parsed.sample } : {}),
+      ...(parsed.weightProfile ? { weight_profile: parsed.weightProfile } : {}),
+      onProgress: (event) => sendEvent(event.type, event),
+    });
+    sendEvent('report', report);
+  } catch (err: any) {
+    const status = typeof err?.status === 'number' ? err.status : 500;
+    sendEvent('error', {
+      status,
+      code: err?.body?.code ?? err?.code ?? 'JUDGE_STREAM_FAILED',
+      message: err?.body?.error ?? err?.message ?? 'assessment stream failed',
+    });
+  } finally {
+    clearInterval(heartbeat);
+    res.end();
   }
 });
 

@@ -52,6 +52,8 @@ export interface AssessRequest {
   sample?: SampleSpec;
   weight_profile?: string;
   user_id?: number;
+  /** Опциональный callback для SSE-стрима прогресса оценки. */
+  onProgress?: AssessmentProgressHandler;
 }
 
 export interface SamplingReport {
@@ -274,11 +276,52 @@ function resolveWeights(activeCodes: string[], profileName: string): Record<stri
   return filtered;
 }
 
+/** Callback для трансляции прогресса оценки во время batch-исполнения.
+ *  Используется SSE endpoint'ом для live updates во фронте.
+ *  Все события опциональны — pipeline работает и без подписчика. */
+export type AssessmentProgressEvent =
+  | { type: 'batch_started'; total_items: number; concurrency: number; ts: number }
+  | { type: 'item_started'; item_key: string; index: number; total: number; ts: number }
+  | { type: 'item_completed'; item_key: string; index: number; total: number; status: 'succeeded' | 'failed'; duration_ms?: number; ts: number }
+  | { type: 'items_done'; succeeded: number; failed: number; ts: number }
+  | { type: 'metrics_started'; metric_count: number; ts: number }
+  | { type: 'metric_done'; metric_code: string; value: number | null; sample_size: number; ts: number }
+  | { type: 'assessment_complete'; final_score: number; verdict: string; ts: number };
+
+export type AssessmentProgressHandler = (event: AssessmentProgressEvent) => void;
+
+// concurrency=1 по умолчанию: pipeline executor шарит state (Node.output_json,
+// VectorUpsert namespace) между concurrent execution'ами одного pipeline-id,
+// что приводит к race-ам и node-execution failures. Per-execution изоляция
+// state — отдельная задача (см. plan). До неё batch остаётся sequential,
+// но прогресс шлётся через SSE — UX от этого не страдает.
+const DEFAULT_BATCH_CONCURRENCY = Number(process.env.JUDGE_BATCH_CONCURRENCY ?? '1');
+
+async function runWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  const consume = async (): Promise<void> => {
+    while (true) {
+      const my = nextIndex++;
+      if (my >= items.length) return;
+      results[my] = await worker(items[my]!, my);
+    }
+  };
+  const concurrent = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: concurrent }, () => consume()));
+  return results;
+}
+
 async function buildItemsFromDataset(
   pipelineId: number,
   userId: number,
   datasetId: number,
   sampleSpec: SampleSpec | undefined,
+  onProgress?: AssessmentProgressHandler,
 ): Promise<{ items: AssessItem[]; sampling: SamplingReport; itemRuns: ItemRunReport[] }> {
   const dataset = await getDatasetById(datasetId);
   if (!dataset) {
@@ -306,11 +349,22 @@ async function buildItemsFromDataset(
     selected_item_keys: sampled.selected.map((g) => g.item_key),
   };
 
-  const items: AssessItem[] = [];
-  const itemRuns: ItemRunReport[] = [];
-  for (const g of sampled.selected) {
+  const total = sampled.selected.length;
+  const concurrency = DEFAULT_BATCH_CONCURRENCY;
+  onProgress?.({ type: 'batch_started', total_items: total, concurrency, ts: Date.now() });
+
+  type Slot = { item?: AssessItem; run: ItemRunReport };
+  // Параллельный запуск с ограничением concurrency. Используется bypass
+  // in-flight lock на уровне runPipelineForItem (batch-режим: каждый item
+  // имеет свой execution_id, namespace и output — конфликта state нет).
+  const slots = await runWithConcurrency(sampled.selected, concurrency, async (g, idx) => {
+    onProgress?.({ type: 'item_started', item_key: g.item_key, index: idx, total, ts: Date.now() });
+    const start = Date.now();
     try {
-      const snapshot = await runPipelineForItem(pipelineId, userId, g.question);
+      // bypassInFlightLock включаем ТОЛЬКО при concurrency>1: тогда snimaem
+      // lock для параллельных execution'ов. При sequential (=1) lock полезен,
+      // он защищает от restart-recovery race на длинных прогонах.
+      const snapshot = await runPipelineForItem(pipelineId, userId, g.question, { bypassInFlightLock: concurrency > 1 });
       if (snapshot.status !== 'succeeded') {
         const errorText = snapshot.error?.message ?? snapshot.error?.code;
         const run: ItemRunReport = {
@@ -321,8 +375,8 @@ async function buildItemsFromDataset(
           ...(snapshot.summary?.duration_ms !== undefined ? { duration_ms: snapshot.summary.duration_ms } : {}),
           ...(snapshot.summary?.cost_units_used !== undefined ? { cost_units: snapshot.summary.cost_units_used } : {}),
         };
-        itemRuns.push(run);
-        continue;
+        onProgress?.({ type: 'item_completed', item_key: g.item_key, index: idx, total, status: 'failed', duration_ms: Date.now() - start, ts: Date.now() });
+        return { run } as Slot;
       }
       const enriched = await extractAssessOutput(snapshot, pipelineId);
       const opsField: AssessItem['ops'] = {
@@ -330,13 +384,13 @@ async function buildItemsFromDataset(
         ...(snapshot.summary?.cost_units_used !== undefined ? { cost_units: snapshot.summary.cost_units_used } : {}),
         status: 'succeeded',
       };
-      items.push({
+      const item: AssessItem = {
         item_key: g.item_key,
         input: { question: g.question },
         agent_output: enriched,
         ...(g.reference ? { reference: g.reference } : {}),
         ops: opsField,
-      });
+      };
       const run: ItemRunReport = {
         item_key: g.item_key,
         execution_id: snapshot.execution_id,
@@ -344,15 +398,28 @@ async function buildItemsFromDataset(
         ...(snapshot.summary?.duration_ms !== undefined ? { duration_ms: snapshot.summary.duration_ms } : {}),
         ...(snapshot.summary?.cost_units_used !== undefined ? { cost_units: snapshot.summary.cost_units_used } : {}),
       };
-      itemRuns.push(run);
+      onProgress?.({ type: 'item_completed', item_key: g.item_key, index: idx, total, status: 'succeeded', duration_ms: Date.now() - start, ts: Date.now() });
+      return { item, run } as Slot;
     } catch (err) {
-      itemRuns.push({
+      const run: ItemRunReport = {
         item_key: g.item_key,
         status: 'failed',
         error: err instanceof Error ? err.message : String(err),
-      });
+      };
+      onProgress?.({ type: 'item_completed', item_key: g.item_key, index: idx, total, status: 'failed', duration_ms: Date.now() - start, ts: Date.now() });
+      return { run } as Slot;
     }
+  });
+
+  const items: AssessItem[] = [];
+  const itemRuns: ItemRunReport[] = [];
+  let succeeded = 0;
+  let failed = 0;
+  for (const s of slots) {
+    itemRuns.push(s.run);
+    if (s.item) { items.push(s.item); succeeded += 1; } else { failed += 1; }
   }
+  onProgress?.({ type: 'items_done', succeeded, failed, ts: Date.now() });
 
   if (items.length === 0) {
     throw new HttpError(502, {
@@ -415,7 +482,7 @@ export async function runAssessment(req: AssessRequest): Promise<AssessReport> {
         error: 'user_id required when sampling from dataset_id',
       });
     }
-    const built = await buildItemsFromDataset(req.pipeline_id, req.user_id, req.dataset_id, req.sample);
+    const built = await buildItemsFromDataset(req.pipeline_id, req.user_id, req.dataset_id, req.sample, req.onProgress);
     assessItems = built.items;
     sampling = built.sampling;
     itemRuns = built.itemRuns;
@@ -454,6 +521,7 @@ export async function runAssessment(req: AssessRequest): Promise<AssessReport> {
   };
 
   const activeCodes = Array.from(codeToNodes.keys());
+  req.onProgress?.({ type: 'metrics_started', metric_count: activeCodes.length, ts: Date.now() });
 
   for (const item of assessItems) {
     for (const code of activeCodes) {
@@ -483,15 +551,20 @@ export async function runAssessment(req: AssessRequest): Promise<AssessReport> {
 
   const metricScores: MetricResult[] = [];
   for (const [code, values] of Object.entries(accumulator)) {
-    if (!values.length) continue;
+    if (!values.length) {
+      req.onProgress?.({ type: 'metric_done', metric_code: code, value: null, sample_size: 0, ts: Date.now() });
+      continue;
+    }
     const def = METRIC_BY_CODE.get(code)!;
+    const avg = values.reduce((s, v) => s + v, 0) / values.length;
     metricScores.push({
       metric_code: code,
       axis: def.axis,
-      value: values.reduce((s, v) => s + v, 0) / values.length,
+      value: avg,
       sample_size: values.length,
       executor: def.executor,
     });
+    req.onProgress?.({ type: 'metric_done', metric_code: code, value: avg, sample_size: values.length, ts: Date.now() });
   }
 
   const computedCodes = metricScores.map(m => m.metric_code);
@@ -641,6 +714,7 @@ export async function runAssessment(req: AssessRequest): Promise<AssessReport> {
     }
   }
 
+  req.onProgress?.({ type: 'assessment_complete', final_score: finalScore, verdict, ts: Date.now() });
   return report;
 }
 
