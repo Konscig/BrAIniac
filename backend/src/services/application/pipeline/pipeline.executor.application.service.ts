@@ -25,6 +25,7 @@ import {
   writeExecutionSnapshot,
   writeIdempotencyExecutionRecord,
   writeInFlightExecutionRecord,
+  pruneOldExecutions,
 } from './pipeline.executor.snapshot-store.js';
 import type {
   DatasetContext,
@@ -133,8 +134,28 @@ function normalizeStartInput(input: StartPipelineExecutionInput): StartPipelineE
   };
 }
 
+// Periodic filesystem prune: запускаем не чаще раза в 10 минут, чтобы не
+// нагружать readdir/stat на каждый запрос. Без TTL .artifacts/executions
+// заваливался десятками GB после нескольких batch-eval прогонов.
+let lastFilesystemPruneAt = 0;
+const FILESYSTEM_PRUNE_INTERVAL_MS = 10 * 60_000;
+
+function maybePruneFilesystem(): void {
+  const now = Date.now();
+  if (now - lastFilesystemPruneAt < FILESYSTEM_PRUNE_INTERVAL_MS) return;
+  lastFilesystemPruneAt = now;
+  void pruneOldExecutions().then((stats) => {
+    if (stats.removed > 0) {
+      console.info(`[executor] pruned ${stats.removed} execution dirs (kept ${stats.kept})`);
+    }
+  }).catch((err) => {
+    console.warn('[executor] filesystem prune failed', err);
+  });
+}
+
 function cleanupExecutionStore() {
   const now = Date.now();
+  maybePruneFilesystem();
 
   for (const [executionId, job] of jobsById.entries()) {
     if (job.status === 'running' || job.status === 'queued') continue;

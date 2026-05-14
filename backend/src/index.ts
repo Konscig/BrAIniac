@@ -75,6 +75,34 @@ function createApp() {
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
   mountBrainiacMcpTransport(app);
 
+  // FIFO semaphore: ограничивает одновременную обработку heavy contract-ов
+  // (VectorUpsert/Embedder/Chunker — большие payload-ы с тысячами векторов
+  // или эмбеддинговыми batch-ами). Без него параллельные batch-eval execution-ы
+  // забивают single-threaded event loop, клиент абортит запрос до конца body-read
+  // и приходит EXECUTOR_TOOLNODE_UNAVAILABLE / 'request aborted'.
+  // Лимиты тюнятся через JUDGE_TOOL_EXECUTOR_HEAVY_LIMIT (default 2).
+  const HEAVY_CONCURRENCY = Math.max(1, Number(process.env.JUDGE_TOOL_EXECUTOR_HEAVY_LIMIT ?? '2'));
+  const HEAVY_CONTRACTS = new Set(['VectorUpsert', 'Embedder', 'Chunker']);
+  let heavyInFlight = 0;
+  const heavyQueue: Array<() => void> = [];
+  const heavyAcquire = (): Promise<void> => new Promise<void>((resolve) => {
+    if (heavyInFlight < HEAVY_CONCURRENCY) {
+      heavyInFlight += 1;
+      resolve();
+    } else {
+      heavyQueue.push(resolve);
+    }
+  });
+  const heavyRelease = (): void => {
+    const next = heavyQueue.shift();
+    if (next) {
+      // counter не уменьшаем — слот сразу занят следующим
+      next();
+    } else {
+      heavyInFlight -= 1;
+    }
+  };
+
   app.post('/tool-executor/contracts', async (req, res) => {
     const payload = req.body && typeof req.body === 'object' ? req.body : {};
     const tool = payload.tool && typeof payload.tool === 'object' ? payload.tool : {};
@@ -87,6 +115,13 @@ function createApp() {
     const requestedContractName = typeof contract.name === 'string' ? contract.name.trim() : '';
     const resolvedContractName = requestedContractName || requestedToolName;
     const resolvedContractDefinition = resolvedContractName ? resolveToolContractDefinition(resolvedContractName) : undefined;
+
+    const isHeavy = resolvedContractDefinition?.name
+      ? HEAVY_CONTRACTS.has(resolvedContractDefinition.name)
+      : HEAVY_CONTRACTS.has(resolvedContractName);
+    if (isHeavy) {
+      await heavyAcquire();
+    }
 
     let contractOutput: Record<string, any> | null = null;
     if (
@@ -102,6 +137,7 @@ function createApp() {
           response: null,
         });
       } catch (error) {
+        if (isHeavy) heavyRelease();
         if (isHttpError(error)) {
           return res.status(error.status).json({
             ok: false,
@@ -122,6 +158,7 @@ function createApp() {
       }
     }
 
+    if (isHeavy) heavyRelease();
     res.json({
       ok: true,
       executor: 'backend-contract-http-json',

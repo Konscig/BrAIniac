@@ -1,4 +1,4 @@
-import { HttpError } from '../../../../common/http-error.js';
+import { HttpError, isHttpError } from '../../../../common/http-error.js';
 import { getOpenRouterAdapter } from '../../../core/openrouter/openrouter.adapter.js';
 import { getToolById } from '../../../data/tool.service.js';
 import { listSupportedToolContracts, resolveToolContractDefinition } from '../../tool/contracts/index.js';
@@ -8,6 +8,24 @@ import { readBoundedInteger } from '../../pipeline/pipeline.executor.utils.js';
 import { buildEmbeddingCandidates, toObjectRecord } from './node-handler.common.js';
 
 const ENABLE_LOCAL_SYNTHETIC_CONTRACT_OUTPUT = (process.env.EXECUTOR_ALLOW_LOCAL_CONTRACT_OUTPUT ?? '0').trim() === '1';
+
+/** Признак того, что URL указывает на наш собственный /tool-executor/contracts
+ *  endpoint. Используется short-circuit-ом, который при положительном ответе
+ *  вызывает contract.buildHttpSuccessOutput напрямую (in-process) вместо
+ *  fetch-roundtrip к localhost. Принимаем только точный path и только
+ *  localhost/127.0.0.1 — внешние URL по-прежнему идут через fetch. */
+function isLocalSelfContractsUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    const host = url.hostname.toLowerCase();
+    if (host !== 'localhost' && host !== '127.0.0.1' && host !== '0.0.0.0' && host !== '::1') return false;
+    if (url.pathname.replace(/\/+$/, '') !== '/tool-executor/contracts') return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export type ResolvedToolBinding = {
   tool_id: number | null;
@@ -395,6 +413,51 @@ export async function executeResolvedToolBinding(
       code: 'EXECUTOR_TOOLNODE_HTTP_URL_REQUIRED',
       error: 'http-json tool executor requires url',
     });
+  }
+
+  // Short-circuit: если URL ведёт на наш собственный backend и контракт
+  // известен — вызываем buildHttpSuccessOutput напрямую, минуя HTTP-roundtrip.
+  // Это в 10× быстрее и устраняет race на single-threaded event loop при
+  // параллельных batch-eval прогонах (десятки одновременных VectorUpsert
+  // абортили HTTP-self-call ранее как EXECUTOR_TOOLNODE_UNAVAILABLE).
+  //
+  // Security:
+  //  - срабатывает только для точного path '/tool-executor/contracts' на
+  //    localhost/127.0.0.1 (наш own backend);
+  //  - resolved toolContract.input строится системой по pipeline graph,
+  //    user-controlled payload здесь не участвует;
+  //  - HTTP /tool-executor/contracts уже монтирован без requireAuth, поэтому
+  //    прямой in-process вызов не обходит никакого middleware;
+  //  - внешние URL по-прежнему идут через fetch — SSRF-поверхность не меняется.
+  if (toolContract?.definition.buildHttpSuccessOutput && isLocalSelfContractsUrl(rawUrl)) {
+    try {
+      const contractOutput = await toolContract.definition.buildHttpSuccessOutput({
+        input: toolContract.input,
+        status: 200,
+        response: null,
+      });
+      return {
+        output: {
+          kind: 'tool_node',
+          executor: 'http-json',
+          tool_name: toolBinding.name,
+          tool_id: toolBinding.tool_id,
+          tool_source: toolBinding.source,
+          contract_name: toolContract.name,
+          ...(contractOutput ? { contract_output_source: 'in-process' } : {}),
+          ...(contractOutput ? { contract_output: contractOutput } : {}),
+          status: 200,
+        },
+        costUnits: 1,
+      };
+    } catch (error) {
+      if (isHttpError(error)) throw error;
+      throw new HttpError(503, {
+        code: 'EXECUTOR_TOOLNODE_INPROC_FAILED',
+        error: 'in-process contract resolution failed',
+        details: { message: error instanceof Error ? error.message : String(error) },
+      });
+    }
   }
 
   let normalizedUrl = rawUrl;
