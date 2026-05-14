@@ -418,7 +418,11 @@ export async function executeResolvedToolBinding(
       ? mergedToolConfig.method.toUpperCase()
       : 'POST';
   const method = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(methodRaw) ? methodRaw : 'POST';
-  const timeoutMs = readBoundedInteger(executorOptions.timeoutMs ?? mergedToolConfig.timeoutMs, 10_000, 200, 120_000);
+  // Default 60s: при параллельных batch-eval прогонах HTTP к tool-executor
+  // получает несколько крупных VectorUpsert payload'ов (десятки тысяч
+  // элементов с многомерными векторами) одновременно — single-threaded event
+  // loop не успевает за 10s. Можно перекрыть через executor.timeoutMs.
+  const timeoutMs = readBoundedInteger(executorOptions.timeoutMs ?? mergedToolConfig.timeoutMs, 60_000, 200, 300_000);
 
   const headers = {
     ...sanitizeStringRecord(mergedToolConfig.headers),

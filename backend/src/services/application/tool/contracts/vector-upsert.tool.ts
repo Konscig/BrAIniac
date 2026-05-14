@@ -239,10 +239,16 @@ export function resolveVectorUpsertContractInput(
     readNonEmptyText(cfg.index_name) ??
     readNonEmptyText(inputRecord.index_name) ??
     'default-index';
-  const namespace =
+  const baseNamespace =
     readNonEmptyText(cfg.namespace) ??
     readNonEmptyText(inputRecord.namespace) ??
     'default';
+  // В режиме изолированного state (batch-eval, concurrent execution-ы одного
+  // pipeline) шардируем namespace по execution_id, чтобы HybridRetriever
+  // одного item не подхватывал чанки, упсертнутые другим item'ом.
+  const namespace = context.isolated_state && context.execution_id
+    ? `${baseNamespace}__${context.execution_id}`
+    : baseNamespace;
 
   return {
     index_name: indexName,

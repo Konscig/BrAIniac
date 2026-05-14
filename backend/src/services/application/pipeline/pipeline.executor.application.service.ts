@@ -87,6 +87,7 @@ function toSnapshot(job: ExecutionJob): PipelineExecutionSnapshot {
     ...(job.preflight ? { preflight: job.preflight } : {}),
     ...(job.summary ? { summary: job.summary } : {}),
     ...(job.final_result ? { final_result: job.final_result } : {}),
+    ...(job.node_states && job.node_states.length > 0 ? { node_states: job.node_states } : {}),
     ...(job.warnings.length > 0 ? { warnings: [...job.warnings] } : {}),
     ...(job.error ? { error: job.error } : {}),
   };
@@ -518,6 +519,7 @@ async function runExecutionJob(job: ExecutionJob) {
       });
     }
 
+    const isolatedState = Boolean((job.request as any)?.bypass_in_flight_lock);
     const result = await executeGraph(
       pipeline,
       runtimeByNodeId,
@@ -525,6 +527,8 @@ async function runExecutionJob(job: ExecutionJob) {
       {
         dataset: datasetContext,
         input_json: job.request.input_json,
+        execution_id: job.execution_id,
+        isolated_state: isolatedState,
       },
       preflight.metrics.estimatedMaxSteps,
     );
@@ -539,7 +543,14 @@ async function runExecutionJob(job: ExecutionJob) {
       ),
     );
     result.nodeStates = nodeStates;
-    await persistNodeOutputs(job.execution_id, nodeStates);
+    job.node_states = nodeStates;
+    // В batch-eval режиме (bypass_in_flight_lock) НЕ пишем в Node.output_json:
+    // concurrent execution-ы одного pipeline затирали бы друг друга по node_id.
+    // Snapshot файла per-execution уже несёт node_states как source of truth.
+    const jobBypassesLock = Boolean((job.request as any)?.bypass_in_flight_lock);
+    if (!jobBypassesLock) {
+      await persistNodeOutputs(job.execution_id, nodeStates);
+    }
 
     job.warnings.push(...result.warnings);
     if (result.error) {
@@ -571,7 +582,9 @@ async function runExecutionJob(job: ExecutionJob) {
     touch(job);
 
     try {
-      await persistNodeOutputs(job.execution_id, nodeStates);
+      if (!Boolean((job.request as any)?.bypass_in_flight_lock)) {
+        await persistNodeOutputs(job.execution_id, nodeStates);
+      }
     } catch (persistError) {
       console.error('[executor] failed to persist partial node outputs', persistError);
     }

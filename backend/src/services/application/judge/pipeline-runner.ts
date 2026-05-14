@@ -123,7 +123,11 @@ export function extractAgentOutputText(snapshot: PipelineExecutionSnapshot): str
  *  - structured_output — JSON из последнего узла, у которого он есть;
  *  - retrieved_ids — id-шники документов из retrieval-узлов;
  *  - loop_iterations / loop_terminated / loop_converged — телеметрия LoopGate, если есть.
- *  Источник истины: Node.output_json, который persistNodeOutputs пишет после исполнения.
+ *
+ *  Источник истины — `snapshot.node_states` (per-execution snapshot). Когда
+ *  node_states отсутствуют (старые snapshot'ы / non-batch executions), fallback
+ *  на чтение `Node.output_json` из БД по pipeline_id. Это даёт корректную работу
+ *  для concurrent batch-eval: каждый item читает свой собственный snapshot.
  */
 export async function extractAssessOutput(
   snapshot: PipelineExecutionSnapshot,
@@ -131,10 +135,28 @@ export async function extractAssessOutput(
 ): Promise<AssessItem['agent_output']> {
   const text = extractAgentOutputText(snapshot);
 
-  const nodes = await prisma.node.findMany({
-    where: { fk_pipeline_id: pipelineId },
-    select: { node_id: true, output_json: true },
-  });
+  type NodeRow = { node_id: number; output_json: unknown };
+  let nodes: NodeRow[];
+  if (snapshot.node_states && snapshot.node_states.length > 0) {
+    // Конвертируем node_states в форму, эквивалентную Node.output_json, чтобы
+    // ниже идущая логика парсинга работала без изменений (она ожидает
+    // {execution_id, status, runs, data, error} с runtime-данными в .data).
+    nodes = snapshot.node_states.map((ns) => ({
+      node_id: ns.node_id,
+      output_json: {
+        execution_id: snapshot.execution_id,
+        status: ns.status,
+        runs: ns.runs,
+        ...(ns.output_json !== undefined ? { data: ns.output_json } : {}),
+        ...(ns.error ? { error: ns.error } : {}),
+      },
+    }));
+  } else {
+    nodes = await prisma.node.findMany({
+      where: { fk_pipeline_id: pipelineId },
+      select: { node_id: true, output_json: true },
+    });
+  }
 
   const toolCallTrace: any[] = [];
   let structuredOutput: any | undefined;
