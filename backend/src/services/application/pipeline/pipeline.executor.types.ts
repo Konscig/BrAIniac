@@ -94,6 +94,11 @@ export interface PipelineExecutionSnapshot {
   preflight?: GraphValidationResult;
   summary?: PipelineExecutionSummary;
   final_result?: PipelineExecutionFinalResult;
+  /** Per-execution node outputs. Когда снапшот пишется в режиме
+   *  bypass_in_flight_lock (batch-eval), эти данные — единственный
+   *  source of truth для consumer'ов (Node.output_json в БД может быть
+   *  затёрт другим concurrent execution-ом того же pipeline). */
+  node_states?: PipelineExecutionNodeState[];
   warnings?: string[];
   error?: {
     code: string;
@@ -116,6 +121,10 @@ export type ExecutionJob = {
   preflight?: GraphValidationResult;
   summary?: PipelineExecutionSummary;
   final_result?: PipelineExecutionFinalResult;
+  /** Per-execution node states. Заполняются после executeGraph и копируются
+   *  в snapshot — нужны consumer'ам (judge.extractAssessOutput) когда чтение
+   *  Node.output_json из БД не безопасно (concurrent execution-ы одного pipeline). */
+  node_states?: PipelineExecutionNodeState[];
   warnings: string[];
   error?: {
     code: string;
@@ -139,6 +148,14 @@ export type NodeHandlerResult = {
 export type NodeExecutionContext = {
   dataset: DatasetContext | null;
   input_json: any;
+  /** Идентификатор текущей execution. Используется для per-execution
+   *  изоляции data-locations (например VectorUpsert namespace), чтобы
+   *  concurrent execution-ы одного pipeline не конфликтовали. */
+  execution_id?: string;
+  /** Флаг batch-eval режима (передаётся когда start input помечен
+   *  bypass_in_flight_lock=true). Tool contracts могут использовать
+   *  его, чтобы автоматически шардировать namespace по execution_id. */
+  isolated_state?: boolean;
 };
 
 export type NodeHandler = (runtime: RuntimeNode, inputs: any[], context: NodeExecutionContext) => Promise<NodeHandlerResult>;

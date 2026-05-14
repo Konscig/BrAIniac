@@ -12,8 +12,12 @@ import type { ToolContractDefinition } from './tool-contract.types.js';
 
 const MAX_CHUNKER_DOCUMENTS = 64;
 const MAX_CHUNKER_CHUNKS = 512;
-const DEFAULT_CHUNK_SIZE = 120;
-const MAX_CHUNK_SIZE = 800;
+const DEFAULT_CHUNK_SIZE = 600;
+// Поднято с 800 до 4096: для дипломной задачи RAG-индекса на ~2M слов
+// корпуса нужны более крупные чанки (~2000 слов), иначе индекс распухает
+// до 3000+ чанков и payload между Embedder→VectorUpsert не помещается
+// в HTTP-лимит при размерности эмбеддинга 2048.
+const MAX_CHUNK_SIZE = 4096;
 
 type ChunkerDocument = {
   document_id: string;
@@ -182,7 +186,11 @@ function buildChunkerContractOutput(input: Record<string, any>): Record<string, 
   };
 }
 
-export function resolveChunkerContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
+export function resolveChunkerContractInput(
+  inputs: any[],
+  context: NodeExecutionContext,
+  toolConfig?: Record<string, any>,
+): Record<string, any> {
   const documents: ChunkerDocument[] = [];
   collectDocuments(context.input_json, documents);
   for (const source of inputs.slice(0, 16)) {
@@ -198,11 +206,16 @@ export function resolveChunkerContractInput(inputs: any[], context: NodeExecutio
     });
   }
 
+  // Приоритет: ui_json.toolConfig > input_json > DEFAULT. Так UI-override в БД
+  // работает (раньше игнорировался — chunk_size брался только из input_json).
+  const cfg = toolConfig && typeof toolConfig === 'object' ? toolConfig : {};
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? (context.input_json as Record<string, unknown>) : {};
-  const requestedChunkSize = coercePositiveInt(inputRecord.chunk_size) ?? DEFAULT_CHUNK_SIZE;
+  const requestedChunkSize =
+    coercePositiveInt(cfg.chunk_size) ?? coercePositiveInt(inputRecord.chunk_size) ?? DEFAULT_CHUNK_SIZE;
   const chunkSize = clampInteger(requestedChunkSize, 2, MAX_CHUNK_SIZE);
 
-  const requestedOverlap = Number(inputRecord.overlap ?? inputRecord.chunk_overlap);
+  const overlapRaw = cfg.overlap ?? inputRecord.overlap ?? inputRecord.chunk_overlap;
+  const requestedOverlap = Number(overlapRaw);
   const overlapBase = Number.isInteger(requestedOverlap) ? requestedOverlap : Math.floor(chunkSize * 0.2);
   const overlap = clampInteger(overlapBase, 0, Math.max(0, chunkSize - 1));
 

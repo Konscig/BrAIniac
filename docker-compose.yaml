@@ -35,15 +35,18 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - PRISMA_MIGRATE=${PRISMA_MIGRATE:-deploy}
       - PRISMA_DB_PUSH_ACCEPT_DATA_LOSS=1
+      - MCP_ENABLED=${MCP_ENABLED:-true}
+      - MCP_PATH=${MCP_PATH:-/mcp}
+      - HTTP_ENABLE_CLUSTER=${HTTP_ENABLE_CLUSTER:-false}
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "8080:3000"
+      - "${API_PORT:-8080}:3000"
     networks:
      - brainiac-network
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/health"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -62,6 +65,7 @@ services:
   db-tests:
     image: node:20-alpine
     container_name: db-tests
+    profiles: ["tests"]
     restart: "no"
     working_dir: /app/backend
     volumes:
@@ -81,14 +85,41 @@ services:
       "
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-http://localhost:8080}
     container_name: frontend
     profiles: ["app"]
     restart: unless-stopped
     ports:
-      - 3000:80
+      - "${FRONTEND_PORT:-3270}:80"
     networks:
       - brainiac-network
+
+  judge-eval-worker:
+    build: ./judge-eval-worker
+    container_name: judge-eval-worker
+    profiles: ["app"]
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      - PYTHONUNBUFFERED=1
+      - HF_HOME=/cache/huggingface
+      - TRANSFORMERS_CACHE=/cache/huggingface
+    volumes:
+      - hf_cache:/cache/huggingface
+    networks:
+      - brainiac-network
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health', timeout=3).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
 
 
 networks:
@@ -96,4 +127,7 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:    
+  postgres_data:
+  hf_cache:
+    external: true
+    name: brainiac-hf-cache

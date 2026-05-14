@@ -263,7 +263,11 @@ async function buildLlmAnswerContractOutput(input: Record<string, any>): Promise
   };
 }
 
-export function resolveLlmAnswerContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
+export function resolveLlmAnswerContractInput(
+  inputs: any[],
+  context: NodeExecutionContext,
+  toolConfig?: Record<string, any>,
+): Record<string, any> {
   const contextText = extractContextText(context.input_json) ?? findFirstFromInputs(inputs, extractContextText);
   const userQuery = extractUserQuery(context.input_json) ?? findFirstFromInputs(inputs, extractUserQuery);
   if (!userQuery) {
@@ -277,10 +281,20 @@ export function resolveLlmAnswerContractInput(inputs: any[], context: NodeExecut
   const promptTemplate =
     extractPromptTemplate(context.input_json) ?? findFirstFromInputs(inputs, extractPromptTemplate) ?? DEFAULT_PROMPT_TEMPLATE;
 
-  const model = extractModel(context.input_json);
+  // Приоритет модели: ui_json.toolConfig.model > context.input_json.model > default из env.
+  const cfg = toolConfig && typeof toolConfig === 'object' ? toolConfig : {};
+  const model =
+    readNonEmptyText(cfg.model) ??
+    extractModel(context.input_json);
 
-  const temperature = extractTemperature(context.input_json) ?? findFirstFromInputs(inputs, extractTemperature);
-  const maxOutputTokens = extractMaxOutputTokens(context.input_json) ?? findFirstFromInputs(inputs, extractMaxOutputTokens);
+  const temperature =
+    (typeof cfg.temperature === 'number' ? cfg.temperature : undefined) ??
+    extractTemperature(context.input_json) ??
+    findFirstFromInputs(inputs, extractTemperature);
+  const maxOutputTokens =
+    (typeof cfg.maxOutputTokens === 'number' ? cfg.maxOutputTokens : undefined) ??
+    extractMaxOutputTokens(context.input_json) ??
+    findFirstFromInputs(inputs, extractMaxOutputTokens);
 
   return {
     prompt_template: promptTemplate,

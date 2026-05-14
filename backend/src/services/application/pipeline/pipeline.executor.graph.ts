@@ -22,8 +22,8 @@ function trimPreview(raw: string, maxLength = 320): string {
   return `${text.slice(0, Math.max(0, maxLength - 15))}...(truncated)`;
 }
 
-function readFinalNodeText(output: unknown): string | undefined {
-  if (!output || typeof output !== 'object') return undefined;
+function readFinalNodeText(output: unknown, depth = 0): string | undefined {
+  if (depth > 6 || !output || typeof output !== 'object') return undefined;
 
   const record = output as Record<string, any>;
   const directCandidates = [
@@ -38,21 +38,12 @@ function readFinalNodeText(output: unknown): string | undefined {
     }
   }
 
-  const contractOutput = record.contract_output;
-  if (contractOutput && typeof contractOutput === 'object') {
-    const contractRecord = contractOutput as Record<string, any>;
-    const contractCandidates = [
-      contractRecord.text,
-      contractRecord.answer,
-      contractRecord.cited_answer,
-      contractRecord.context_bundle?.text,
-    ];
-
-    for (const candidate of contractCandidates) {
-      if (typeof candidate === 'string' && candidate.trim().length > 0) {
-        return candidate.trim();
-      }
-    }
+  const nestedKeys = ['preview', 'contract_output', 'context_bundle', 'data', 'value', 'output', 'payload'];
+  for (const key of nestedKeys) {
+    const nested = record[key];
+    if (nested === undefined || nested === null) continue;
+    const found = readFinalNodeText(nested, depth + 1);
+    if (found) return found;
   }
 
   return undefined;
@@ -180,17 +171,30 @@ export async function executeGraph(
     const availableInputs = predecessorIds.filter((predId) => producedOutputs.has(predId)).map((predId) => producedOutputs.get(predId));
 
     const inputRange = getRange(runtime.config, 'input');
-    if (availableInputs.length < inputRange.min) {
-      const canStillBeUnblocked = predecessorIds.some((predId) => {
-        const predRuntime = runtimeByNodeId.get(predId);
-        if (!predRuntime) return false;
-        const predRuns = runCounts.get(predId) ?? 0;
-        return predRuns < getLoopMaxRuns(predRuntime.config);
-      });
 
-      if (canStillBeUnblocked) {
-        enqueue(nodeId);
-      }
+    // Дожидаемся ВСЕХ predecessors, которые ещё потенциально могут произвести
+    // output (то есть либо не запускались, либо ещё в цикле). Без этого узлы
+    // с минимальным input=0 стартуют сразу после первого готового predecessor'а,
+    // и fan-in превращается в race — например HybridRetriever запускался до
+    // того, как VectorUpsert успевал положить векторы, и retrieval возвращал
+    // ноль кандидатов из-за пустого индекса.
+    const pendingPredecessors = predecessorIds.filter((predId) => {
+      if (producedOutputs.has(predId)) return false;
+      if (nodeStates.has(predId)) return false; // pred завершён (skipped/failed) — output уже не появится
+      const predRuntime = runtimeByNodeId.get(predId);
+      if (!predRuntime) return false;
+      const predRuns = runCounts.get(predId) ?? 0;
+      return predRuns < getLoopMaxRuns(predRuntime.config);
+    });
+
+    if (pendingPredecessors.length > 0) {
+      enqueue(nodeId);
+      continue;
+    }
+
+    if (availableInputs.length < inputRange.min) {
+      // Все predecessors уже завершены (или их нет), но min входов всё ещё
+      // не набран — узел запуститься не сможет, помечаем как skipped.
       continue;
     }
 

@@ -2,7 +2,10 @@ import { HttpError } from '../../../../common/http-error.js';
 import type { DatasetContext, NodeExecutionContext, NodeHandlerResult, RuntimeNode } from '../../pipeline/pipeline.executor.types.js';
 import { buildPrompt, toText } from '../../pipeline/pipeline.executor.utils.js';
 
-const MAX_EMBEDDING_INPUT_ITEMS = Number(process.env.EXECUTOR_EMBEDDING_MAX_INPUTS) > 0 ? Number(process.env.EXECUTOR_EMBEDDING_MAX_INPUTS) : 24;
+// Поднято до 4096 (с 256): на openrouter-embeddings-path Embedder обрабатывал
+// только первые 256 чанков из 512+, отсекая половину корпуса. Согласовано
+// с MAX_EMBEDDER_CHUNKS=4096 в embedder.tool.ts.
+const MAX_EMBEDDING_INPUT_ITEMS = Number(process.env.EXECUTOR_EMBEDDING_MAX_INPUTS) > 0 ? Number(process.env.EXECUTOR_EMBEDDING_MAX_INPUTS) : 4096;
 const MAX_EMBEDDING_TEXT_LENGTH =
   Number(process.env.EXECUTOR_EMBEDDING_MAX_TEXT_LENGTH) > 0 ? Number(process.env.EXECUTOR_EMBEDDING_MAX_TEXT_LENGTH) : 1800;
 
@@ -31,7 +34,7 @@ function collectTextFragments(value: unknown, out: string[], depth = 0) {
   }
 
   if (Array.isArray(value)) {
-    for (const item of value.slice(0, 40)) {
+    for (const item of value.slice(0, MAX_EMBEDDING_INPUT_ITEMS * 2)) {
       collectTextFragments(item, out, depth + 1);
       if (out.length >= MAX_EMBEDDING_INPUT_ITEMS * 2) break;
     }
@@ -58,7 +61,11 @@ function collectTextFragments(value: unknown, out: string[], depth = 0) {
     }
   }
 
-  const nestedKeys = ['value', 'data', 'payload', 'output'];
+  // Включаем contract_output, потому что ToolNode-узлы (Chunker, и т.п.) кладут
+  // полезный контент именно туда. Без этого Chunker.contract_output.chunks не
+  // достигал Embedder'а, и в индекс попадало только 3 вспомогательных текста
+  // (tool_name, contract_name, query) вместо реальных чанков.
+  const nestedKeys = ['value', 'data', 'payload', 'output', 'contract_output'];
   for (const key of nestedKeys) {
     if (!(key in record)) continue;
     collectTextFragments(record[key], out, depth + 1);

@@ -25,6 +25,7 @@ import {
   writeExecutionSnapshot,
   writeIdempotencyExecutionRecord,
   writeInFlightExecutionRecord,
+  pruneOldExecutions,
 } from './pipeline.executor.snapshot-store.js';
 import type {
   DatasetContext,
@@ -87,6 +88,7 @@ function toSnapshot(job: ExecutionJob): PipelineExecutionSnapshot {
     ...(job.preflight ? { preflight: job.preflight } : {}),
     ...(job.summary ? { summary: job.summary } : {}),
     ...(job.final_result ? { final_result: job.final_result } : {}),
+    ...(job.node_states && job.node_states.length > 0 ? { node_states: job.node_states } : {}),
     ...(job.warnings.length > 0 ? { warnings: [...job.warnings] } : {}),
     ...(job.error ? { error: job.error } : {}),
   };
@@ -132,8 +134,36 @@ function normalizeStartInput(input: StartPipelineExecutionInput): StartPipelineE
   };
 }
 
+// Periodic filesystem prune: запускаем не чаще раза в 10 минут, чтобы не
+// нагружать readdir/stat на каждый запрос. Без TTL .artifacts/executions
+// заваливался десятками GB после нескольких batch-eval прогонов.
+let lastFilesystemPruneAt = 0;
+const FILESYSTEM_PRUNE_INTERVAL_MS = 10 * 60_000;
+
+function maybePruneFilesystem(): void {
+  const now = Date.now();
+  if (now - lastFilesystemPruneAt < FILESYSTEM_PRUNE_INTERVAL_MS) return;
+  lastFilesystemPruneAt = now;
+  // Передаём в prune активные execution_id (queued/running) этого worker'а
+  // плюс id из жив снапшотов — чтобы не удалить директорию пишущего прогона.
+  // Cross-worker (cluster mode) защиты тут нет, для prod-кластера надо
+  // выносить prune в выделенный sidecar/cron с FS-lock.
+  const active = new Set<string>();
+  for (const [executionId, job] of jobsById.entries()) {
+    if (job.status === 'running' || job.status === 'queued') active.add(executionId);
+  }
+  void pruneOldExecutions(active).then((stats) => {
+    if (stats.removed > 0) {
+      console.info(`[executor] pruned ${stats.removed} execution dirs (kept ${stats.kept})`);
+    }
+  }).catch((err) => {
+    console.warn('[executor] filesystem prune failed', err);
+  });
+}
+
 function cleanupExecutionStore() {
   const now = Date.now();
+  maybePruneFilesystem();
 
   for (const [executionId, job] of jobsById.entries()) {
     if (job.status === 'running' || job.status === 'queued') continue;
@@ -173,6 +203,10 @@ export async function startPipelineExecutionForUser(
   userId: number,
   input: StartPipelineExecutionInput,
   idempotencyKeyRaw?: string,
+  /** Внутренний флаг batch-eval. Передаётся ТОЛЬКО доверенными callers
+   *  (judge/pipeline-runner) — пользовательский API его не выставляет.
+   *  В user-facing input (`StartPipelineExecutionInput`) поля нет вообще. */
+  options: { bypassInFlightLock?: boolean } = {},
 ): Promise<PipelineExecutionSnapshot> {
   cleanupExecutionStore();
 
@@ -184,6 +218,10 @@ export async function startPipelineExecutionForUser(
   const idempotencyKey = normalizeIdempotencyKey(idempotencyKeyRaw);
   const idempotencyIndexKey = idempotencyKey ? `${userId}:${pipelineId}:${idempotencyKey}` : undefined;
   const request = normalizeStartInput(input);
+  // Внутренний флаг bypass хранится в request под защищённым namespace,
+  // нормализатор не даёт пользователю его проставить через API.
+  const bypassFlag = options.bypassInFlightLock === true;
+  (request as any).__bypass_in_flight_lock = bypassFlag;
   const now = new Date();
   const executionId = randomUUID();
 
@@ -271,8 +309,13 @@ export async function startPipelineExecutionForUser(
     }
   }
 
+  // Bypass-флаг хранится в normalized request (выставляется только
+  // внутренним options-параметром startPipelineExecutionForUser). Через
+  // пользовательский API недостижим — normalizeStartInput его выкидывает.
+  const bypassInFlight = bypassFlag;
+
   const existingInFlight = inFlightByPipelineId.get(pipelineId);
-  if (existingInFlight) {
+  if (existingInFlight && !bypassInFlight) {
     const runningJob = jobsById.get(existingInFlight);
     if (runningJob && (runningJob.status === 'queued' || runningJob.status === 'running')) {
       throw new HttpError(409, {
@@ -285,7 +328,9 @@ export async function startPipelineExecutionForUser(
 
   }
 
-  const inFlightClaim = await claimInFlightExecutionRecord(pipelineId, executionId);
+  const inFlightClaim = bypassInFlight
+    ? { claimed: true, record: { pipeline_id: pipelineId, execution_id: executionId, updated_at: new Date().toISOString() } } as const
+    : await claimInFlightExecutionRecord(pipelineId, executionId);
   if (!inFlightClaim.claimed) {
     const runningJob = jobsById.get(inFlightClaim.record.execution_id);
     if (runningJob && (runningJob.status === 'queued' || runningJob.status === 'running')) {
@@ -508,6 +553,7 @@ async function runExecutionJob(job: ExecutionJob) {
       });
     }
 
+    const isolatedState = Boolean((job.request as any)?.__bypass_in_flight_lock);
     const result = await executeGraph(
       pipeline,
       runtimeByNodeId,
@@ -515,6 +561,8 @@ async function runExecutionJob(job: ExecutionJob) {
       {
         dataset: datasetContext,
         input_json: job.request.input_json,
+        execution_id: job.execution_id,
+        isolated_state: isolatedState,
       },
       preflight.metrics.estimatedMaxSteps,
     );
@@ -529,7 +577,14 @@ async function runExecutionJob(job: ExecutionJob) {
       ),
     );
     result.nodeStates = nodeStates;
-    await persistNodeOutputs(job.execution_id, nodeStates);
+    job.node_states = nodeStates;
+    // В batch-eval режиме (bypass_in_flight_lock) НЕ пишем в Node.output_json:
+    // concurrent execution-ы одного pipeline затирали бы друг друга по node_id.
+    // Snapshot файла per-execution уже несёт node_states как source of truth.
+    const jobBypassesLock = Boolean((job.request as any)?.__bypass_in_flight_lock);
+    if (!jobBypassesLock) {
+      await persistNodeOutputs(job.execution_id, nodeStates);
+    }
 
     job.warnings.push(...result.warnings);
     if (result.error) {
@@ -561,7 +616,9 @@ async function runExecutionJob(job: ExecutionJob) {
     touch(job);
 
     try {
-      await persistNodeOutputs(job.execution_id, nodeStates);
+      if (!Boolean((job.request as any)?.__bypass_in_flight_lock)) {
+        await persistNodeOutputs(job.execution_id, nodeStates);
+      }
     } catch (persistError) {
       console.error('[executor] failed to persist partial node outputs', persistError);
     }

@@ -7,6 +7,7 @@ import "./App.css";
 import { CanvasBoard } from "./components/canvas-board";
 import { ModeToggle } from "./components/mode-toggle";
 import { NodeLibrary } from "./components/node-library";
+import { AgentChatDock } from "./components/agent-chat-dock";
 import { RunPanel } from "./components/run-panel";
 import { SidebarProjects } from "./components/sidebar-projects";
 import { Button } from "./components/ui/button";
@@ -18,6 +19,7 @@ import {
   listNodeTypes,
   listPipelines,
   listProjects,
+  revokeBrowserWebSession,
   updatePipeline,
   updateProject,
   type EdgeRecord,
@@ -26,6 +28,7 @@ import {
   type PipelineRecord,
   type ProjectRecord
 } from "./lib/api";
+import { shouldRenderAuthPage } from "./lib/vscode-auth";
 import { AuthPage } from "./pages/auth-page";
 import { useAuth } from "./providers/AuthProvider";
 
@@ -53,6 +56,7 @@ function MainPage(): React.ReactElement {
   const [isLoading, setIsLoading] = React.useState(false);
   const [isGraphRunning, setIsGraphRunning] = React.useState(false);
   const [graphRefreshToken, setGraphRefreshToken] = React.useState(0);
+  const [selectedNodeId, setSelectedNodeId] = React.useState<number | null>(null);
   const [graphState, setGraphState] = React.useState<{ nodes: NodeRecord[]; edges: EdgeRecord[] }>({
     nodes: [],
     edges: []
@@ -156,6 +160,9 @@ function MainPage(): React.ReactElement {
   }, [activePipelineId, activeProjectId, pipelinesByProject]);
 
   const handleLogout = React.useCallback(() => {
+    void revokeBrowserWebSession().catch((error) => {
+      console.warn("Failed to revoke browser web session", error);
+    });
     clearSession();
     navigate("/auth", { replace: true });
   }, [clearSession, navigate]);
@@ -333,6 +340,7 @@ function MainPage(): React.ReactElement {
             onError={setDataError}
             onRunningChange={setIsGraphRunning}
             onExecutionComplete={() => setGraphRefreshToken((current) => current + 1)}
+            onAssessComplete={() => setGraphRefreshToken((current) => current + 1)}
           />
 
           {isLoading && <div className="shrink-0 text-sm text-muted-foreground">Загружаем каталог узлов...</div>}
@@ -351,13 +359,21 @@ function MainPage(): React.ReactElement {
             className="min-h-0"
             onGraphChange={setGraphState}
             onError={setDataError}
+            onNodeSelect={setSelectedNodeId}
           />
         </section>
 
         <aside className="flex min-h-0 min-w-0 flex-col gap-2.5 overflow-hidden px-2.5 py-3">
-          <div className="min-h-0 flex-1">
+          <div className="min-h-0 flex-1 overflow-hidden">
             <NodeLibrary nodeTypes={nodeTypes} />
           </div>
+          <AgentChatDock
+            pipelineId={activePipelineId}
+            pipelineName={activePipeline?.name ?? null}
+            pipelineScore={activePipeline?.score}
+            focusedNode={graphState.nodes.find(n => n.node_id === selectedNodeId) ?? null}
+            nodeTypes={nodeTypes}
+          />
         </aside>
       </main>
     </div>
@@ -365,11 +381,11 @@ function MainPage(): React.ReactElement {
 }
 
 function RequireAuth({ children }: { children: React.ReactElement }): React.ReactElement {
-  const { isAuthenticated } = useAuth();
+  const { authNotice, isAuthenticated } = useAuth();
   const location = useLocation();
 
   if (!isAuthenticated) {
-    return <Navigate to="/auth" replace state={{ from: location }} />;
+    return <Navigate to="/auth" replace state={{ from: location, sessionExpired: authNotice }} />;
   }
 
   return children;
@@ -377,8 +393,9 @@ function RequireAuth({ children }: { children: React.ReactElement }): React.Reac
 
 function PublicOnly({ children }: { children: React.ReactElement }): React.ReactElement {
   const { isAuthenticated } = useAuth();
+  const location = useLocation();
 
-  if (isAuthenticated) {
+  if (!shouldRenderAuthPage(isAuthenticated, location.search)) {
     return <Navigate to="/" replace />;
   }
 

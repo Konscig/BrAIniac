@@ -200,7 +200,11 @@ function buildVectorUpsertContractOutput(input: Record<string, any>): Record<str
   };
 }
 
-export function resolveVectorUpsertContractInput(inputs: any[], context: NodeExecutionContext): Record<string, any> {
+export function resolveVectorUpsertContractInput(
+  inputs: any[],
+  context: NodeExecutionContext,
+  toolConfig?: Record<string, any>,
+): Record<string, any> {
   const inputRecord = context.input_json && typeof context.input_json === 'object' ? (context.input_json as Record<string, unknown>) : {};
 
   const vectors: VectorItem[] = [];
@@ -227,8 +231,24 @@ export function resolveVectorUpsertContractInput(inputs: any[], context: NodeExe
   }
 
   const uniqueVectors = dedupeVectors(vectors);
-  const indexName = readNonEmptyText(inputRecord.index_name) ?? 'default-index';
-  const namespace = readNonEmptyText(inputRecord.namespace) ?? 'default';
+  // Приоритет: ui_json.toolConfig > input_json > defaults. UI-override должен
+  // побеждать, иначе все upsert'ы летят в default-index/default и retriever
+  // ходит в пустой индекс.
+  const cfg = toolConfig && typeof toolConfig === 'object' ? toolConfig : {};
+  const indexName =
+    readNonEmptyText(cfg.index_name) ??
+    readNonEmptyText(inputRecord.index_name) ??
+    'default-index';
+  const baseNamespace =
+    readNonEmptyText(cfg.namespace) ??
+    readNonEmptyText(inputRecord.namespace) ??
+    'default';
+  // В режиме изолированного state (batch-eval, concurrent execution-ы одного
+  // pipeline) шардируем namespace по execution_id, чтобы HybridRetriever
+  // одного item не подхватывал чанки, упсертнутые другим item'ом.
+  const namespace = context.isolated_state && context.execution_id
+    ? `${baseNamespace}__${context.execution_id}`
+    : baseNamespace;
 
   return {
     index_name: indexName,

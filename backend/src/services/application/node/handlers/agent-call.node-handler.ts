@@ -41,6 +41,23 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
       : 'You are AgentCall runtime in a pipeline graph. Return concise, actionable output. Use JSON when structure is useful.';
 
   const toolResolution = await resolveAgentToolBindings(runtime, inputs);
+  // Опциональный whitelist в ui_json.agent.allowedTools. Позволяет иметь
+  // VectorUpsert/Embedder/Chunker как input-связи AgentCall (для plumbing
+  // векторного индекса), но не предлагать их LLM как вызываемые тулы.
+  const allowedToolsRaw = (agentConfig as any).allowedTools;
+  if (Array.isArray(allowedToolsRaw) && allowedToolsRaw.length > 0) {
+    const allowedKeys = new Set(
+      allowedToolsRaw
+        .filter((v: unknown): v is string => typeof v === 'string')
+        .map((v: string) => v.trim().toLowerCase())
+    );
+    toolResolution.advertised = toolResolution.advertised.filter((t: any) =>
+      typeof t?.name === 'string' && allowedKeys.has(t.name.trim().toLowerCase())
+    );
+    for (const k of Array.from(toolResolution.byKey.keys())) {
+      if (!allowedKeys.has(k.toLowerCase())) toolResolution.byKey.delete(k);
+    }
+  }
   const availableTools = toolResolution.advertised;
   const systemPrompt = buildAgentSystemPrompt(systemPromptText);
   const messages: AgentMessage[] = buildAgentMessages(systemPrompt, availableTools, toolResolution.unresolvedTools, prompt);

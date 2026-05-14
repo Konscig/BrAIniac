@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { PipelineExecutionSnapshot } from './pipeline.executor.types.js';
 
@@ -7,6 +7,8 @@ const DEFAULT_ARTIFACT_STORE_DIR = '.artifacts';
 const SNAPSHOT_FILENAME = 'execution-snapshot.json';
 const RUNTIME_COORDINATION_DIR = 'runtime';
 const DEFAULT_COORDINATION_STALE_MS = 15 * 60_000;
+const DEFAULT_EXECUTION_RETENTION_DAYS = 7;
+const DEFAULT_EXECUTION_RETENTION_MAX = 200;
 
 type InFlightExecutionRecord = {
   pipeline_id: number;
@@ -131,6 +133,74 @@ export async function writeExecutionSnapshot(snapshot: PipelineExecutionSnapshot
 
 export async function readExecutionSnapshot(executionId: string): Promise<PipelineExecutionSnapshot | null> {
   return readJsonFile<PipelineExecutionSnapshot>(getExecutionSnapshotPath(executionId));
+}
+
+/** Удаляет execution-папки старше N дней и/или сверх лимита M штук.
+ *  Защищает диск от бесконтрольного роста .artifacts/executions при batch-eval
+ *  (десятки items × N items × snapshot.json + node-output/vectors_manifest).
+ *
+ *  Настройки через env:
+ *    EXECUTION_RETENTION_DAYS  — TTL в днях (default 7)
+ *    EXECUTION_RETENTION_MAX   — макс. число execution-папок (default 200)
+ *
+ *  Если параметр = 0 — соответствующая политика выключена. Best-effort: ошибки
+ *  логируются, но не пробрасываются. */
+export async function pruneOldExecutions(activeExecutionIds: Set<string> = new Set()): Promise<{ removed: number; kept: number }> {
+  const root = path.join(getArtifactStoreRoot(), 'executions');
+  const retentionDays = Number(process.env.EXECUTION_RETENTION_DAYS ?? DEFAULT_EXECUTION_RETENTION_DAYS);
+  const retentionMax = Number(process.env.EXECUTION_RETENTION_MAX ?? DEFAULT_EXECUTION_RETENTION_MAX);
+  const cutoffMs = Date.now() - (retentionDays > 0 ? retentionDays * 86_400_000 : Infinity);
+
+  let entries: string[];
+  try {
+    entries = await readdir(root);
+  } catch {
+    return { removed: 0, kept: 0 };
+  }
+
+  const candidates: Array<{ name: string; mtime: number }> = [];
+  for (const name of entries) {
+    // Защита от удаления активной execution-директории, которая может
+    // быть всё ещё в процессе записи (long-running прогон > retention_days).
+    if (activeExecutionIds.has(name)) continue;
+    try {
+      const st = await stat(path.join(root, name));
+      if (!st.isDirectory()) continue;
+      candidates.push({ name, mtime: st.mtimeMs });
+    } catch {
+      // best-effort
+    }
+  }
+
+  // Удаляем старше TTL
+  const ttlVictims = new Set<string>();
+  if (retentionDays > 0) {
+    for (const c of candidates) {
+      if (c.mtime < cutoffMs) ttlVictims.add(c.name);
+    }
+  }
+
+  // Сверх лимита (FIFO: удаляем самые старые)
+  const limitVictims = new Set<string>();
+  if (retentionMax > 0 && candidates.length > retentionMax) {
+    const sorted = [...candidates].sort((a, b) => a.mtime - b.mtime);
+    const overshoot = sorted.length - retentionMax;
+    for (let i = 0; i < overshoot; i += 1) {
+      limitVictims.add(sorted[i]!.name);
+    }
+  }
+
+  const victims = new Set([...ttlVictims, ...limitVictims]);
+  let removed = 0;
+  for (const name of victims) {
+    try {
+      await rm(path.join(root, name), { recursive: true, force: true });
+      removed += 1;
+    } catch (err) {
+      console.warn(`[snapshot-store] failed to prune ${name}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return { removed, kept: candidates.length - removed };
 }
 
 export async function writeInFlightExecutionRecord(pipelineId: number, executionId: string): Promise<void> {

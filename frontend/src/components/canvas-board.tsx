@@ -74,6 +74,8 @@ type DraggedNodePayload = {
   typeId: number;
   typeName: string;
   label: string;
+  toolId?: number;
+  toolName?: string;
 };
 
 type GraphState = {
@@ -164,6 +166,16 @@ function getExecutionStatus(node: NodeRecord): CanvasNodeData["status"] {
   return "idle";
 }
 
+function readJudgeScore(node: NodeRecord): number | null {
+  const wrapper = node.output_json && typeof node.output_json === "object" ? (node.output_json as Record<string, unknown>) : null;
+  const judge = wrapper?.judge && typeof wrapper.judge === "object" ? (wrapper.judge as Record<string, unknown>) : null;
+  const metrics = Array.isArray(judge?.metrics) ? (judge!.metrics as Array<Record<string, unknown>>) : null;
+  if (!metrics || metrics.length === 0) return null;
+  const values = metrics.map(m => Number(m.value)).filter(v => Number.isFinite(v));
+  if (values.length === 0) return null;
+  return values.reduce((s, v) => s + v, 0) / values.length;
+}
+
 function isNodeIncomplete(node: NodeRecord, nodeType: NodeTypeRecord | undefined): boolean {
   if (!nodeType) return false;
   if (normalizeNodeTypeName(nodeType.name) === "ToolNode") {
@@ -210,6 +222,7 @@ function toFlowNode(
       isConfigurable: isConfigurableNodeType(nodeTypeName),
       finalOutputPreview: readFinalOutputPreview(node, nodeTypeName),
       tracePreview: readTracePreview(node),
+      judgeScore: readJudgeScore(node),
       tools,
       ...callbacks
     }
@@ -289,6 +302,7 @@ export interface CanvasBoardProps {
   className?: string;
   onGraphChange?: (state: GraphState) => void;
   onError?: (message: string | null) => void;
+  onNodeSelect?: (nodeId: number | null) => void;
 }
 
 export function CanvasBoard({
@@ -298,7 +312,8 @@ export function CanvasBoard({
   isGraphRunning = false,
   className,
   onGraphChange,
-  onError
+  onError,
+  onNodeSelect
 }: CanvasBoardProps): React.ReactElement {
   const [nodes, setNodes] = React.useState<Array<Node<CanvasNodeData>>>([]);
   const [edges, setEdges] = React.useState<Edge[]>([]);
@@ -680,15 +695,20 @@ export function CanvasBoard({
       const nodeType = nodeTypeMap.get(payload.typeId);
       const defaultLabel = nodeType ? getNodeTypeUiLabel(nodeType) : payload.label || payload.typeName;
 
+      const baseUi: Record<string, unknown> = {
+        label: defaultLabel,
+        x: position.x,
+        y: position.y
+      };
+      if (payload.toolId && payload.toolName) {
+        baseUi.tool = { tool_id: payload.toolId, name: payload.toolName };
+      }
+
       void createNode({
         fk_pipeline_id: pipelineId,
         fk_type_id: payload.typeId,
         top_k: 1,
-        ui_json: {
-          label: defaultLabel,
-          x: position.x,
-          y: position.y
-        }
+        ui_json: baseUi
       })
         .then((created) => {
           const nextNodes = [...backendNodesRef.current, created];
@@ -739,6 +759,9 @@ export function CanvasBoard({
             nodeTypes={nodeTypes}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
+            onSelectionChange={React.useCallback(({ nodes: sel }: { nodes: import('reactflow').Node[] }) => {
+              onNodeSelect?.(sel.length === 1 ? Number(sel[0]!.id) : null);
+            }, [onNodeSelect])}
             onConnect={handleConnect}
             onNodesDelete={handleNodesDelete}
             onEdgesDelete={handleEdgesDelete}
