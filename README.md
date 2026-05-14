@@ -3,31 +3,20 @@
 ## 🇷🇺
 # BrAIniac
 
-**BrAIniac** — интерактивная среда для моделирования поведения и взаимодействия интеллектуальных агентов.  
-Проект ориентирован на студентов ИТ-направлений и позволяет использовать **практикоориентированный подход** к изучению архитектуры и логики ИИ-агентов.
+**BrAIniac** — интерактивная среда проектирования ИИ-агентов, покрывающая полный цикл разработки агентных систем: от визуальной сборки графа до количественной оценки качества и итеративной доработки.
 
 ## О проекте
 
-BrAIniac предоставляет возможность создавать, тестировать и визуализировать работу интеллектуальных агентов с помощью интуитивного интерфейса.  
-Система направлена на **обучение и исследование**, а не просто на автоматизацию.  
+BrAIniac позволяет собирать произвольные агентные пайплайны в визуальном редакторе, запускать их на тестовых датасетах и получать многоосевую количественную оценку качества. Оценка сводится во взвешенную свёртку с автоматическим выбором профиля под топологию графа и сопровождается оперативной обратной связью по ходу прогона.
 
-Основная цель — дать студентам и исследователям инструмент для **практического освоения принципов мультиагентных систем**, где каждая модель оценивается и анализируется в интерактивной среде.
+Система не привязана к конкретному классу агентов: она одинаково применима к RAG-конвейерам, агентам с tool-use, экстракторам структурированных данных и другим конфигурациям. Цель — дать единый инструмент, в котором проектирование, исполнение и валидация агентов происходят в одной интерактивной среде.
 
-## Небольшой Q/A для ясности
+## Что внутри
 
-### Как это должно работать?
-BrAIniac — это веб-приложение, позволяющее студентам, вне зависимости от учебного заведения, практиковаться в решении кейсов.  
-Результатом становятся современные, безопасные и производительные ИИ-агенты и мультиагентные системы.
-
-### Чем вы отличаетесь от AgentWizz, AgentFlow, n8n и других аналогов?
-Главное отличие — **ориентированность на обучение**.  
-BrAIniac внедряет **live-модерацию** и **модель-судью**, которая оценивает решения и сопровождает студента на всем пути — от постановки задачи до итогового анализа.
-
-### Каков результат взаимодействия с системой?
-После завершения кейсов пользователь получает:
-- подробный **отчет о результатах**;
-- возможность **выгрузить код** для шаблонизации, повторного использования и анализа;
-- рекомендации по улучшению архитектуры и поведения агентов.
+- **Графический редактор пайплайна** в браузере и исполняющий runtime на бэкенде.
+- **Модуль оценки** с многоосевой шкалой: лексические и семантические сравнения, проверка обоснованности, retrieval-метрики, метрики траектории инструментов, безопасность и LLM-as-judge. Веса осей калибруются под класс агента.
+- **Обратная связь в реальном времени** во время оценки: прогресс по элементам датасета и по отдельным метрикам.
+- **MCP-адаптер** для интеграции с AI-клиентами и VS Code.
 
 ## Запуск и использование
 
@@ -61,31 +50,20 @@ cd BrAIniac
 ## 🇬🇧 
 # BrAIniac
 
-**BrAIniac** is an interactive environment for modeling the behavior and interactions of intelligent agents.  
-It is designed for IT students and provides a **practice-oriented approach** to learning about AI agent architectures and logic.
+**BrAIniac** is an interactive environment for designing AI agents that covers the full lifecycle of agentic-system development: from visual graph assembly to quantitative quality assessment and feedback-driven iteration.
 
 ## About the Project
 
-BrAIniac allows users to **create, test, and visualize** intelligent agent behavior through an intuitive interface.  
-The system focuses on **learning and experimentation**, not just automation.  
+BrAIniac lets users compose arbitrary agent pipelines in a visual editor, run them against test datasets, and obtain multi-axis numeric quality scores. The result is aggregated into a weighted sum with automatic profile selection based on graph topology, and is accompanied by live feedback during the run.
 
-The main goal is to give students and researchers a hands-on tool for exploring **multi-agent systems**, where every model is evaluated and analyzed interactively.
+The system is not tied to a particular agent class — it applies equally to RAG pipelines, tool-using agents, structured extractors, and other configurations. The goal is a single tool where designing, executing and validating agents happens in one interactive environment.
 
-## Quick Q/A
+## What's inside
 
-### How does it work?
-BrAIniac is a web application that enables students — regardless of their university — to practice solving real-world AI cases.  
-The result is efficient, secure, and modern intelligent agents and multi-agent systems.
-
-### What makes it different from AgentWizz, AgentFlow, n8n, etc.?
-The key difference is **educational focus**.  
-BrAIniac introduces **live moderation** and an **AI-judge model** that evaluates and guides the student through every stage of the problem-solving process.
-
-### What do I get from using it?
-Upon completing a case, users receive:
-- a detailed **performance report**;
-- the ability to **export the generated code** for reuse and deeper research;
-- recommendations for improving the architecture and behavior of their agents.
+- **Visual pipeline editor** in the browser, with an executing runtime on the backend.
+- **Evaluation module** with a multi-axis scale: lexical and semantic comparisons, groundedness checks, retrieval metrics, tool-trajectory metrics, safety, and LLM-as-judge. Axis weights are calibrated per agent class.
+- **Real-time feedback** during evaluation: progress over dataset items and over individual metrics.
+- **MCP adapter** for integration with AI clients and VS Code.
 
 ## Run & Usage
 
