@@ -13,11 +13,13 @@ import toolRouter from './routes/resources/tool/tool.routes.js';
 import pipelineRouter from './routes/resources/pipeline/pipeline.routes.js';
 import nodeTypeRouter from './routes/resources/node_type/node_type.routes.js';
 import judgeRouter from './routes/resources/judge/judge.routes.js';
+import runtimeHealthRouter from './routes/runtime/runtime-health.routes.js';
 import { isHttpError } from './common/http-error.js';
 import { getOpenRouterConfig } from './services/core/openrouter/openrouter.config.js';
 import { resolveToolContractDefinition } from './services/application/tool/contracts/index.js';
 import { mountBrainiacMcpTransport } from './mcp/mcp.transport.js';
 import { requireAuth } from './middleware/auth.middleware.js';
+import { acquireHeavyToolQueueSlot } from './runtime/queue/heavy-tool.queue.js';
 
 loadEnv({ path: process.env.ENV_FILE ?? '.env' });
 if (!process.env.DATABASE_URL || !process.env.OPENROUTER_API_KEY) {
@@ -33,6 +35,8 @@ const SHOULD_FORK = ENABLE_CLUSTER && CONFIGURED_WORKERS > 1;
 // embedding получает payload ~12-15MB; на дефолте 12mb body-parser рубил
 // запрос с PayloadTooLargeError. Override через HTTP_JSON_LIMIT env.
 const JSON_BODY_LIMIT = (process.env.HTTP_JSON_LIMIT ?? '64mb').trim();
+
+let httpServerRef: ReturnType<express.Express['listen']> | null = null;
 
 function createApp() {
   const app = express();
@@ -74,6 +78,7 @@ function createApp() {
   app.options(/.*/, cors(corsOptions));
 
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
+  app.use('/runtime', runtimeHealthRouter);
   mountBrainiacMcpTransport(app);
 
   // FIFO semaphore с bounded queue: ограничивает одновременную обработку
@@ -137,9 +142,10 @@ function createApp() {
     const isHeavy = resolvedContractDefinition?.name
       ? HEAVY_CONTRACTS.has(resolvedContractDefinition.name)
       : HEAVY_CONTRACTS.has(resolvedContractName);
+    let heavyLease: { release: () => Promise<void> } | null = null;
     if (isHeavy) {
       try {
-        await heavyAcquire();
+        heavyLease = await acquireHeavyToolQueueSlot((req as any).user?.user_id);
       } catch (err: any) {
         return res.status(err?.status ?? 503).json({
           ok: false,
@@ -201,7 +207,7 @@ function createApp() {
             : contractInput,
       });
     } finally {
-      if (isHeavy) heavyRelease();
+      if (isHeavy) await heavyLease?.release();
     }
   });
 
@@ -231,7 +237,7 @@ if (SHOULD_FORK && cluster.isPrimary) {
   });
 } else {
   const app = createApp();
-  app.listen(PORT, "0.0.0.0", () => {
+  httpServerRef = app.listen(PORT, "0.0.0.0", () => {
     console.log(`[worker ${process.pid}] server started on port ${PORT}`);
   });
 }

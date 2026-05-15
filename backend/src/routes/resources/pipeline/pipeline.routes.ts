@@ -11,6 +11,8 @@ import {
 } from '../../../services/application/pipeline/pipeline.executor.application.service.js';
 import { HttpError } from '../../../common/http-error.js';
 import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { enforceRateLimit, readRateLimitIntEnv } from '../../../runtime/rate-limit.service.js';
+import { readProgressEvents } from '../../../runtime/progress.service.js';
 import { optionalId, requiredId } from '../../shared/req-parse.js';
 import { mapPipelineCreateDTO } from '../../shared/create-dto.mappers.js';
 import { mapPipelinePatchDTO } from '../../shared/patch-dto.mappers.js';
@@ -92,6 +94,12 @@ router.post('/:id/validate-graph', async (req, res) => {
 
 router.post('/:id/execute', async (req: any, res) => {
   try {
+    await enforceRateLimit({
+      bucket: 'pipeline:execute',
+      scope: req.user.user_id,
+      limit: readRateLimitIntEnv('PIPELINE_EXECUTE_RATE_LIMIT_MAX', 20),
+      windowMs: readRateLimitIntEnv('PIPELINE_EXECUTE_RATE_LIMIT_WINDOW_MS', 60_000),
+    });
     const pipelineId = requiredId(req.params.id, 'invalid id');
     const body = (req.body ?? {}) as Record<string, any>;
     const unsupportedFields = Object.keys(body).filter((key) => !['preset', 'dataset_id', 'input_json'].includes(key));
@@ -137,6 +145,27 @@ router.get('/:id/executions/:executionId', async (req: any, res) => {
 
     const snapshot = await getPipelineExecutionForUser(pipelineId, executionId, req.user.user_id);
     res.json(snapshot);
+  } catch (err) {
+    return sendRouteError(res, err);
+  }
+});
+
+router.get('/:id/executions/:executionId/events', async (req: any, res) => {
+  try {
+    const pipelineId = requiredId(req.params.id, 'invalid id');
+    const executionId = String(req.params.executionId ?? '').trim();
+    if (!executionId) {
+      throw new HttpError(400, { error: 'invalid executionId' });
+    }
+
+    await ensurePipelineOwnedByUser(pipelineId, req.user.user_id);
+    const events = await readProgressEvents('execution', executionId, String(req.query.after ?? '0-0'));
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    for (const event of events) {
+      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    }
+    res.end();
   } catch (err) {
     return sendRouteError(res, err);
   }

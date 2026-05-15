@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import { HttpError } from '../../../common/http-error.js';
+import { requireRedisClient } from '../../../runtime/redis.client.js';
+import { redisKey, redisPattern } from '../../../runtime/redis.keys.js';
 import { readAccessTokenExpiresAt, signAccessToken } from '../../core/jwt.service.js';
 import { findUserById } from '../../data/user.service.js';
 
@@ -9,9 +11,8 @@ const DEFAULT_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 type WebRefreshSession = {
   sessionId: string;
   userId: number;
-  refreshToken: string;
-  refreshExpiresAt: Date;
-  revokedAt?: Date;
+  refreshTokenHash: string;
+  refreshExpiresAt: string;
 };
 
 export type CookieConfig = {
@@ -29,8 +30,6 @@ export type WebRefreshIssueResult = {
   refreshToken: string;
   cookie: CookieConfig;
 };
-
-const sessions = new Map<string, WebRefreshSession>();
 
 function readPositiveIntEnv(name: string, fallback: number): number {
   const parsed = Number(process.env[name]);
@@ -104,16 +103,26 @@ function createToken(prefix: string): string {
   return `${prefix}_${crypto.randomBytes(32).toString('base64url')}`;
 }
 
-function createRefreshSession(userId: number): WebRefreshSession {
+function hashRefreshToken(refreshToken: string): string {
+  return crypto.createHash('sha256').update(refreshToken).digest('base64url');
+}
+
+function refreshSessionKey(refreshToken: string): string {
+  return redisKey('auth', 'web-refresh', hashRefreshToken(refreshToken));
+}
+
+async function createRefreshSession(userId: number): Promise<{ session: WebRefreshSession; refreshToken: string }> {
   const ttlMs = readPositiveIntEnv('WEB_REFRESH_TTL_MS', DEFAULT_REFRESH_TTL_MS);
+  const refreshToken = createToken('bwr');
   const session: WebRefreshSession = {
     sessionId: createToken('bws'),
     userId,
-    refreshToken: createToken('bwr'),
-    refreshExpiresAt: new Date(Date.now() + ttlMs),
+    refreshTokenHash: hashRefreshToken(refreshToken),
+    refreshExpiresAt: new Date(Date.now() + ttlMs).toISOString(),
   };
-  sessions.set(session.refreshToken, session);
-  return session;
+  const redis = await requireRedisClient('web refresh session store unavailable');
+  await redis.set(refreshSessionKey(refreshToken), JSON.stringify(session), { PX: ttlMs });
+  return { session, refreshToken };
 }
 
 function rejectRefresh(): never {
@@ -124,34 +133,52 @@ function rejectRefresh(): never {
   });
 }
 
-function assertActiveRefreshSession(refreshToken: unknown): WebRefreshSession {
+function parseSession(raw: string | null): WebRefreshSession | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+    const userId = Number(record.userId);
+    const sessionId = typeof record.sessionId === 'string' ? record.sessionId : '';
+    const refreshTokenHash = typeof record.refreshTokenHash === 'string' ? record.refreshTokenHash : '';
+    const refreshExpiresAt = typeof record.refreshExpiresAt === 'string' ? record.refreshExpiresAt : '';
+    if (!Number.isInteger(userId) || userId <= 0 || !sessionId || !refreshTokenHash || !refreshExpiresAt) {
+      return null;
+    }
+    return { sessionId, userId, refreshTokenHash, refreshExpiresAt };
+  } catch {
+    return null;
+  }
+}
+
+async function consumeActiveRefreshSession(refreshToken: unknown): Promise<WebRefreshSession> {
   if (typeof refreshToken !== 'string' || !refreshToken.trim()) {
     rejectRefresh();
   }
 
-  const session = sessions.get(refreshToken.trim());
-  if (!session || session.revokedAt || session.refreshExpiresAt.getTime() <= Date.now()) {
-    if (session) {
-      sessions.delete(session.refreshToken);
-    }
+  const token = refreshToken.trim();
+  const redis = await requireRedisClient('web refresh session store unavailable');
+  const session = parseSession(await redis.getDel(refreshSessionKey(token)));
+  if (!session || session.refreshTokenHash !== hashRefreshToken(token) || Date.parse(session.refreshExpiresAt) <= Date.now()) {
     rejectRefresh();
   }
 
   return session;
 }
 
-function buildIssueResult(userId: number): WebRefreshIssueResult {
-  const session = createRefreshSession(userId);
+async function buildIssueResult(userId: number): Promise<WebRefreshIssueResult> {
+  const created = await createRefreshSession(userId);
   const accessToken = signAccessToken({ sub: userId });
   return {
     accessToken,
     expiresAt: readAccessTokenExpiresAt(accessToken),
-    refreshToken: session.refreshToken,
+    refreshToken: created.refreshToken,
     cookie: getWebRefreshCookieConfig(),
   };
 }
 
-export function issueBrowserWebSession(userId: number): WebRefreshIssueResult {
+export async function issueBrowserWebSession(userId: number): Promise<WebRefreshIssueResult> {
   if (!Number.isInteger(userId) || userId <= 0) {
     throw new HttpError(401, { error: 'invalid user' });
   }
@@ -159,8 +186,7 @@ export function issueBrowserWebSession(userId: number): WebRefreshIssueResult {
 }
 
 export async function refreshBrowserWebSession(refreshToken: unknown): Promise<WebRefreshIssueResult> {
-  const current = assertActiveRefreshSession(refreshToken);
-  sessions.delete(current.refreshToken);
+  const current = await consumeActiveRefreshSession(refreshToken);
   const user = await findUserById(current.userId);
   if (!user) {
     rejectRefresh();
@@ -168,18 +194,26 @@ export async function refreshBrowserWebSession(refreshToken: unknown): Promise<W
   return buildIssueResult(current.userId);
 }
 
-export function revokeBrowserWebSession(refreshToken: unknown): { revoked: true } {
+export async function revokeBrowserWebSession(refreshToken: unknown): Promise<{ revoked: true }> {
   if (typeof refreshToken === 'string') {
     const token = refreshToken.trim();
-    const session = sessions.get(token);
-    if (session) {
-      session.revokedAt = new Date();
-      sessions.delete(token);
+    if (token) {
+      const redis = await requireRedisClient('web refresh session store unavailable');
+      await redis.del(refreshSessionKey(token));
     }
   }
   return { revoked: true };
 }
 
-export function clearBrowserWebSessionsForTests(): void {
-  sessions.clear();
+export async function clearBrowserWebSessionsForTests(): Promise<void> {
+  const redis = await requireRedisClient('web refresh session store unavailable');
+  const pattern = redisPattern('auth', 'web-refresh', '*');
+  let cursor = '0';
+  do {
+    const result = await redis.scan(cursor, { MATCH: pattern, COUNT: 200 });
+    cursor = result.cursor;
+    if (result.keys.length > 0) {
+      await redis.del(result.keys);
+    }
+  } while (cursor !== '0');
 }

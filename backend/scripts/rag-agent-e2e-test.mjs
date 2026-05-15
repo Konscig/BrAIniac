@@ -720,6 +720,7 @@ async function createGraph(base, authHeaders, pipelineId, nodeTypesByName, tools
         maxToolCalls: 10,
         maxAttempts: 3,
         softRetryDelayMs: 1200,
+        requiredToolSequence: requiredRagToolSequence,
         systemPrompt: realisticSystemPrompt,
       },
     },

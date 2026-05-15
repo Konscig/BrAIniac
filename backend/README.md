@@ -1,5 +1,18 @@
 # Backend (TypeScript)
 
+Redis runtime
+
+- `REDIS_URL` points to the Redis instance used for short-lived runtime state.
+- `REDIS_KEY_PREFIX` scopes keys per environment, for example `brainiac:dev`.
+- `REDIS_REQUIRED=true` is the production-like default. If Redis is unavailable,
+  refresh sessions, rate limits, execution coordination, queue submission, and
+  provider resilience fail closed.
+- `REDIS_REQUIRED=false` is only a local startup allowance for non-critical
+  read/debug flows; it must not enable in-memory fallback for critical runtime
+  decisions.
+- `RUNTIME_CACHE_ENABLED` and `RUNTIME_PROGRESS_ENABLED` control optional Redis
+  cache/progress features that can degrade to source reads or polling.
+
 Краткое руководство по запуску, миграциям и тестам для `backend` сервиса.
 
 Файловая структура и важные файлы

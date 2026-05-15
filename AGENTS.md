@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-For MCP implementation context, technology choices, project structure,
-shell commands, and quality gates, read specs/001-mcp-backend-vscode/plan.md.
+For Redis runtime implementation context, technology choices, project structure,
+shell commands, and quality gates, read specs/006-redis/plan.md.
 <!-- SPECKIT END -->

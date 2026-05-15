@@ -1,4 +1,7 @@
 import { HttpError } from '../../../common/http-error.js';
+import { cacheDigest, getOrSetRuntimeCache } from '../../../runtime/cache.service.js';
+import { assertProviderAvailable, recordProviderFailure, recordProviderSuccess } from '../../../runtime/provider-resilience.service.js';
+import { enforceRateLimit, readRateLimitIntEnv } from '../../../runtime/rate-limit.service.js';
 import { getOpenRouterConfig, type OpenRouterConfig } from './openrouter.config.js';
 
 export type OpenRouterRole = 'system' | 'user' | 'assistant' | 'tool';
@@ -147,6 +150,14 @@ export class OpenRouterAdapter {
 
   private async postJson(path: string, payload: Record<string, any>): Promise<any> {
     this.ensureConfigured();
+    const providerScope = `${path}:${typeof payload.model === 'string' ? payload.model : 'default'}`;
+    await enforceRateLimit({
+      bucket: 'provider:openrouter',
+      scope: providerScope,
+      limit: readRateLimitIntEnv('OPENROUTER_RATE_LIMIT_MAX', 60),
+      windowMs: readRateLimitIntEnv('OPENROUTER_RATE_LIMIT_WINDOW_MS', 60_000),
+    });
+    await assertProviderAvailable('openrouter', providerScope);
 
     return this.withConcurrency(async () => {
       for (let attempt = 0; attempt <= this.config.maxRetries; attempt += 1) {
@@ -173,6 +184,7 @@ export class OpenRouterAdapter {
           }
 
           if (response.ok) {
+            await recordProviderSuccess('openrouter', providerScope);
             return parsed ?? {};
           }
 
@@ -181,6 +193,7 @@ export class OpenRouterAdapter {
             continue;
           }
 
+          await recordProviderFailure('openrouter', providerScope, response.status);
           throw new HttpError(502, {
             ok: false,
             code: 'OPENROUTER_UPSTREAM_ERROR',
@@ -201,6 +214,7 @@ export class OpenRouterAdapter {
 
           if (error instanceof HttpError) throw error;
 
+          await recordProviderFailure('openrouter', providerScope);
           throw new HttpError(503, {
             ok: false,
             code: 'OPENROUTER_UNAVAILABLE',
@@ -258,22 +272,28 @@ export class OpenRouterAdapter {
     }
     const input = Array.isArray(request.input) ? request.input : [request.input];
 
-    const payload = await this.postJson('/embeddings', {
-      model,
-      input,
-    });
+    return getOrSetRuntimeCache(
+      ['provider', 'openrouter', 'embeddings', model, cacheDigest(input.map((item) => item.trim()).join('\n'))],
+      async () => {
+        const payload = await this.postJson('/embeddings', {
+          model,
+          input,
+        });
 
-    const embeddings = Array.isArray(payload?.data)
-      ? payload.data
-          .map((item: any) => (Array.isArray(item?.embedding) ? item.embedding : null))
-          .filter((item: number[] | null): item is number[] => item !== null)
-      : [];
+        const embeddings = Array.isArray(payload?.data)
+          ? payload.data
+              .map((item: any) => (Array.isArray(item?.embedding) ? item.embedding : null))
+              .filter((item: number[] | null): item is number[] => item !== null)
+          : [];
 
-    return {
-      model: typeof payload?.model === 'string' ? payload.model : model,
-      embeddings,
-      raw: payload,
-    };
+        return {
+          model: typeof payload?.model === 'string' ? payload.model : model,
+          embeddings,
+          raw: payload,
+        };
+      },
+      readRateLimitIntEnv('OPENROUTER_EMBEDDING_CACHE_TTL_MS', 3_600_000),
+    );
   }
 }
 

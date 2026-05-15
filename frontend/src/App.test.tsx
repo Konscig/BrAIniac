@@ -28,6 +28,7 @@ test("builds canonical question input for pipeline execution", () => {
 test("detects terminal execution statuses", () => {
   expect(isExecutionTerminal("succeeded")).toBe(true);
   expect(isExecutionTerminal("failed")).toBe(true);
+  expect(isExecutionTerminal("cancelled")).toBe(true);
   expect(isExecutionTerminal("queued")).toBe(false);
   expect(isExecutionTerminal("running")).toBe(false);
 });

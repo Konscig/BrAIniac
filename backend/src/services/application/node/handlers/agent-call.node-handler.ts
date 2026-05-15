@@ -2,7 +2,7 @@ import { HttpError } from '../../../../common/http-error.js';
 import { getOpenRouterAdapter } from '../../../core/openrouter/openrouter.adapter.js';
 import type { NodeHandler } from '../../pipeline/pipeline.executor.types.js';
 import { buildPrompt, readBoundedInteger } from '../../pipeline/pipeline.executor.utils.js';
-import { resolveAgentChatModel, resolveNodeSectionConfig } from './node-handler.common.js';
+import { normalizeToolLookupKey, resolveAgentChatModel, resolveNodeSectionConfig } from './node-handler.common.js';
 import { type AgentDirective, parseAgentDirective } from './agent-directive-parser.js';
 import { isToolAdvertisingInput, resolveAgentToolBindings } from './agent-tool-discovery.js';
 import { buildAgentCallOutput, resolveEmptyAgentFinalText, summarizeDirective } from './agent-call-output.js';
@@ -11,6 +11,50 @@ import { requestAgentCompletion, type AgentMessage } from './agent-provider-call
 import { runAgentToolCall } from './agent-tool-call-runner.js';
 import { extractAgentArtifactAnswer } from './agent-output-summary.js';
 import { resolveAgentTurnDecision } from './agent-turn-resolution.js';
+
+function readRequiredToolSequence(agentConfig: Record<string, any>): string[] {
+  const raw = agentConfig.requiredToolSequence;
+  if (!Array.isArray(raw)) return [];
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    const name = entry.trim();
+    const key = normalizeToolLookupKey(name);
+    if (!name || !key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out.slice(0, 20);
+}
+
+function findNextRequiredToolName(
+  requiredToolSequence: string[],
+  toolCallTrace: Array<Record<string, any>>,
+  toolResolution: Awaited<ReturnType<typeof resolveAgentToolBindings>>,
+): string | null {
+  if (requiredToolSequence.length === 0) return null;
+
+  const completedKeys = new Set<string>();
+  for (const entry of toolCallTrace) {
+    if (!entry || entry.status !== 'completed') continue;
+    for (const value of [entry.tool, entry.resolved_tool, entry.requested_tool]) {
+      if (typeof value !== 'string') continue;
+      const key = normalizeToolLookupKey(value);
+      if (key) completedKeys.add(key);
+    }
+  }
+
+  for (const toolName of requiredToolSequence) {
+    const key = normalizeToolLookupKey(toolName);
+    if (!key || completedKeys.has(key)) continue;
+    if (!toolResolution.byKey.has(key)) continue;
+    return toolName;
+  }
+
+  return null;
+}
 
 export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context) => {
   const adapter = getOpenRouterAdapter();
@@ -59,6 +103,7 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
     }
   }
   const availableTools = toolResolution.advertised;
+  const requiredToolSequence = readRequiredToolSequence(agentConfig as Record<string, any>);
   const systemPrompt = buildAgentSystemPrompt(systemPromptText);
   const messages: AgentMessage[] = buildAgentMessages(systemPrompt, availableTools, toolResolution.unresolvedTools, prompt);
 
@@ -74,6 +119,7 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   let providerLastErrorStatus: number | null = null;
   let providerLastErrorMessage = '';
   let providerLastErrorDetails: Record<string, any> | undefined;
+  let providerCooldownDiagnostics: Record<string, any> | undefined;
   let providerSoftFailures = 0;
   let providerSuccessfulResponses = 0;
   let finalTextSource = '';
@@ -85,6 +131,29 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
   const workingInputs = [...inputs];
   let workingInputJson: any = context.input_json;
   const attemptedToolKeys = new Set<string>();
+
+  for (const requiredToolName of requiredToolSequence) {
+    if (toolCallsExecuted >= maxToolCalls) break;
+    const requiredKey = normalizeToolLookupKey(requiredToolName);
+    if (!requiredKey || !toolResolution.byKey.has(requiredKey)) continue;
+
+    toolCallsExecuted += 1;
+    const toolCallResult = await runAgentToolCall({
+      index: toolCallsExecuted,
+      requestedToolName: requiredToolName,
+      inputPatch: {},
+      source: 'required_sequence',
+      runtime,
+      context,
+      toolResolution,
+      workingInputs,
+      workingInputJson,
+      attemptedToolKeys,
+    });
+    workingInputJson = toolCallResult.nextInputJson;
+    toolCallTrace.push(toolCallResult.traceEntry);
+    messages.push(toolCallResult.followupMessage);
+  }
 
   while (llmTurns < maxToolCalls + 1) {
     llmTurns += 1;
@@ -105,6 +174,7 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
     providerLastErrorStatus = providerTurn.providerLastErrorStatus;
     providerLastErrorMessage = providerTurn.providerLastErrorMessage;
     providerLastErrorDetails = providerTurn.providerLastErrorDetails;
+    providerCooldownDiagnostics = providerTurn.providerCooldownDiagnostics;
     finalModel = providerTurn.model;
     finalProviderResponseId = providerTurn.providerResponseId || finalProviderResponseId;
     finalUsage = providerTurn.usage;
@@ -128,6 +198,29 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
       artifactAnswer,
       completionText,
     });
+
+    if (hasToolBudget) {
+      const requiredToolName = findNextRequiredToolName(requiredToolSequence, toolCallTrace, toolResolution);
+      if (requiredToolName) {
+        toolCallsExecuted += 1;
+        const toolCallResult = await runAgentToolCall({
+          index: toolCallsExecuted,
+          requestedToolName: requiredToolName,
+          inputPatch: {},
+          source: 'required_sequence',
+          runtime,
+          context,
+          toolResolution,
+          workingInputs,
+          workingInputJson,
+          attemptedToolKeys,
+        });
+        workingInputJson = toolCallResult.nextInputJson;
+        toolCallTrace.push(toolCallResult.traceEntry);
+        messages.push(toolCallResult.followupMessage);
+        continue;
+      }
+    }
 
     if (turnDecision.kind === 'tool_call') {
       toolCallsExecuted += 1;
@@ -185,6 +278,7 @@ export const agentCallNodeHandler: NodeHandler = async (runtime, inputs, context
       providerLastErrorStatus,
       providerLastErrorMessage,
       providerLastErrorDetails,
+      providerCooldownDiagnostics,
       attemptsUsed,
       llmTurns,
       maxAttempts,

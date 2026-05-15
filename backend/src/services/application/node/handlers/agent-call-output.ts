@@ -72,6 +72,7 @@ type BuildAgentCallOutputOptions = {
   providerLastErrorStatus: number | null;
   providerLastErrorMessage: string;
   providerLastErrorDetails: Record<string, any> | undefined;
+  providerCooldownDiagnostics?: Record<string, any> | undefined;
   attemptsUsed: number;
   llmTurns: number;
   maxAttempts: number;
@@ -114,6 +115,7 @@ export function buildAgentCallOutput(options: BuildAgentCallOutputOptions): Reco
             ...(options.providerLastErrorDetails ? { details: options.providerLastErrorDetails } : {}),
           }
         : null,
+    provider_cooldown_diagnostics: options.providerCooldownDiagnostics ?? null,
     attempts_used: options.attemptsUsed,
     llm_turns: options.llmTurns,
     max_attempts: options.maxAttempts,

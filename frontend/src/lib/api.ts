@@ -18,6 +18,7 @@ const TOKENS_STORAGE_KEY = "brainiac.tokens";
 export const AUTH_EXPIRED_EVENT = "brainiac:auth-expired";
 export const AUTH_REFRESHED_EVENT = "brainiac:auth-refreshed";
 export const AUTH_EXPIRED_MESSAGE = "Session expired. Sign in again.";
+export const RUNTIME_UNAVAILABLE_MESSAGE = "Runtime service temporarily unavailable. Try again.";
 const DEFAULT_PIPELINE_LIMITS = {
   max_time: 120,
   max_cost: 100,
@@ -144,6 +145,11 @@ export const isInvalidOrExpiredTokenResponse = (status: number | undefined, deta
   );
 };
 
+export const isRuntimeUnavailableResponse = (status: number | undefined, details: unknown): boolean => {
+  if (status !== 503) return false;
+  return /\bruntime_redis_unavailable\b/.test(collectErrorText(details));
+};
+
 export const emitAuthExpired = (detail: AuthExpiredDetail): void => {
   try {
     localStorage.removeItem(TOKENS_STORAGE_KEY);
@@ -246,6 +252,10 @@ export async function apiRequest<TResponse = unknown>(
     const message = extractApiErrorMessage(error.details);
     if (message) {
       error.message = message;
+    }
+
+    if (isRuntimeUnavailableResponse(error.status, error.details)) {
+      error.message = RUNTIME_UNAVAILABLE_MESSAGE;
     }
 
     if (sentStoredAccessToken && isInvalidOrExpiredTokenResponse(error.status, error.details)) {
@@ -393,7 +403,7 @@ export interface GraphValidationResult {
   metrics: GraphValidationMetrics;
 }
 
-export type ExecutionStatus = "queued" | "running" | "succeeded" | "failed";
+export type ExecutionStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
 export interface ExecutionSummary {
   status: "succeeded" | "failed";
@@ -658,7 +668,7 @@ export function buildQuestionInput(question: string): { question: string; user_q
 }
 
 export function isExecutionTerminal(status: ExecutionStatus): boolean {
-  return status === "succeeded" || status === "failed";
+  return status === "succeeded" || status === "failed" || status === "cancelled";
 }
 
 export function readNodeLabel(node: NodeRecord): string {

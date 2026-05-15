@@ -6,7 +6,7 @@ import { getHttpErrorCode, getHttpErrorStatus } from './agent-directive-parser.j
 import { summarizeAgentToolOutput } from './agent-output-summary.js';
 import type { AgentMessage } from './agent-provider-call.js';
 
-type AgentToolCallSource = 'model';
+type AgentToolCallSource = 'model' | 'required_sequence';
 
 type RunAgentToolCallOptions = {
   index: number;

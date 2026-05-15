@@ -1,5 +1,6 @@
 import { ResourceTemplate, type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { HttpError } from '../../common/http-error.js';
+import { getOrSetRuntimeCache } from '../../runtime/cache.service.js';
 import { getProjectByIdForUser } from '../../services/application/project/project.application.service.js';
 import { validatePipelineGraph } from '../../services/core/graph_validation.service.js';
 import { ensurePipelineOwnedByUser } from '../../services/core/ownership.service.js';
@@ -125,7 +126,7 @@ async function collectPipelineSnapshot(pipelineId: number, scope: ExportScope, n
 
 export async function buildPipelineExportSnapshot(pipelineId: number, userId: number) {
   await ensurePipelineOwnedByUser(pipelineId, userId);
-  return collectPipelineSnapshot(pipelineId, 'pipeline');
+  return getOrSetRuntimeCache(['mcp', 'export', 'pipeline', pipelineId, 'user', userId], () => collectPipelineSnapshot(pipelineId, 'pipeline'));
 }
 
 export async function buildNodeExportSnapshot(pipelineId: number, nodeId: number, userId: number) {
@@ -134,17 +135,23 @@ export async function buildNodeExportSnapshot(pipelineId: number, nodeId: number
   if (!node || node.fk_pipeline_id !== pipelineId) {
     throw new HttpError(404, { error: 'node not found' });
   }
-  return collectPipelineSnapshot(pipelineId, 'node', nodeId);
+  return getOrSetRuntimeCache(['mcp', 'export', 'pipeline', pipelineId, 'node', nodeId, 'user', userId], () =>
+    collectPipelineSnapshot(pipelineId, 'node', nodeId),
+  );
 }
 
 export async function buildProjectExportSnapshot(projectId: number, userId: number) {
   const project = await getProjectByIdForUser(projectId, userId);
   const pipelines = await listPipelines(project.project_id);
   const pipelineSnapshots = await Promise.all(
-    pipelines.map((pipeline) => collectPipelineSnapshot(pipeline.pipeline_id, 'pipeline')),
+    pipelines.map((pipeline) =>
+      getOrSetRuntimeCache(['mcp', 'export', 'pipeline', pipeline.pipeline_id, 'user', userId], () =>
+        collectPipelineSnapshot(pipeline.pipeline_id, 'pipeline'),
+      ),
+    ),
   );
 
-  return {
+  return getOrSetRuntimeCache(['mcp', 'export', 'project', projectId, 'user', userId], async () => ({
     scope: {
       type: 'project' as const,
       project_id: project.project_id,
@@ -154,7 +161,7 @@ export async function buildProjectExportSnapshot(projectId: number, userId: numb
       name: normalizeName(project.name),
     },
     pipelines: pipelineSnapshots,
-  };
+  }));
 }
 
 export function redactionReportForSnapshot(snapshot: Record<string, unknown>) {

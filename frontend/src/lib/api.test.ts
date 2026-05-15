@@ -2,7 +2,8 @@ import {
   apiRequest,
   AUTH_EXPIRED_EVENT,
   AUTH_EXPIRED_MESSAGE,
-  isInvalidOrExpiredTokenResponse
+  isInvalidOrExpiredTokenResponse,
+  RUNTIME_UNAVAILABLE_MESSAGE
 } from "./api";
 
 const jsonResponse = (body: unknown, status = 200) => ({
@@ -74,6 +75,24 @@ test("does not emit auth-expired for unrelated unauthorized API errors", async (
   await expect(apiRequest("/projects")).rejects.toMatchObject({
     status: 401,
     message: "missing credentials"
+  });
+
+  expect(localStorage.getItem("brainiac.tokens")).not.toBeNull();
+  expect(onAuthExpired).not.toHaveBeenCalled();
+  window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
+});
+
+test("surfaces retryable runtime unavailable responses without clearing auth", async () => {
+  localStorage.setItem("brainiac.tokens", JSON.stringify({ accessToken: "stored-token" }));
+  jest.spyOn(global, "fetch").mockResolvedValue(
+    jsonResponse({ ok: false, code: "RUNTIME_REDIS_UNAVAILABLE", error: "runtime coordination unavailable", retryable: true }, 503)
+  );
+  const onAuthExpired = jest.fn();
+  window.addEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
+
+  await expect(apiRequest("/projects")).rejects.toMatchObject({
+    status: 503,
+    message: RUNTIME_UNAVAILABLE_MESSAGE
   });
 
   expect(localStorage.getItem("brainiac.tokens")).not.toBeNull();

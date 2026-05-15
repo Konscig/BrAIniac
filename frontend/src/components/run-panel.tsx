@@ -140,6 +140,8 @@ export function RunPanel({
   const [selectedDatasetId, setSelectedDatasetId] = React.useState<number | "">("");
   const [isDatasetBusy, setIsDatasetBusy] = React.useState(false);
   const [isRunning, setIsRunning] = React.useState(false);
+  const [isRunCancelRequested, setIsRunCancelRequested] = React.useState(false);
+  const cancelRunRef = React.useRef(false);
   const [validation, setValidation] = React.useState<GraphValidationResult | null>(null);
   const [execution, setExecution] = React.useState<ExecutionSnapshot | null>(null);
   const [localError, setLocalError] = React.useState<ReadableError | null>(null);
@@ -308,6 +310,8 @@ export function RunPanel({
     }
 
     setIsRunning(true);
+    setIsRunCancelRequested(false);
+    cancelRunRef.current = false;
     setStartedAt(Date.now());
     setNow(Date.now());
     setIsDrawerOpen(true);
@@ -336,6 +340,20 @@ export function RunPanel({
 
       let snapshot = started;
       while (!isExecutionTerminal(snapshot.status)) {
+        if (cancelRunRef.current) {
+          const cancelled: ExecutionSnapshot = {
+            ...snapshot,
+            status: "cancelled",
+            updated_at: new Date().toISOString(),
+            finished_at: new Date().toISOString(),
+            error: {
+              code: "EXECUTION_POLL_CANCELLED",
+              message: "execution polling cancelled in the run panel"
+            }
+          };
+          setExecution(cancelled);
+          return;
+        }
         await new Promise((resolve) => setTimeout(resolve, 1200));
         snapshot = await getPipelineExecution(pipelineId, snapshot.execution_id);
         setExecution(snapshot);
@@ -347,8 +365,18 @@ export function RunPanel({
       setIsDrawerOpen(true);
     } finally {
       setIsRunning(false);
+      setIsRunCancelRequested(false);
     }
   }, [onError, onExecutionComplete, pipelineId, question, selectedDatasetId]);
+
+  const handleRunButton = React.useCallback(() => {
+    if (isRunning) {
+      cancelRunRef.current = true;
+      setIsRunCancelRequested(true);
+      return;
+    }
+    void handleRun();
+  }, [handleRun, isRunning]);
 
   const diagnostics = formatDiagnostics(validation);
   const hasDetails = Boolean(execution || agentDebug.length > 0 || nodeTrace.length > 0 || diagnostics.length > 0 || localError);
@@ -515,11 +543,11 @@ export function RunPanel({
             type="button"
             size="icon"
             className="h-9 w-9 shrink-0"
-            disabled={!pipelineId || isRunning}
-            onClick={handleRun}
+            disabled={!pipelineId || isRunCancelRequested}
+            onClick={handleRunButton}
             aria-label="Запустить граф"
           >
-            {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            {isRunning ? <X className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </Button>
 
           <Button

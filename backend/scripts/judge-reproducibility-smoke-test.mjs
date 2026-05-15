@@ -4,8 +4,13 @@
  * idempotency-key MUST дать |ΔS| ≤ 0.02 и идентичный состав M'_0.
  */
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 const BASE_URL = process.env.BACKEND_URL ?? 'http://localhost:8080';
+const openrouterProviderSource = await readFile(new URL('../src/services/core/judge_provider/openrouter.adapter.ts', import.meta.url), 'utf8');
+const mistralProviderSource = await readFile(new URL('../src/services/core/judge_provider/mistral.adapter.ts', import.meta.url), 'utf8');
+assert.match(openrouterProviderSource, /openrouter-judge/, 'OpenRouter judge provider must use Redis cooldown diagnostics');
+assert.match(mistralProviderSource, /mistral-judge/, 'Mistral judge provider must use Redis cooldown diagnostics');
 
 async function runOne(token, pipelineId, datasetId, key) {
   const res = await fetch(`${BASE_URL}/judge/assessments`, {

@@ -1,4 +1,5 @@
 import { HttpError } from '../../../common/http-error.js';
+import { invalidatePipelineExportCache } from '../../../runtime/cache.service.js';
 import { createEdge, deleteEdge, getEdgeById, listEdgesByPipeline } from '../../data/edge.service.js';
 import { getNodeById, listNodesByPipeline } from '../../data/node.service.js';
 import { getNodeTypeById } from '../../data/node_type.service.js';
@@ -137,7 +138,9 @@ export async function createEdgeForUser(fromNodeId: number, toNodeId: number, us
   });
   await validateCyclePolicy(pipeline.pipeline_id, fromNodeId, toNodeId);
 
-  return createEdge({ fk_from_node: fromNodeId, fk_to_node: toNodeId });
+  const created = await createEdge({ fk_from_node: fromNodeId, fk_to_node: toNodeId });
+  await invalidatePipelineExportCache(pipeline.pipeline_id);
+  return created;
 }
 
 export async function listEdgesForPipelineForUser(pipelineId: number, userId: number) {
@@ -168,6 +171,7 @@ export async function deleteEdgeByIdForUser(edgeId: number, userId: number) {
     projectNotFoundMessage: 'project not found',
   });
   await deleteEdge(edgeId);
+  await invalidatePipelineExportCache(edge.from_node.fk_pipeline_id);
 }
 
 export async function deletePipelineEdgeForUser(
@@ -200,6 +204,7 @@ export async function deletePipelineEdgeForUser(
   }
 
   await deleteEdge(matches[0]!.edge_id);
+  await invalidatePipelineExportCache(pipelineId);
   return {
     edge_id: matches[0]!.edge_id,
     pipeline_id: pipelineId,

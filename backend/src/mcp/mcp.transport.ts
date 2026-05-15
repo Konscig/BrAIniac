@@ -3,8 +3,10 @@ import type { IncomingMessage } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { isHttpError } from '../common/http-error.js';
 import { resolveMcpAuthContext } from './mcp.auth.js';
 import { createBrainiacMcpServer, mapMcpError } from './mcp.server.js';
+import { enforceRateLimit, readRateLimitIntEnv } from '../runtime/rate-limit.service.js';
 
 export const DEFAULT_MCP_PATH = '/mcp';
 
@@ -34,7 +36,13 @@ function toSdkAuthInfo(context: Awaited<ReturnType<typeof resolveMcpAuthContext>
 
 function sendMcpHttpError(res: Response, error: unknown): void {
   const mapped = mapMcpError(error);
-  const status = mapped.code === 'UNAUTHORIZED' ? 401 : mapped.code === 'FORBIDDEN' ? 403 : 500;
+  const status = isHttpError(error)
+    ? error.status
+    : mapped.code === 'UNAUTHORIZED'
+      ? 401
+      : mapped.code === 'FORBIDDEN'
+        ? 403
+        : 500;
   res.status(status).json(mapped);
 }
 
@@ -48,6 +56,12 @@ export function mountBrainiacMcpTransport(app: Express): void {
   app.all(mcpPath, async (req: Request, res: Response) => {
     try {
       const authContext = await resolveMcpAuthContext(req);
+      await enforceRateLimit({
+        bucket: 'mcp:http',
+        scope: authContext.userId,
+        limit: readRateLimitIntEnv('MCP_RATE_LIMIT_MAX', 120),
+        windowMs: readRateLimitIntEnv('MCP_RATE_LIMIT_WINDOW_MS', 60_000),
+      });
       const transport = new StreamableHTTPServerTransport();
       const server = createBrainiacMcpServer();
 

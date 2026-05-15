@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { buildPrompt } from '../src/services/application/pipeline/pipeline.executor.utils.ts';
 import { agentCallNodeHandler } from '../src/services/application/node/handlers/agent-call.node-handler.ts';
 import {
@@ -10,6 +11,9 @@ import {
 import { isToolAdvertisingInput } from '../src/services/application/node/handlers/agent-tool-discovery.ts';
 import { resolveAgentTurnDecision } from '../src/services/application/node/handlers/agent-turn-resolution.ts';
 import { HttpError } from '../src/common/http-error.ts';
+
+const openrouterSource = await readFile(new URL('../src/services/core/openrouter/openrouter.adapter.ts', import.meta.url), 'utf8');
+assert.match(openrouterSource, /assertProviderAvailable\('openrouter'/, 'OpenRouter adapter must check Redis provider cooldown state');
 
 function testAgentCallRuntimeAllowsTwentyToolCalls() {
   const source = agentCallNodeHandler.toString();

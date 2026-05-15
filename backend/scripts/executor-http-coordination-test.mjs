@@ -1,5 +1,21 @@
 const headers = { 'Content-Type': 'application/json' };
 
+async function auditRedisExecutionCoordination() {
+  const { readFile } = await import('node:fs/promises');
+  const store = await readFile(new URL('../src/services/application/pipeline/pipeline.executor.snapshot-store.ts', import.meta.url), 'utf8');
+  const index = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8');
+  if (!/SET NX PX|NX:\s*true/.test(store) || !/execution.*idempotency/.test(store) || !/execution.*inflight/.test(store)) {
+    throw new Error('executor coordination must use Redis in-flight and idempotency records');
+  }
+  if (!/acquireHeavyToolQueueSlot/.test(index)) {
+    throw new Error('heavy contract execution must use Redis queue backpressure');
+  }
+  const routes = await readFile(new URL('../src/routes/resources/pipeline/pipeline.routes.ts', import.meta.url), 'utf8');
+  if (!/executions\/:executionId\/events/.test(routes) || !/getPipelineExecutionForUser/.test(routes)) {
+    throw new Error('pipeline execution progress route must preserve polling fallback');
+  }
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -86,6 +102,7 @@ async function createAuth(base) {
 }
 
 async function run() {
+  await auditRedisExecutionCoordination();
   const base = await resolveBaseUrl();
   console.log(`[executor-http-coordination] base: ${base}`);
 

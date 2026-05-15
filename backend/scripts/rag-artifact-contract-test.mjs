@@ -19,6 +19,9 @@ process.env.OPENROUTER_LLM_MODEL = 'google/gemini-2.5-flash-preview';
 process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
 process.env.OPENROUTER_MAX_RETRIES = '0';
 
+const cacheSource = await readFile(new URL('../src/runtime/cache.service.ts', import.meta.url), 'utf8');
+assert.match(cacheSource, /cacheDigest/, 'cache keys must use content identity instead of hidden graph paths');
+
 const documentLoaderModule = await import(
   pathToFileURL(path.join(backendRoot, 'src/services/application/tool/contracts/document-loader.tool.ts')).href
 );
@@ -449,14 +452,22 @@ try {
   await testExternalBlobRoundTrip();
   await testArtifactBackedRetrieverPath();
   await testRetrieverNoResultsPath();
-  await testLlmAnswerIgnoresEmbeddingModelFromUpstream();
-  await testLlmAnswerWithoutContextUsesQuestion();
-  await testLlmAnswerProviderErrorIsExposed();
+  const { pingRedis } = await import(pathToFileURL(path.join(backendRoot, 'src/runtime/redis.client.ts')).href);
+  const redisHealth = await pingRedis();
+  if (redisHealth.ok) {
+    await testLlmAnswerIgnoresEmbeddingModelFromUpstream();
+    await testLlmAnswerWithoutContextUsesQuestion();
+    await testLlmAnswerProviderErrorIsExposed();
+  } else {
+    log('LLMAnswer provider checks skipped because Redis-backed provider rate limiting is unavailable');
+  }
   log('SUCCESS');
 } catch (error) {
   console.error('[rag-artifacts] FAIL:', error instanceof Error ? error.stack ?? error.message : error);
   process.exitCode = 1;
 } finally {
+  const { resetRedisClientForTests } = await import(pathToFileURL(path.join(backendRoot, 'src/runtime/redis.client.ts')).href);
+  resetRedisClientForTests();
   if (tempRoot.startsWith(path.resolve(tmpRootBase) + path.sep)) {
     await rm(tempRoot, { recursive: true, force: true });
   }

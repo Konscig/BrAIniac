@@ -1,4 +1,5 @@
 import { HttpError } from '../../../common/http-error.js';
+import { getOrSetRuntimeCache, invalidateRuntimeCachePattern } from '../../../runtime/cache.service.js';
 import { createNodeType, deleteNodeType, getNodeTypeById, listNodeTypes, updateNodeType } from '../../data/node_type.service.js';
 import { getToolById } from '../../data/tool.service.js';
 
@@ -64,12 +65,14 @@ export async function createNodeTypeEntry(data: {
   const { name, desc } = ensureNodeTypeFields(data.name, data.desc);
   await ensureToolExists(data.fk_tool_id);
 
-  return createNodeType({
+  const created = await createNodeType({
     fk_tool_id: data.fk_tool_id,
     name,
     desc,
     ...(data.config_json !== undefined ? { config_json: data.config_json } : {}),
   });
+  await invalidateRuntimeCachePattern('catalog', '*');
+  return created;
 }
 
 export async function listNodeTypeEntries(fkToolId?: number) {
@@ -77,9 +80,14 @@ export async function listNodeTypeEntries(fkToolId?: number) {
 }
 
 export async function listNodeTypeCatalogEntries(options: { includeUnsupported?: boolean; fkToolId?: number } = {}) {
-  const items = await listNodeTypes(options.fkToolId);
-  const catalog = items.map(toCatalogEntry);
-  return options.includeUnsupported ? catalog : catalog.filter((item) => item.runtime_support_state === 'supported');
+  return getOrSetRuntimeCache(
+    ['catalog', 'node-types', options.includeUnsupported ? 'all' : 'supported', options.fkToolId ?? 'all'],
+    async () => {
+      const items = await listNodeTypes(options.fkToolId);
+      const catalog = items.map(toCatalogEntry);
+      return options.includeUnsupported ? catalog : catalog.filter((item) => item.runtime_support_state === 'supported');
+    },
+  );
 }
 
 export async function getNodeTypeEntryById(typeId: number) {
@@ -117,10 +125,13 @@ export async function updateNodeTypeEntryById(
     normalizedPatch.config_json = patch.config_json;
   }
 
-  return updateNodeType(typeId, normalizedPatch);
+  const updated = await updateNodeType(typeId, normalizedPatch);
+  await invalidateRuntimeCachePattern('catalog', '*');
+  return updated;
 }
 
 export async function deleteNodeTypeEntryById(typeId: number) {
   await getNodeTypeEntryById(typeId);
   await deleteNodeType(typeId);
+  await invalidateRuntimeCachePattern('catalog', '*');
 }

@@ -54,7 +54,9 @@ async function assertStaticContract() {
   assert.match(contract, /HttpOnly/, 'contract must require HttpOnly');
   assert.match(contract, /Secure/, 'contract must document Secure');
   assert.match(contract, /SameSite=Lax/, 'contract must document SameSite');
-  assert.match(service, /sessions = new Map/, 'web sessions are intentionally in-memory for local/dev');
+  assert.match(service, /requireRedisClient/, 'web sessions must use Redis runtime storage');
+  assert.match(service, /getDel/, 'web refresh rotation must consume the old token');
+  assert.match(service, /sha256/, 'web refresh tokens must be hashed for Redis keys');
   assert.doesNotMatch(service, /localStorage|sessionStorage/, 'backend service must not mention browser storage');
   assert.doesNotMatch(routes, /req\.body\?\.refresh|refreshToken: req\.body/, 'refresh route must not accept refresh token body input');
   assert.match(authRoutes, /webSessionRouter/, 'auth router must mount web session routes');

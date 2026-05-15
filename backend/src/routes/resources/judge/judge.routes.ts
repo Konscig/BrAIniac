@@ -1,13 +1,23 @@
 import express from 'express';
 import { requireAuth } from '../../../middleware/auth.middleware.js';
 import { sendRouteError } from '../../shared/route-error.js';
-import { runAssessment } from '../../../services/application/judge/judge.service.js';
+import { runQueuedAssessment } from '../../../services/application/judge/judge.service.js';
 import type { AssessItem } from '../../../services/application/judge/judge.service.js';
 import { judgeChat } from '../../../services/application/judge/judge.chat.service.js';
 import { ensurePipelineOwnedByUser } from '../../../services/core/ownership.service.js';
+import { enforceRateLimit, readRateLimitIntEnv } from '../../../runtime/rate-limit.service.js';
 
 const router = express.Router();
 router.use(requireAuth);
+
+async function enforceJudgeRateLimit(req: any, bucket: string, fallbackLimit: number): Promise<void> {
+  await enforceRateLimit({
+    bucket,
+    scope: req.user.user_id,
+    limit: readRateLimitIntEnv('JUDGE_RATE_LIMIT_MAX', fallbackLimit),
+    windowMs: readRateLimitIntEnv('JUDGE_RATE_LIMIT_WINDOW_MS', 60_000),
+  });
+}
 
 /**
  * POST /judge/assessments
@@ -55,11 +65,12 @@ function parseAssessmentBody(body: any): { error?: string; pipelineId?: number; 
 
 router.post('/assessments', async (req: any, res) => {
   try {
+    await enforceJudgeRateLimit(req, 'judge:assessments', 10);
     const parsed = parseAssessmentBody(req.body ?? {});
     if (parsed.error) return res.status(400).json({ error: parsed.error });
     await ensurePipelineOwnedByUser(parsed.pipelineId!, req.user.user_id);
 
-    const report = await runAssessment({
+    const report = await runQueuedAssessment({
       pipeline_id: parsed.pipelineId!,
       user_id: req.user.user_id,
       ...(parsed.items?.length ? { items: parsed.items } : {}),
@@ -68,6 +79,7 @@ router.post('/assessments', async (req: any, res) => {
       ...(parsed.weightProfile ? { weight_profile: parsed.weightProfile } : {}),
     });
 
+    res.setHeader('X-Brainiac-Queue', 'judge-assessment');
     return res.json(report);
   } catch (err) {
     return sendRouteError(res, err);
@@ -123,12 +135,14 @@ router.post('/assessments/stream', async (req: any, res) => {
   if (parsed.error) return res.status(400).json({ error: parsed.error });
 
   try {
+    await enforceJudgeRateLimit(req, 'judge:assessments:stream', 5);
     await ensurePipelineOwnedByUser(parsed.pipelineId!, req.user.user_id);
   } catch (err) {
     return sendRouteError(res, err);
   }
 
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('X-Brainiac-Queue', 'judge-assessment');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
@@ -153,7 +167,7 @@ router.post('/assessments/stream', async (req: any, res) => {
   }, 15000);
 
   try {
-    const report = await runAssessment({
+    const report = await runQueuedAssessment({
       pipeline_id: parsed.pipelineId!,
       user_id: req.user.user_id,
       ...(parsed.items?.length ? { items: parsed.items } : {}),
@@ -188,6 +202,7 @@ router.post('/assessments/stream', async (req: any, res) => {
  */
 router.post('/chat', async (req: any, res) => {
   try {
+    await enforceJudgeRateLimit(req, 'judge:chat', 30);
     const body = req.body ?? {};
     const pipelineId = Number(body.pipeline_id);
     if (!Number.isInteger(pipelineId) || pipelineId <= 0) {

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { HttpError } from '../../../common/http-error.js';
+import { publishProgressEvent } from '../../../runtime/progress.service.js';
 import {
   parseGraphValidationPreset,
   validatePipelineGraph,
@@ -65,6 +66,18 @@ async function persistExecutionSnapshotBestEffort(job: ExecutionJob) {
     if (job.status === 'queued' || job.status === 'running') {
       await writeInFlightExecutionRecord(job.pipeline_id, job.execution_id);
     }
+    await publishProgressEvent({
+      scope: 'execution',
+      resource_id: job.execution_id,
+      type: `execution.${job.status}`,
+      ts: Date.now(),
+      data: {
+        pipeline_id: job.pipeline_id,
+        execution_id: job.execution_id,
+        status: job.status,
+        updated_at: job.updated_at.toISOString(),
+      },
+    });
   } catch (error) {
     console.error('[executor] failed to persist execution snapshot', error);
   }

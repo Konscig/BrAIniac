@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { mkdir, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { getRedisClient, requireRedisClient } from '../../../runtime/redis.client.js';
+import { redisKey } from '../../../runtime/redis.keys.js';
 import type { PipelineExecutionSnapshot } from './pipeline.executor.types.js';
 
 const DEFAULT_ARTIFACT_STORE_DIR = '.artifacts';
@@ -9,6 +11,22 @@ const RUNTIME_COORDINATION_DIR = 'runtime';
 const DEFAULT_COORDINATION_STALE_MS = 15 * 60_000;
 const DEFAULT_EXECUTION_RETENTION_DAYS = 7;
 const DEFAULT_EXECUTION_RETENTION_MAX = 200;
+const DEFAULT_SNAPSHOT_CACHE_TTL_MS = 15 * 60_000;
+
+const DELETE_INFLIGHT_IF_MATCH_SCRIPT = `
+local current = redis.call('GET', KEYS[1])
+if not current then
+  return 0
+end
+if ARGV[1] == '' then
+  return redis.call('DEL', KEYS[1])
+end
+local marker = '"execution_id":"' .. ARGV[1] .. '"'
+if string.find(current, marker, 1, true) then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
 
 type InFlightExecutionRecord = {
   pipeline_id: number;
@@ -56,6 +74,24 @@ function getCoordinationStaleMs(): number {
   const raw = Number(process.env.EXECUTOR_COORDINATION_STALE_MS);
   if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_COORDINATION_STALE_MS;
   return Math.floor(raw);
+}
+
+function getSnapshotCacheTtlMs(): number {
+  const raw = Number(process.env.EXECUTION_SNAPSHOT_CACHE_TTL_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
+  return Math.floor(raw);
+}
+
+function getInFlightRedisKey(pipelineId: number): string {
+  return redisKey('execution', 'inflight', pipelineId);
+}
+
+function getIdempotencyRedisKey(userId: number, pipelineId: number, idempotencyKey: string): string {
+  return redisKey('execution', 'idempotency', userId, pipelineId, hashIdempotencyKey(idempotencyKey));
+}
+
+function getExecutionSnapshotRedisKey(executionId: string): string {
+  return redisKey('execution', 'snapshot', executionId);
 }
 
 function getInFlightRecordPath(pipelineId: number): string {
@@ -129,9 +165,41 @@ export async function writeExecutionSnapshot(snapshot: PipelineExecutionSnapshot
   await mkdir(directory, { recursive: true });
   const absolutePath = getExecutionSnapshotPath(snapshot.execution_id);
   await writeFile(absolutePath, JSON.stringify(snapshot, null, 2), 'utf8');
+
+  try {
+    const redis = await getRedisClient();
+    if (redis) {
+      await redis.set(getExecutionSnapshotRedisKey(snapshot.execution_id), JSON.stringify(snapshot), { PX: getSnapshotCacheTtlMs() });
+    }
+  } catch {
+    // Snapshot cache is an optimization; durable artifact storage remains the source of truth.
+  }
+}
+
+function parseJsonPayload<T>(payloadText: string | null): T | null {
+  if (!payloadText) return null;
+  try {
+    const parsed = JSON.parse(payloadText);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as T;
+  } catch {
+    return null;
+  }
 }
 
 export async function readExecutionSnapshot(executionId: string): Promise<PipelineExecutionSnapshot | null> {
+  try {
+    const redis = await getRedisClient();
+    if (redis) {
+      const cached = await redis.get(getExecutionSnapshotRedisKey(executionId));
+      const parsed = parseJsonPayload<PipelineExecutionSnapshot>(cached);
+      if (parsed) {
+        return parsed;
+      }
+    }
+  } catch {
+    // Fall back to durable artifacts when cache is unavailable or invalid.
+  }
   return readJsonFile<PipelineExecutionSnapshot>(getExecutionSnapshotPath(executionId));
 }
 
@@ -204,22 +272,25 @@ export async function pruneOldExecutions(activeExecutionIds: Set<string> = new S
 }
 
 export async function writeInFlightExecutionRecord(pipelineId: number, executionId: string): Promise<void> {
-  await writeJsonFile(getInFlightRecordPath(pipelineId), {
+  const redis = await requireRedisClient('execution coordination store unavailable');
+  await redis.set(getInFlightRedisKey(pipelineId), JSON.stringify({
     pipeline_id: pipelineId,
     execution_id: executionId,
     updated_at: new Date().toISOString(),
-  } satisfies InFlightExecutionRecord);
+  } satisfies InFlightExecutionRecord), { PX: getCoordinationStaleMs() });
 }
 
 export async function readInFlightExecutionRecord(pipelineId: number): Promise<InFlightExecutionRecord | null> {
-  return readJsonFile<InFlightExecutionRecord>(getInFlightRecordPath(pipelineId));
+  const redis = await requireRedisClient('execution coordination store unavailable');
+  return parseJsonPayload<InFlightExecutionRecord>(await redis.get(getInFlightRedisKey(pipelineId)));
 }
 
 export async function claimInFlightExecutionRecord(
   pipelineId: number,
   executionId: string,
 ): Promise<CoordinationClaimResult<InFlightExecutionRecord>> {
-  const absolutePath = getInFlightRecordPath(pipelineId);
+  const redis = await requireRedisClient('execution coordination store unavailable');
+  const key = getInFlightRedisKey(pipelineId);
   const candidateRecord: InFlightExecutionRecord = {
     pipeline_id: pipelineId,
     execution_id: executionId,
@@ -227,21 +298,16 @@ export async function claimInFlightExecutionRecord(
   };
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const created = await writeJsonFileExclusive(absolutePath, candidateRecord);
-    if (created) {
+    const created = await redis.set(key, JSON.stringify(candidateRecord), { NX: true, PX: getCoordinationStaleMs() });
+    if (created === 'OK') {
       return {
         claimed: true,
         record: candidateRecord,
       };
     }
 
-    const existing = await readJsonFile<InFlightExecutionRecord>(absolutePath);
+    const existing = parseJsonPayload<InFlightExecutionRecord>(await redis.get(key));
     if (!existing) {
-      try {
-        await rm(absolutePath, { force: true });
-      } catch {
-        // best effort
-      }
       continue;
     }
 
@@ -252,14 +318,10 @@ export async function claimInFlightExecutionRecord(
       };
     }
 
-    try {
-      await rm(absolutePath, { force: true });
-    } catch {
-      // best effort
-    }
+    await redis.eval(DELETE_INFLIGHT_IF_MATCH_SCRIPT, { keys: [key], arguments: [existing.execution_id] });
   }
 
-  const fallbackRecord = (await readJsonFile<InFlightExecutionRecord>(absolutePath)) ?? candidateRecord;
+  const fallbackRecord = parseJsonPayload<InFlightExecutionRecord>(await redis.get(key)) ?? candidateRecord;
   return {
     claimed: false,
     record: fallbackRecord,
@@ -267,17 +329,11 @@ export async function claimInFlightExecutionRecord(
 }
 
 export async function deleteInFlightExecutionRecord(pipelineId: number, expectedExecutionId?: string): Promise<void> {
-  const absolutePath = getInFlightRecordPath(pipelineId);
-  if (expectedExecutionId) {
-    const current = await readJsonFile<InFlightExecutionRecord>(absolutePath);
-    if (!current || current.execution_id !== expectedExecutionId) return;
-  }
-
-  try {
-    await rm(absolutePath, { force: true });
-  } catch {
-    // best effort
-  }
+  const redis = await requireRedisClient('execution coordination store unavailable');
+  await redis.eval(DELETE_INFLIGHT_IF_MATCH_SCRIPT, {
+    keys: [getInFlightRedisKey(pipelineId)],
+    arguments: [expectedExecutionId ?? ''],
+  });
 }
 
 export async function writeIdempotencyExecutionRecord(
@@ -286,13 +342,14 @@ export async function writeIdempotencyExecutionRecord(
   idempotencyKey: string,
   executionId: string,
 ): Promise<void> {
-  await writeJsonFile(getIdempotencyRecordPath(userId, pipelineId, idempotencyKey), {
+  const redis = await requireRedisClient('execution coordination store unavailable');
+  await redis.set(getIdempotencyRedisKey(userId, pipelineId, idempotencyKey), JSON.stringify({
     user_id: userId,
     pipeline_id: pipelineId,
     idempotency_key: idempotencyKey,
     execution_id: executionId,
     updated_at: new Date().toISOString(),
-  } satisfies IdempotencyExecutionRecord);
+  } satisfies IdempotencyExecutionRecord), { PX: getCoordinationStaleMs() });
 }
 
 export async function readIdempotencyExecutionRecord(
@@ -300,7 +357,8 @@ export async function readIdempotencyExecutionRecord(
   pipelineId: number,
   idempotencyKey: string,
 ): Promise<IdempotencyExecutionRecord | null> {
-  return readJsonFile<IdempotencyExecutionRecord>(getIdempotencyRecordPath(userId, pipelineId, idempotencyKey));
+  const redis = await requireRedisClient('execution coordination store unavailable');
+  return parseJsonPayload<IdempotencyExecutionRecord>(await redis.get(getIdempotencyRedisKey(userId, pipelineId, idempotencyKey)));
 }
 
 export async function claimIdempotencyExecutionRecord(
@@ -309,7 +367,8 @@ export async function claimIdempotencyExecutionRecord(
   idempotencyKey: string,
   executionId: string,
 ): Promise<CoordinationClaimResult<IdempotencyExecutionRecord>> {
-  const absolutePath = getIdempotencyRecordPath(userId, pipelineId, idempotencyKey);
+  const redis = await requireRedisClient('execution coordination store unavailable');
+  const key = getIdempotencyRedisKey(userId, pipelineId, idempotencyKey);
   const candidateRecord: IdempotencyExecutionRecord = {
     user_id: userId,
     pipeline_id: pipelineId,
@@ -318,15 +377,15 @@ export async function claimIdempotencyExecutionRecord(
     updated_at: new Date().toISOString(),
   };
 
-  const created = await writeJsonFileExclusive(absolutePath, candidateRecord);
-  if (created) {
+  const created = await redis.set(key, JSON.stringify(candidateRecord), { NX: true, PX: getCoordinationStaleMs() });
+  if (created === 'OK') {
     return {
       claimed: true,
       record: candidateRecord,
     };
   }
 
-  const existing = await readJsonFile<IdempotencyExecutionRecord>(absolutePath);
+  const existing = parseJsonPayload<IdempotencyExecutionRecord>(await redis.get(key));
   if (existing) {
     return {
       claimed: false,
@@ -334,7 +393,7 @@ export async function claimIdempotencyExecutionRecord(
     };
   }
 
-  await writeJsonFile(absolutePath, candidateRecord);
+  await redis.set(key, JSON.stringify(candidateRecord), { PX: getCoordinationStaleMs() });
   return {
     claimed: true,
     record: candidateRecord,
@@ -342,9 +401,6 @@ export async function claimIdempotencyExecutionRecord(
 }
 
 export async function deleteIdempotencyExecutionRecord(userId: number, pipelineId: number, idempotencyKey: string): Promise<void> {
-  try {
-    await rm(getIdempotencyRecordPath(userId, pipelineId, idempotencyKey), { force: true });
-  } catch {
-    // best effort
-  }
+  const redis = await requireRedisClient('execution coordination store unavailable');
+  await redis.del(getIdempotencyRedisKey(userId, pipelineId, idempotencyKey));
 }
