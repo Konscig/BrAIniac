@@ -1,6 +1,14 @@
 const base = process.env.BASE_URL || 'http://localhost:8080';
 const headers = { 'Content-Type': 'application/json' };
 
+async function auditRateLimitContract() {
+  const { readFile } = await import('node:fs/promises');
+  const routes = await readFile(new URL('../src/routes/resources/auth/auth.routes.ts', import.meta.url), 'utf8');
+  if (!/enforceAuthRateLimit\(req, 'signup'\)/.test(routes) || !/enforceAuthRateLimit\(req, 'login'\)/.test(routes)) {
+    throw new Error('auth login/signup routes must enforce Redis-backed rate limits');
+  }
+}
+
 async function req(path, opts) {
   const res = await fetch(base + path, opts);
   const txt = await res.text();
@@ -10,6 +18,7 @@ async function req(path, opts) {
 }
 
 async function run(){
+  await auditRateLimitContract();
   const suffix = Date.now();
   const email = `auth+${suffix}@local`;
   const password = 'pass123';

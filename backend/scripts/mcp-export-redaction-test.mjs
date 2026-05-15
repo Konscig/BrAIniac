@@ -42,6 +42,7 @@ assert.ok(redacted.redactions.some((item) => item.reason === 'secret-like field'
 assert.ok(redacted.redactions.some((item) => item.reason === 'raw dataset content'));
 
 const exportResourceSource = await readFile(new URL('../src/mcp/resources/export.resources.ts', import.meta.url), 'utf8');
+assert.match(exportResourceSource, /'mcp', 'export', 'pipeline'.*'user'/s, 'MCP export cache must remain owner-scoped');
 assert.match(exportResourceSource, /validatePipelineGraph/, 'export snapshots must include validation from existing service');
 assert.match(exportResourceSource, /ensurePipelineOwnedByUser/, 'export snapshots must verify pipeline ownership');
 assert.match(exportResourceSource, /redaction_report/, 'export snapshots must include redaction report');

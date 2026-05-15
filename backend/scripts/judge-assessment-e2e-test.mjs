@@ -11,12 +11,15 @@
  * 5. assert summary.final_score in [0,1] + aggregation/axis coverage shape
  */
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 const BASE_URL = process.env.BACKEND_URL ?? 'http://localhost:8080';
 const POLL_INTERVAL_MS = 1000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 async function main() {
+  const routes = await readFile(new URL('../src/routes/resources/judge/judge.routes.ts', import.meta.url), 'utf8');
+  assert.match(routes, /X-Brainiac-Queue/, 'judge routes must expose Redis queue diagnostics');
   console.log('[judge:e2e] NOTE: this is a skeleton smoke. Fill pipeline/dataset prerequisites');
   console.log('[judge:e2e] before running in a real env. Script exits early when prerequisites missing.');
 

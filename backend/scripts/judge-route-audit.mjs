@@ -47,4 +47,13 @@ function main() {
   console.log('[judge:route-audit] OK — no direct Prisma access in routes');
 }
 
+function auditJudgeRateLimitContract() {
+  const judgeRoutes = fs.readFileSync(path.join(ROUTES_DIR, 'resources', 'judge', 'judge.routes.ts'), 'utf8');
+  if (!/enforceJudgeRateLimit\(req, 'judge:assessments'/.test(judgeRoutes) || !/enforceJudgeRateLimit\(req, 'judge:chat'/.test(judgeRoutes)) {
+    console.error('[judge:route-audit] FAIL - judge routes must enforce Redis-backed rate limits');
+    process.exit(1);
+  }
+}
+
 main();
+auditJudgeRateLimitContract();

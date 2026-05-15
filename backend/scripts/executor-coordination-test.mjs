@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -8,9 +8,15 @@ function sleep(ms) {
 }
 
 async function main() {
+  const storeSource = await readFile(new URL('../src/services/application/pipeline/pipeline.executor.snapshot-store.ts', import.meta.url), 'utf8');
+  assert.match(storeSource, /requireRedisClient\('execution coordination store unavailable'\)/, 'execution coordination must fail closed through Redis');
+  assert.match(storeSource, /NX:\s*true/, 'execution coordination claims must use Redis NX semantics');
+  assert.match(storeSource, /getExecutionSnapshotRedisKey/, 'execution snapshots must use a Redis cache key');
+
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'brainiac-executor-coordination-'));
   process.env.EXECUTOR_ARTIFACT_STORE_DIR = tempRoot;
   process.env.EXECUTOR_COORDINATION_STALE_MS = '40';
+  process.env.REDIS_KEY_PREFIX = `brainiac:test:executor:${Date.now()}`;
 
   const {
     claimIdempotencyExecutionRecord,
@@ -20,8 +26,15 @@ async function main() {
     readIdempotencyExecutionRecord,
     readInFlightExecutionRecord,
   } = await import('../src/services/application/pipeline/pipeline.executor.snapshot-store.ts');
+  const { clearRedisPrefixForTests, pingRedis } = await import('../src/runtime/redis.client.ts');
+  const redisHealth = await pingRedis();
+  if (!redisHealth.ok) {
+    console.log('[executor-coordination] SKIP - Redis is not available for live coordination checks');
+    return;
+  }
 
   try {
+    await clearRedisPrefixForTests();
     const firstInFlight = await claimInFlightExecutionRecord(101, 'exec-1');
     assert.equal(firstInFlight.claimed, true);
     assert.equal(firstInFlight.record.execution_id, 'exec-1');
@@ -55,12 +68,13 @@ async function main() {
 
     console.log('[executor-coordination] SUCCESS');
   } finally {
+    await clearRedisPrefixForTests().catch(() => {});
     await rm(tempRoot, { recursive: true, force: true });
   }
 }
 
 main().catch((error) => {
   console.error('[executor-coordination] FAIL');
-  console.error(error instanceof Error ? error.stack || error.message : String(error));
+  console.error(error instanceof Error ? error.stack || error.message : error);
   process.exit(1);
 });
