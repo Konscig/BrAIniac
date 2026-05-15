@@ -13,11 +13,13 @@ import toolRouter from './routes/resources/tool/tool.routes.js';
 import pipelineRouter from './routes/resources/pipeline/pipeline.routes.js';
 import nodeTypeRouter from './routes/resources/node_type/node_type.routes.js';
 import judgeRouter from './routes/resources/judge/judge.routes.js';
+import runtimeHealthRouter from './routes/runtime/runtime-health.routes.js';
 import { isHttpError } from './common/http-error.js';
 import { getOpenRouterConfig } from './services/core/openrouter/openrouter.config.js';
 import { resolveToolContractDefinition } from './services/application/tool/contracts/index.js';
 import { mountBrainiacMcpTransport } from './mcp/mcp.transport.js';
 import { requireAuth } from './middleware/auth.middleware.js';
+import { acquireHeavyToolQueueSlot } from './runtime/queue/heavy-tool.queue.js';
 
 loadEnv({ path: process.env.ENV_FILE ?? '.env' });
 if (!process.env.DATABASE_URL || !process.env.OPENROUTER_API_KEY) {
@@ -74,6 +76,7 @@ function createApp() {
   app.options(/.*/, cors(corsOptions));
 
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
+  app.use('/runtime', runtimeHealthRouter);
   mountBrainiacMcpTransport(app);
 
   // FIFO semaphore с bounded queue: ограничивает одновременную обработку
@@ -137,9 +140,10 @@ function createApp() {
     const isHeavy = resolvedContractDefinition?.name
       ? HEAVY_CONTRACTS.has(resolvedContractDefinition.name)
       : HEAVY_CONTRACTS.has(resolvedContractName);
+    let heavyLease: { release: () => Promise<void> } | null = null;
     if (isHeavy) {
       try {
-        await heavyAcquire();
+        heavyLease = await acquireHeavyToolQueueSlot((req as any).user?.user_id);
       } catch (err: any) {
         return res.status(err?.status ?? 503).json({
           ok: false,
@@ -201,7 +205,7 @@ function createApp() {
             : contractInput,
       });
     } finally {
-      if (isHeavy) heavyRelease();
+      if (isHeavy) await heavyLease?.release();
     }
   });
 
