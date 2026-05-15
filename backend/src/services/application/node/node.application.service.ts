@@ -1,4 +1,5 @@
 import { HttpError } from '../../../common/http-error.js';
+import { invalidatePipelineExportCache } from '../../../runtime/cache.service.js';
 import {
   createNode,
   deleteNode,
@@ -71,7 +72,9 @@ export async function createNodeForUser(
     await ensureSubPipelineAccess(data.fk_sub_pipeline, userId);
   }
 
-  return createNode(data);
+  const created = await createNode(data);
+  await invalidatePipelineExportCache(data.fk_pipeline_id);
+  return created;
 }
 
 export async function listNodesForPipelineForUser(pipelineId: number, userId: number) {
@@ -127,7 +130,9 @@ export async function updateNodeForUser(
     await maybeValidateRagDatasetConfig(patch.fk_type_id, existing.ui_json);
   }
 
-  return updateNode(nodeId, patch);
+  const updated = await updateNode(nodeId, patch);
+  await invalidatePipelineExportCache(existing.fk_pipeline_id);
+  return updated;
 }
 
 export async function deleteNodeByIdForUser(nodeId: number, userId: number) {
@@ -138,6 +143,7 @@ export async function deleteNodeByIdForUser(nodeId: number, userId: number) {
 
   await ensurePipelineOwnedByUser(existing.fk_pipeline_id, userId, PIPELINE_ACCESS_OPTIONS);
   await deleteNode(nodeId);
+  await invalidatePipelineExportCache(existing.fk_pipeline_id);
 }
 
 export async function updatePipelineNodeForUser(
@@ -166,7 +172,9 @@ export async function updatePipelineNodeForUser(
     ...(patch.config_json !== undefined ? { config_json: patch.config_json } : {}),
   };
 
-  return updateNode(nodeId, { ui_json: nextUi });
+  const updated = await updateNode(nodeId, { ui_json: nextUi });
+  await invalidatePipelineExportCache(pipelineId);
+  return updated;
 }
 
 export async function deletePipelineNodeForUser(pipelineId: number, nodeId: number, userId: number) {
@@ -180,6 +188,7 @@ export async function deletePipelineNodeForUser(pipelineId: number, nodeId: numb
     (edge) => edge.fk_from_node === nodeId || edge.fk_to_node === nodeId,
   );
   await deleteNode(nodeId);
+  await invalidatePipelineExportCache(pipelineId);
 
   return {
     deleted_node_id: nodeId,
