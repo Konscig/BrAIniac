@@ -228,15 +228,15 @@
 - [X] T085 [P] Create Redis environment example file `.env.docker.example`
 - [X] T086 Audit logs and diagnostics for secret-safe Redis errors in `backend/src/runtime/runtime-errors.ts`
 - [X] T087 Run `npm --prefix backend run build`
-- [ ] T088 Run `npm --prefix backend run test:web-session-refresh`
+- [X] T088 Run `npm --prefix backend run test:web-session-refresh`
 - [X] T089 Run `npm --prefix backend run test:executor:coordination`
-- [ ] T090 Run `npm --prefix backend run test:executor:http`
+- [X] T090 Run `npm --prefix backend run test:executor:http`
 - [X] T091 Run `npm --prefix backend run test:contracts:freeze`
 - [X] T092 Run Redis-specific backend scripts listed in `specs/006-redis/quickstart.md`
 - [X] T093 Run MCP auth/export/domain checks from `backend/package.json`
-- [ ] T094 Run RAG and judge smoke checks touched by Redis cache/provider/queue behavior from `backend/package.json`
+- [X] T094 Run RAG and judge smoke checks touched by Redis cache/provider/queue behavior from `backend/package.json`
 - [X] T095 Run frontend auth/session and build checks from `frontend/package.json`
-- [ ] T096 Validate manual Redis outage and polling fallback steps in `specs/006-redis/quickstart.md`
+- [X] T096 Validate manual Redis outage and polling fallback steps in `specs/006-redis/quickstart.md`
 
 ---
 

@@ -466,6 +466,8 @@ try {
   console.error('[rag-artifacts] FAIL:', error instanceof Error ? error.stack ?? error.message : error);
   process.exitCode = 1;
 } finally {
+  const { resetRedisClientForTests } = await import(pathToFileURL(path.join(backendRoot, 'src/runtime/redis.client.ts')).href);
+  resetRedisClientForTests();
   if (tempRoot.startsWith(path.resolve(tmpRootBase) + path.sep)) {
     await rm(tempRoot, { recursive: true, force: true });
   }

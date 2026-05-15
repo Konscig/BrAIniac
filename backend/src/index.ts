@@ -36,6 +36,8 @@ const SHOULD_FORK = ENABLE_CLUSTER && CONFIGURED_WORKERS > 1;
 // запрос с PayloadTooLargeError. Override через HTTP_JSON_LIMIT env.
 const JSON_BODY_LIMIT = (process.env.HTTP_JSON_LIMIT ?? '64mb').trim();
 
+let httpServerRef: ReturnType<express.Express['listen']> | null = null;
+
 function createApp() {
   const app = express();
   const openRouterConfig = getOpenRouterConfig();
@@ -235,7 +237,7 @@ if (SHOULD_FORK && cluster.isPrimary) {
   });
 } else {
   const app = createApp();
-  app.listen(PORT, "0.0.0.0", () => {
+  httpServerRef = app.listen(PORT, "0.0.0.0", () => {
     console.log(`[worker ${process.pid}] server started on port ${PORT}`);
   });
 }
