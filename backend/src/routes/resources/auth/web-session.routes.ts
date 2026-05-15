@@ -25,11 +25,16 @@ router.post('/refresh', async (req, res) => {
   }
 });
 
-router.post('/revoke', (req, res) => {
-  const refreshToken = readWebRefreshCookie(req.headers.cookie);
-  const result = revokeBrowserWebSession(refreshToken);
-  res.setHeader('Set-Cookie', serializeClearWebRefreshCookie());
-  res.json(result);
+router.post('/revoke', async (req, res) => {
+  try {
+    const refreshToken = readWebRefreshCookie(req.headers.cookie);
+    const result = await revokeBrowserWebSession(refreshToken);
+    res.setHeader('Set-Cookie', serializeClearWebRefreshCookie());
+    res.json(result);
+  } catch (err) {
+    res.setHeader('Set-Cookie', serializeClearWebRefreshCookie());
+    return sendRouteError(res, err);
+  }
 });
 
 export default router;
