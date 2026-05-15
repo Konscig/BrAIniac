@@ -14,6 +14,7 @@
  */
 
 import { resolveJudgeProvider, type JudgeMessage } from '../../core/judge_provider/index.js';
+import { isHttpError } from '../../../common/http-error.js';
 import type { AssessItem } from './judge.service.js';
 
 const DEFAULT_SCALE = 5;
@@ -143,7 +144,13 @@ export async function computeRubricJudge(item: AssessItem): Promise<number> {
       const score = Math.max(1, Math.min(scale, parsed.score));
       return { ok: true as const, value: (score - 1) / (scale - 1) };
     } catch (err) {
-      return { ok: false as const, err: err instanceof Error ? err.message : String(err) };
+      const providerCooldownDiagnostics = isHttpError(err) && err.body?.code === 'PROVIDER_COOLDOWN_ACTIVE'
+        ? JSON.stringify(err.body.details ?? {})
+        : '';
+      return {
+        ok: false as const,
+        err: `${err instanceof Error ? err.message : String(err)}${providerCooldownDiagnostics ? ` provider_cooldown_diagnostics=${providerCooldownDiagnostics}` : ''}`,
+      };
     }
   });
 

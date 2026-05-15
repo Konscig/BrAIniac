@@ -1,4 +1,5 @@
 import { getOpenRouterConfig } from '../openrouter/openrouter.config.js';
+import { assertProviderAvailable, recordProviderFailure, recordProviderSuccess } from '../../../runtime/provider-resilience.service.js';
 import type {
   JudgeChatResult,
   JudgeMessage,
@@ -42,6 +43,8 @@ export class OpenRouterJudgeProviderAdapter implements JudgeProvider {
       }));
     }
 
+    const providerScope = `judge:${this.modelId}`;
+    await assertProviderAvailable('openrouter-judge', providerScope);
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -51,9 +54,11 @@ export class OpenRouterJudgeProviderAdapter implements JudgeProvider {
       body: JSON.stringify(body),
     });
     if (!res.ok) {
+      await recordProviderFailure('openrouter-judge', providerScope, res.status);
       throw new Error(`openrouter judge call failed: ${res.status} ${await res.text().catch(() => '')}`);
     }
     const payload: any = await res.json();
+    await recordProviderSuccess('openrouter-judge', providerScope);
     const msg = payload?.choices?.[0]?.message ?? {};
     const toolCalls = Array.isArray(msg.tool_calls)
       ? msg.tool_calls.map((tc: any, idx: number) => ({

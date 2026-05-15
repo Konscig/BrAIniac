@@ -1,4 +1,5 @@
 import { Mistral } from '@mistralai/mistralai';
+import { assertProviderAvailable, recordProviderFailure, recordProviderSuccess } from '../../../runtime/provider-resilience.service.js';
 import type {
   JudgeChatResult,
   JudgeMessage,
@@ -22,22 +23,31 @@ export class MistralJudgeProviderAdapter implements JudgeProvider {
   }
 
   async chat(messages: JudgeMessage[], tools?: JudgeToolSchema[]): Promise<JudgeChatResult> {
-    const response: any = await this.client.chat.complete({
-      model: this.modelId,
-      messages: messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-        ...(m.tool_name ? { name: m.tool_name } : {}),
-      })) as any,
-      ...(tools && tools.length > 0
-        ? {
-            tools: tools.map((t) => ({
-              type: 'function',
-              function: { name: t.name, description: t.description, parameters: t.parameters },
-            })) as any,
-          }
-        : {}),
-    });
+    const providerScope = `judge:${this.modelId}`;
+    await assertProviderAvailable('mistral-judge', providerScope);
+    let response: any;
+    try {
+      response = await this.client.chat.complete({
+        model: this.modelId,
+        messages: messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+          ...(m.tool_name ? { name: m.tool_name } : {}),
+        })) as any,
+        ...(tools && tools.length > 0
+          ? {
+              tools: tools.map((t) => ({
+                type: 'function',
+                function: { name: t.name, description: t.description, parameters: t.parameters },
+              })) as any,
+            }
+          : {}),
+      });
+      await recordProviderSuccess('mistral-judge', providerScope);
+    } catch (error: any) {
+      await recordProviderFailure('mistral-judge', providerScope, Number(error?.statusCode ?? error?.status));
+      throw error;
+    }
 
     const msg = response?.choices?.[0]?.message ?? {};
     const toolCalls: JudgeToolCall[] = Array.isArray(msg.toolCalls)

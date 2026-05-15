@@ -15,6 +15,7 @@ export type AgentProviderTurnResult = {
   providerLastErrorStatus: number | null;
   providerLastErrorMessage: string;
   providerLastErrorDetails: Record<string, any> | undefined;
+  providerCooldownDiagnostics: Record<string, any> | undefined;
   completionText: string;
   model: string;
   providerResponseId: string;
@@ -46,6 +47,7 @@ export async function requestAgentCompletion(options: RequestAgentCompletionOpti
   let providerLastErrorStatus: number | null = null;
   let providerLastErrorMessage = '';
   let providerLastErrorDetails: Record<string, any> | undefined;
+  let providerCooldownDiagnostics: Record<string, any> | undefined;
   let completionText = '';
   let finalModel = model ?? '';
   let finalProviderResponseId = '';
@@ -78,6 +80,7 @@ export async function requestAgentCompletion(options: RequestAgentCompletionOpti
       providerLastErrorStatus = getHttpErrorStatus(error);
       providerLastErrorMessage = getHttpErrorMessage(error);
       providerLastErrorDetails = getHttpErrorDetails(error);
+      providerCooldownDiagnostics = providerLastErrorCode === 'PROVIDER_COOLDOWN_ACTIVE' ? providerLastErrorDetails : undefined;
       const openRouterCode = getHttpErrorCode(error);
       const isOpenRouterError = typeof openRouterCode === 'string' && openRouterCode.startsWith('OPENROUTER_');
       const isRecoverableSoftError = isSoftOpenRouterError(error);
@@ -108,6 +111,7 @@ export async function requestAgentCompletion(options: RequestAgentCompletionOpti
     providerLastErrorStatus,
     providerLastErrorMessage,
     providerLastErrorDetails,
+    providerCooldownDiagnostics,
     completionText,
     model: finalModel,
     providerResponseId: finalProviderResponseId,

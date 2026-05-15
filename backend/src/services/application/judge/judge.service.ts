@@ -12,7 +12,10 @@ import {
 import { computeNativeMetric } from './native_metrics.js';
 import { computeSidecarMetric, isSidecarAvailable } from '../../core/eval_worker/eval_worker.client.js';
 import { computeRubricJudge, isLlmJudgeAvailable } from './llm_judge.metric.js';
+import { ensurePipelineOwnedByUser } from '../../core/ownership.service.js';
 import { getDatasetById } from '../../data/dataset.service.js';
+import { withJudgeQueue } from '../../../runtime/queue/judge.queue.js';
+import { publishProgressEvent } from '../../../runtime/progress.service.js';
 import { readGoldenItemsFromUri, type GoldenItem } from './dataset-items.reader.js';
 import { runPipelineForItem, extractAssessOutput } from './pipeline-runner.js';
 import { deterministicSample, type SampleSpec } from './sampling.js';
@@ -747,4 +750,26 @@ export async function runAssessment(req: AssessRequest): Promise<AssessReport> {
 }
 
 // Re-export для возможных юнит-тестов (профильный авто-выбор и группировка по осям)
+export async function runQueuedAssessment(req: AssessRequest): Promise<AssessReport> {
+  if (req.user_id !== undefined) {
+    await ensurePipelineOwnedByUser(req.pipeline_id, req.user_id);
+  }
+  const originalProgress = req.onProgress;
+  return withJudgeQueue(req.user_id, () =>
+    runAssessment({
+      ...req,
+      onProgress: (event) => {
+        originalProgress?.(event);
+        void publishProgressEvent({
+          scope: 'judge',
+          resource_id: String(req.pipeline_id),
+          type: `judge.${event.type}`,
+          ts: event.ts,
+          data: event as unknown as Record<string, unknown>,
+        });
+      },
+    }),
+  );
+}
+
 export { METRICS, inferProfileFromGraph, groupByAxis };
