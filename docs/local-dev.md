@@ -8,7 +8,7 @@
 
 ```bash
 # поднять только базу (порт 5432 — стандартный)
-docker compose up -d db
+docker compose up -d db redis
 ```
 
 В `backend/`:
@@ -40,6 +40,14 @@ PORT=3000
 # OPENROUTER_API_KEY=...
 # MISTRAL_API_KEY=...
 # CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+
+# Redis runtime state
+REDIS_URL=redis://localhost:6379
+REDIS_KEY_PREFIX=brainiac:dev
+REDIS_REQUIRED=true
+REDIS_CONNECT_TIMEOUT_MS=5000
+RUNTIME_CACHE_ENABLED=true
+RUNTIME_PROGRESS_ENABLED=true
 ```
 
 Пользователь/пароль/имя БД должны совпадать с тем, что указано в `.env.docker` для контейнера `db` (по умолчанию `postgres/postgres/brainiac-db`).
